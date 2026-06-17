@@ -149,6 +149,8 @@ export async function pollVideo(jobId: string): Promise<VideoPoll> {
     if (st.status === "IN_QUEUE") return { status: "pending" };
     return { status: "running" }; // IN_PROGRESS 등
   } catch (e) {
+    // 폴링 중 일시 장애면 실패로 끊지 말고 계속 폴링(다음 틱에 회복).
+    if (isTransientFal(e)) return { status: "running" };
     return { status: "failed", error: falErrorMessage(e) };
   }
 }
