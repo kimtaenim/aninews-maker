@@ -5,10 +5,12 @@ import { DEFAULT_SUBTITLE, type SubtitleSettings } from "@/lib/types";
 export const runtime = "nodejs";
 
 const FONT = ["sans", "serif"];
+const WEIGHT = ["regular", "bold"];
 const SIZE = ["small", "medium", "large"];
 const POS = ["bottom", "top"];
 const ALIGN = ["center", "left"];
 const BOX = ["dark", "light"];
+const LANG = ["ko", "en", "both"];
 
 // 자막 설정(일괄) 저장. body: { projectId, subtitle }
 export async function POST(req: NextRequest) {
@@ -34,6 +36,9 @@ export async function POST(req: NextRequest) {
   // 허용값만 반영(나머지는 기존 유지).
   const next: SubtitleSettings = {
     font: FONT.includes(s.font as string) ? (s.font as "sans" | "serif") : cur.font,
+    weight: WEIGHT.includes(s.weight as string)
+      ? (s.weight as "regular" | "bold")
+      : cur.weight,
     size: SIZE.includes(s.size as string)
       ? (s.size as "small" | "medium" | "large")
       : cur.size,
@@ -44,6 +49,9 @@ export async function POST(req: NextRequest) {
       ? (s.align as "center" | "left")
       : cur.align,
     box: BOX.includes(s.box as string) ? (s.box as "dark" | "light") : cur.box,
+    lang: LANG.includes(s.lang as string)
+      ? (s.lang as "ko" | "en" | "both")
+      : cur.lang,
   };
 
   project.subtitle = next;

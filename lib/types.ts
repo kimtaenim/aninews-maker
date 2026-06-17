@@ -38,7 +38,8 @@ export type StepStatus =
 // script 단계가 만들고, images/videos/voiceover 단계가 채운다.
 export interface Scene {
   index: number;
-  narration: string; // 보이스오버 대본 + 자막 소스
+  narration: string; // 보이스오버 대본 + 자막 소스 (한국어)
+  narrationEn?: string; // 영문 자막용 번역 (선택)
   imagePrompt: string; // gpt-image-2 프롬프트
   motion: string; // fal image-to-video 모션 지시
   durationSec: number; // 4~7, 평균 5 목표 (하드락 아님)
@@ -78,18 +79,22 @@ export interface StepState {
 // ── 자막 설정 (프로젝트 일괄) ────────────────────────────────────────────────
 export interface SubtitleSettings {
   font: "sans" | "serif";
+  weight: "regular" | "bold";
   size: "small" | "medium" | "large";
   position: "bottom" | "top";
   align: "center" | "left";
   box: "dark" | "light"; // dark=검은 박스+흰 글씨, light=흰 박스+검은 글씨
+  lang: "ko" | "en" | "both"; // 자막 언어 (영어는 번역 생성 필요)
 }
 
 export const DEFAULT_SUBTITLE: SubtitleSettings = {
   font: "sans",
+  weight: "regular",
   size: "medium",
   position: "bottom",
   align: "center",
   box: "dark",
+  lang: "ko",
 };
 
 // ── 프로젝트 ──────────────────────────────────────────────────────────────────

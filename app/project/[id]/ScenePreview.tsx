@@ -12,15 +12,24 @@ export default function ScenePreview({
   videoUrl,
   audioUrl,
   subtitle,
+  subtitleEn,
   sub,
 }: {
   index: number;
   videoUrl?: string;
   audioUrl?: string;
   subtitle: string;
+  subtitleEn?: string;
   sub: SubtitleSettings;
 }) {
   const st = resolveSubtitleStyle(sub);
+  // 언어 설정에 따라 표시할 줄
+  const lines =
+    sub.lang === "en"
+      ? [subtitleEn || subtitle]
+      : sub.lang === "both"
+        ? [subtitle, subtitleEn || ""].filter(Boolean)
+        : [subtitle];
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
@@ -69,9 +78,13 @@ export default function ScenePreview({
         <div className={`absolute inset-x-2 ${st.containerPosClass} ${st.alignClass}`}>
           <span
             style={{ fontFamily: st.fontFamily }}
-            className={`inline-block rounded px-2 py-1 font-bold leading-snug line-clamp-2 ${st.sizeClass} ${st.boxClass}`}
+            className={`inline-block rounded px-2 py-1 leading-snug ${st.weightClass} ${st.sizeClass} ${st.boxClass}`}
           >
-            {subtitle}
+            {lines.map((l, idx) => (
+              <span key={idx} className="block line-clamp-2">
+                {l}
+              </span>
+            ))}
           </span>
         </div>
       </div>

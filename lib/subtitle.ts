@@ -8,6 +8,7 @@ import type { SubtitleSettings } from "./types";
 
 export interface SubtitleStyle {
   fontFamily: string;
+  weightClass: string;
   sizeClass: string;
   boxClass: string;
   alignClass: string;
@@ -20,6 +21,7 @@ export function resolveSubtitleStyle(s: SubtitleSettings): SubtitleStyle {
       s.font === "serif"
         ? "var(--font-noto-serif-kr), 'Noto Serif KR', serif"
         : "var(--font-noto-sans-kr), sans-serif",
+    weightClass: s.weight === "bold" ? "font-bold" : "font-medium",
     sizeClass:
       s.size === "small"
         ? "text-[11px]"
@@ -31,6 +33,7 @@ export function resolveSubtitleStyle(s: SubtitleSettings): SubtitleStyle {
         ? "bg-white/85 text-zinc-900"
         : "bg-black/60 text-white",
     alignClass: s.align === "left" ? "text-left" : "text-center",
-    containerPosClass: s.position === "top" ? "top-[7%]" : "bottom-[7%]",
+    // 하단은 더 아래, 상단은 더 위로 (가장자리 가깝게)
+    containerPosClass: s.position === "top" ? "top-[3%]" : "bottom-[3%]",
   };
 }
