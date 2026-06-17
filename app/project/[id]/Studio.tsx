@@ -71,6 +71,12 @@ export default function Studio({ project: initial }: { project: Project }) {
   const allScenesHaveVideo =
     project.scenes.length > 0 && project.scenes.every((s) => !!s.videoUrl);
 
+  const voiceoverStatus = project.steps.voiceover.status;
+  const voiceoverApproved = voiceoverStatus === "approved";
+  const [audioCost, setAudioCost] = useState<Record<number, string>>({});
+  const allScenesHaveAudio =
+    project.scenes.length > 0 && project.scenes.every((s) => !!s.audioUrl);
+
   function patchScene(i: number, patch: Partial<EditScene>) {
     setScenes((prev) => prev.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
     setDirty(true);
@@ -363,6 +369,73 @@ export default function Studio({ project: initial }: { project: Project }) {
       setProject((p) => ({
         ...p,
         steps: { ...p.steps, videos: { ...p.steps.videos, status: "approved" } },
+      }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "승인 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // ── 6단계: 음성 (ElevenLabs TTS, 동기 호출) ──────────────────────────────────
+  async function generateOneAudio(sceneIndex: number): Promise<void> {
+    const data = await call("/api/audio/scene", { projectId: project.id, sceneIndex });
+    setAudioCost((c) => ({ ...c, [sceneIndex]: (data.cost as string) ?? "" }));
+    setProject((p) => ({
+      ...p,
+      scenes: p.scenes.map((s, i) =>
+        i === sceneIndex
+          ? { ...s, audioUrl: data.url as string, status: "generated" }
+          : s
+      ),
+      steps: {
+        ...p.steps,
+        voiceover: {
+          ...p.steps.voiceover,
+          status: (data.allDone ? "generated" : "generating") as
+            | "generated"
+            | "generating",
+        },
+      },
+    }));
+  }
+
+  async function generateAudio(sceneIndex: number) {
+    setError(null);
+    setBusy(`audio-${sceneIndex}`);
+    try {
+      await generateOneAudio(sceneIndex);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "음성 생성 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // 음성 없는 씬들을 순차 생성(병렬 금지 — last-write-wins 방지).
+  async function generateAllAudio() {
+    setError(null);
+    setBusy("audio-all");
+    try {
+      for (let i = 0; i < project.scenes.length; i++) {
+        if (project.scenes[i].audioUrl) continue;
+        await generateOneAudio(i);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "음성 생성 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function approveVoiceover() {
+    setError(null);
+    setBusy("approve-voiceover");
+    try {
+      await call("/api/step/approve", { projectId: project.id, step: "voiceover" });
+      setProject((p) => ({
+        ...p,
+        steps: { ...p.steps, voiceover: { ...p.steps.voiceover, status: "approved" } },
       }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "승인 실패");
@@ -827,6 +900,98 @@ export default function Studio({ project: initial }: { project: Project }) {
                 className="mt-4 text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-medium px-3 py-1.5"
               >
                 {busy === "approve-videos" ? <Busy>승인 중…</Busy> : "비디오 승인 →"}
+              </button>
+            )}
+          </>
+        )}
+      </section>
+
+      {/* 6단계: 씬별 음성 (ElevenLabs TTS) */}
+      <section className="mt-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 p-5">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold">
+            6. 음성 (보이스오버)
+            {voiceoverApproved && <span className="ml-2 text-xs text-accent">승인됨</span>}
+          </h2>
+          <button
+            type="button"
+            onClick={generateAllAudio}
+            disabled={!videosApproved || busy !== null || project.scenes.length === 0}
+            className="shrink-0 text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-medium px-3 py-1.5"
+          >
+            {busy === "audio-all" ? (
+              <Busy>생성 중…</Busy>
+            ) : allScenesHaveAudio ? (
+              "빈 씬만 생성"
+            ) : (
+              "전체 생성"
+            )}
+          </button>
+        </div>
+        {!videosApproved && (
+          <p className="mt-2 text-xs text-zinc-500">비디오를 먼저 승인해주세요.</p>
+        )}
+        {videosApproved && !project.ttsEnabled && (
+          <p className="mt-2 text-xs text-amber-600">
+            이 프로젝트는 보이스오버(TTS)가 꺼진 채로 만들어졌어요. 생성은 가능하지만,
+            끄려면 합성 단계에서 음성을 빼면 됩니다.
+          </p>
+        )}
+        {voiceoverStatus === "error" && project.steps.voiceover.error && (
+          <p className="mt-2 text-xs text-red-600">{project.steps.voiceover.error}</p>
+        )}
+
+        {videosApproved && (
+          <>
+            <ol className="mt-4 grid gap-2">
+              {project.scenes.map((sc, i) => {
+                const audioBusy = busy === `audio-${i}` || busy === "audio-all";
+                return (
+                  <li
+                    key={i}
+                    className="flex items-center gap-3 rounded-xl bg-zinc-50 dark:bg-zinc-900 p-3"
+                  >
+                    <span className="shrink-0 text-[11px] text-zinc-500 w-10">씬 {i + 1}</span>
+                    <div className="min-w-0 flex-1">
+                      {sc.audioUrl ? (
+                        <audio src={sc.audioUrl} controls className="w-full h-8" />
+                      ) : audioBusy && !sc.audioUrl ? (
+                        <span className="inline-flex items-center gap-1.5 text-[11px] text-zinc-400">
+                          <Spinner className="size-4" /> 생성 중…
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-zinc-400">미생성</span>
+                      )}
+                      <p className="mt-0.5 truncate text-[11px] text-zinc-500">
+                        {sc.narration}
+                      </p>
+                    </div>
+                    <div className="shrink-0 grid justify-items-end gap-0.5">
+                      <button
+                        type="button"
+                        onClick={() => generateAudio(i)}
+                        disabled={busy !== null || !sc.narration}
+                        className="text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
+                      >
+                        {sc.audioUrl ? "리롤" : "음성 생성"}
+                      </button>
+                      {audioCost[i] && (
+                        <span className="text-[11px] text-zinc-400">{audioCost[i]}</span>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+
+            {allScenesHaveAudio && !voiceoverApproved && (
+              <button
+                type="button"
+                onClick={approveVoiceover}
+                disabled={busy !== null}
+                className="mt-4 text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-medium px-3 py-1.5"
+              >
+                {busy === "approve-voiceover" ? <Busy>승인 중…</Busy> : "음성 승인 →"}
               </button>
             )}
           </>

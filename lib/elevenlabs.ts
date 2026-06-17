@@ -6,9 +6,15 @@
 // TTS 는 프로젝트 단위로 on/off (Project.ttsEnabled).
 // ============================================================================
 
-import type { TtsWord } from "./types";
+import { elevenLabsCostUsd, usdToKrw } from "./cost";
 
 const API_BASE = "https://api.elevenlabs.io/v1";
+
+// multilingual 기본 voice. 한국어 품질은 voice 마다 다르니 ELEVENLABS_VOICE_ID 로
+// 한국어에 맞는 voice 를 지정하는 걸 권장.
+const DEFAULT_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || "EXAVITQu4vr4xnSDxMaL";
+const DEFAULT_MODEL = "eleven_multilingual_v2"; // 한국어 지원
+const TTS_TIMEOUT_MS = 60_000;
 
 export function getElevenLabsKey(): string {
   const key = process.env.ELEVENLABS_API_KEY;
@@ -16,16 +22,48 @@ export function getElevenLabsKey(): string {
   return key;
 }
 
-export interface TtsResult {
-  audio: ArrayBuffer; // mp3/pcm
-  words: TtsWord[]; // 자막 타이밍
-}
+// 6단계 — 텍스트 → 보이스오버 오디오(mp3 bytes). 동기 호출(짧음).
+// 자막 단어 타임스탬프(8단계)는 추후 "with timestamps" 엔드포인트로 별도 처리.
+export async function synthesizeSpeech(opts: {
+  text: string;
+  voiceId?: string;
+  model?: string;
+}): Promise<{
+  audioBuffer: ArrayBuffer;
+  costUsd: number;
+  costKrw: number;
+  charsUsed: number;
+}> {
+  const key = getElevenLabsKey();
+  const text = (opts.text ?? "").trim();
+  if (!text) throw new Error("TTS 텍스트가 비었어요");
 
-// TODO: synthesize(text, voiceId, opts) → TtsResult
-//   ElevenLabs "with timestamps" 엔드포인트 사용 (문자→단어 타임스탬프 집계).
-//   오디오 속도 워핑 금지 — 자연 길이를 그대로 쓰고, 영상이 음성에 맞춰 늘어남.
-export async function synthesize(): Promise<TtsResult> {
-  void API_BASE;
-  void getElevenLabsKey;
-  throw new Error("not implemented");
+  const voiceId = opts.voiceId || DEFAULT_VOICE_ID;
+  const model = opts.model || DEFAULT_MODEL;
+
+  const r = await fetch(`${API_BASE}/text-to-speech/${voiceId}`, {
+    method: "POST",
+    headers: {
+      "xi-api-key": key,
+      "content-type": "application/json",
+      accept: "audio/mpeg",
+    },
+    body: JSON.stringify({
+      text,
+      model_id: model,
+      voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+    }),
+    signal: AbortSignal.timeout(TTS_TIMEOUT_MS),
+  });
+  if (!r.ok) {
+    const detail = await r.text().catch(() => "");
+    throw new Error(
+      `ElevenLabs ${r.status}${detail ? `: ${detail.slice(0, 200)}` : ""}`
+    );
+  }
+
+  const audioBuffer = await r.arrayBuffer();
+  const charsUsed = text.length;
+  const costUsd = elevenLabsCostUsd(charsUsed);
+  return { audioBuffer, costUsd, costKrw: usdToKrw(costUsd), charsUsed };
 }
