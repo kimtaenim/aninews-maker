@@ -73,14 +73,21 @@ export function openaiImageCostUsd(
 
 // USD per video (fal image-to-video). endpoint(모델 경로) 기준 대략값.
 export const FAL_VIDEO_PRICING: Record<string, number> = {
-  "fal-ai/minimax/video-01": 0.35,
+  "fal-ai/minimax-video/image-to-video": 0.5,
   "fal-ai/kling-video/v1/standard/image-to-video": 0.25,
   "fal-ai/bytedance/seedance/v1/pro/image-to-video": 0.62,
 };
-export const FAL_VIDEO_DEFAULT_USD = 0.35;
+export const FAL_VIDEO_DEFAULT_USD = 0.5;
 
 export function falVideoCostUsd(endpoint: string): number {
   return FAL_VIDEO_PRICING[endpoint] ?? FAL_VIDEO_DEFAULT_USD;
+}
+
+// ElevenLabs TTS — 문자당 USD (eleven_multilingual_v2 기준 ~$0.30/1000자).
+export const ELEVENLABS_USD_PER_CHAR = 0.0003;
+
+export function elevenLabsCostUsd(chars: number): number {
+  return Math.max(0, chars) * ELEVENLABS_USD_PER_CHAR;
 }
 
 const KEY = "cost:entries"; // list (best-effort 기록)

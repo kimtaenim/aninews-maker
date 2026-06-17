@@ -7,7 +7,7 @@
     {
       "id": "minimax",
       "label": "MiniMax video-01 (기본·가성비)",
-      "endpoint": "fal-ai/minimax/video-01",
+      "endpoint": "fal-ai/minimax-video/image-to-video",
       "defaultParams": {}
     },
     {

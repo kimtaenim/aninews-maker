@@ -36,8 +36,8 @@ export function getVideoModel(id?: string): VideoModel {
   return chosen;
 }
 
-// 실제 fal endpoint. FAL_VIDEO_MODEL 로 override, 기본 minimax/video-01.
-export const FAL_DEFAULT_VIDEO_MODEL = "fal-ai/minimax/video-01";
+// 실제 fal endpoint. FAL_VIDEO_MODEL 로 override, 기본 minimax-video image-to-video.
+export const FAL_DEFAULT_VIDEO_MODEL = "fal-ai/minimax-video/image-to-video";
 
 export function videoEndpoint(): string {
   return process.env.FAL_VIDEO_MODEL || FAL_DEFAULT_VIDEO_MODEL;
