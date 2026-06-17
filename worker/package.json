@@ -1,0 +1,13 @@
+{
+  "name": "aninews-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node index.mjs"
+  },
+  "dependencies": {
+    "@upstash/redis": "^1.37.0",
+    "@vercel/blob": "^2.3.3"
+  }
+}

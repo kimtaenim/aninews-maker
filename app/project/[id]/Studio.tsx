@@ -67,6 +67,7 @@ export default function Studio({
     if (a.startsWith("scene") || a.startsWith("images")) return "images";
     if (a.startsWith("video")) return "videos";
     if (a.startsWith("audio") || a === "voiceover") return "voiceover";
+    if (a.startsWith("compose")) return "compose";
     return null;
   }
   // setBusy(action) 가 진행 단계를 errorStep 에 기록한다. setBusy(null)(finally)은
@@ -140,6 +141,7 @@ export default function Studio({
 
   // 자막 설정 (프로젝트 일괄)
   const [sub, setSub] = useState<SubtitleSettings>(initial.subtitle ?? DEFAULT_SUBTITLE);
+  const [composeLang] = useState<"ko" | "en">("ko");
   async function saveSubtitle(patch: Partial<SubtitleSettings>) {
     const next = { ...sub, ...patch };
     setSub(next);
@@ -168,6 +170,36 @@ export default function Studio({
       }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "영문 자막 생성 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // 7단계: 합성 — worker 에 작업 적재 후 완성될 때까지 폴링.
+  async function startCompose() {
+    setError(null);
+    setBusy("compose");
+    try {
+      await call("/api/compose", { projectId: project.id, lang: composeLang });
+      for (let t = 0; t < 120; t++) {
+        await new Promise((r) => setTimeout(r, 3000));
+        const r = await fetch(`/api/compose?projectId=${encodeURIComponent(project.id)}`);
+        const d = await r.json();
+        if (d.status === "generated" && d.finalVideoUrl) {
+          setProject((p) => ({
+            ...p,
+            finalVideoUrl: d.finalVideoUrl as string,
+            steps: { ...p.steps, compose: { ...p.steps.compose, status: "generated" } },
+          }));
+          return;
+        }
+        if (d.status === "error" || d.error) {
+          throw new Error(d.error || "합성 실패");
+        }
+      }
+      throw new Error("합성이 시간 내 안 끝났어요 — worker 가 떠 있는지 확인하세요.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "합성 실패");
     } finally {
       setBusy(null);
     }
@@ -1667,6 +1699,61 @@ export default function Studio({
               ) : null
             )}
           </ol>
+        </section>
+      )}
+
+      {/* 7단계: 최종 합성 (worker) */}
+      {project.scenes.some((s) => s.videoUrl) && (
+        <section className="mt-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 p-5">
+          <h2 className="text-sm font-semibold">
+            7. 합성 (최종 영상)
+            {project.finalVideoUrl && (
+              <span className="ml-2 text-xs text-accent">완성</span>
+            )}
+          </h2>
+          <p className="mt-1 text-[11px] text-zinc-400">
+            씬 영상 + 음성 + 자막을 worker 서버가 ffmpeg 로 굽습니다(분 단위). worker 가
+            아직 배포 안 됐으면 “합성 중…”에서 멈춰 있어요.
+          </p>
+          {errorStep === "compose" && error && (
+            <p className="mt-2 text-xs text-red-600">{error}</p>
+          )}
+          {project.steps.compose.status === "error" && project.steps.compose.error && (
+            <p className="mt-2 text-xs text-red-600">{project.steps.compose.error}</p>
+          )}
+
+          {busy === "compose" ? (
+            <p className="mt-3 inline-flex items-center gap-2 text-sm text-zinc-500">
+              <Spinner /> 합성 중… (worker 처리, 닫지 말고 기다려주세요)
+            </p>
+          ) : (
+            <button
+              type="button"
+              onClick={startCompose}
+              disabled={busy !== null}
+              className="mt-3 w-full rounded-xl bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-semibold py-3 transition-colors"
+            >
+              {project.finalVideoUrl ? "🎬 다시 합성" : "🎬 최종 합성하기 (한국어판)"}
+            </button>
+          )}
+
+          {project.finalVideoUrl && (
+            <div className="mt-4">
+              <video
+                src={project.finalVideoUrl}
+                controls
+                playsInline
+                className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800"
+              />
+              <a
+                href={project.finalVideoUrl}
+                download
+                className="mt-2 inline-block text-xs rounded-lg border border-accent text-accent px-3 py-1.5 hover:bg-accent/10"
+              >
+                ⬇ 다운로드
+              </a>
+            </div>
+          )}
         </section>
       )}
       </main>
