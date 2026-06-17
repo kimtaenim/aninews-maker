@@ -1,6 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { resolveSubtitleStyle } from "@/lib/subtitle";
+import type { SubtitleSettings } from "@/lib/types";
 
 // 씬 미리보기 — 영상(루프) + 음성 동기 재생 + 자막(나레이션) 오버레이.
 // 정확한 길이 정렬(홀드/트림)은 최종 worker(ffmpeg)가 하고, 여기선 근사 미리보기.
@@ -10,12 +12,15 @@ export default function ScenePreview({
   videoUrl,
   audioUrl,
   subtitle,
+  sub,
 }: {
   index: number;
   videoUrl?: string;
   audioUrl?: string;
   subtitle: string;
+  sub: SubtitleSettings;
 }) {
+  const st = resolveSubtitleStyle(sub);
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
@@ -60,9 +65,12 @@ export default function ScenePreview({
             영상 없음
           </div>
         )}
-        {/* 자막 오버레이 */}
-        <div className="absolute inset-x-1.5 bottom-2 text-center">
-          <span className="inline-block rounded bg-black/65 px-2 py-1 text-[11px] leading-snug text-white">
+        {/* 자막 오버레이 (프로젝트 자막 설정 반영) */}
+        <div className={`absolute inset-x-2 ${st.containerPosClass} ${st.alignClass}`}>
+          <span
+            style={{ fontFamily: st.fontFamily }}
+            className={`inline-block rounded px-2 py-1 font-bold leading-snug line-clamp-2 ${st.sizeClass} ${st.boxClass}`}
+          >
             {subtitle}
           </span>
         </div>

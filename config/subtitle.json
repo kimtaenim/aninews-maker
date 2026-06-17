@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "_comment": "자막 스타일. 미리보기 오버레이 + 최종 worker(ffmpeg 번인)가 공유하는 기준값. 폰트·크기·위치·배경 다 여기서 바꾸면 됨. fontSizePct/marginBottomPct 는 영상 높이·폭 대비 %.",
+  "fontFamily": "Noto Sans KR, Pretendard, sans-serif",
+  "fontWeight": 700,
+  "fontSizePct": 5.5,
+  "position": "bottom",
+  "marginBottomPct": 7,
+  "maxLines": 2,
+  "background": "box-soft",
+  "textColor": "#ffffff",
+  "boxColor": "rgba(0,0,0,0.6)",
+  "shadow": true,
+  "font_note": "번인용 폰트 파일은 worker 에 Pretendard/Noto Sans KR 등록(브리프). 미리보기는 layout 의 --font-noto-sans-kr 사용."
+}

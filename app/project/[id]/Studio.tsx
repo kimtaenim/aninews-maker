@@ -1,7 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { STEP_ORDER, type Project, type Scene, type StepKind } from "@/lib/types";
+import {
+  STEP_ORDER,
+  DEFAULT_SUBTITLE,
+  type Project,
+  type Scene,
+  type StepKind,
+  type SubtitleSettings,
+} from "@/lib/types";
 import type { SourceMaterial } from "@/lib/source";
 import Spinner from "@/components/Spinner";
 import ScenePreview from "./ScenePreview";
@@ -130,6 +137,18 @@ export default function Studio({
   );
   // 씬별 모션 크기 (기본 잔잔, 가끔 크게)
   const [motionScale, setMotionScale] = useState<Record<number, "subtle" | "large">>({});
+
+  // 자막 설정 (프로젝트 일괄)
+  const [sub, setSub] = useState<SubtitleSettings>(initial.subtitle ?? DEFAULT_SUBTITLE);
+  async function saveSubtitle(patch: Partial<SubtitleSettings>) {
+    const next = { ...sub, ...patch };
+    setSub(next);
+    try {
+      await call("/api/project/subtitle", { projectId: project.id, subtitle: next });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "자막 설정 저장 실패");
+    }
+  }
 
   // 키프레임 StepChat (대화 미세조정)
   const [chat, setChat] = useState(initial.steps.keyframe.chat);
@@ -1559,6 +1578,37 @@ export default function Studio({
             ▶ 누르면 영상이 음성에 맞춰 재생되고 자막이 얹혀 보입니다. 영상이 음성보다
             짧으면 루프로 채웁니다. 정확한 길이 정렬·자막 번인은 최종 합성(worker)에서.
           </p>
+
+          {/* 자막 디자인 (프로젝트 일괄) */}
+          <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2 rounded-xl bg-zinc-50 dark:bg-zinc-900 p-3">
+            {(
+              [
+                ["font", "폰트", [["sans", "산세리프"], ["serif", "세리프"]]],
+                ["size", "크기", [["small", "작게"], ["medium", "보통"], ["large", "크게"]]],
+                ["position", "위치", [["bottom", "하단"], ["top", "상단"]]],
+                ["align", "정렬", [["center", "가운데"], ["left", "왼쪽"]]],
+                ["box", "배경", [["dark", "검은 박스·흰 글씨"], ["light", "흰 박스·검은 글씨"]]],
+              ] as const
+            ).map(([field, label, opts]) => (
+              <label key={field} className="grid gap-1">
+                <span className="text-[10px] font-medium text-zinc-500">{label}</span>
+                <select
+                  value={sub[field as keyof SubtitleSettings]}
+                  onChange={(e) =>
+                    saveSubtitle({ [field]: e.target.value } as Partial<SubtitleSettings>)
+                  }
+                  className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1.5 text-xs outline-none focus:border-accent"
+                >
+                  {opts.map(([v, l]) => (
+                    <option key={v} value={v}>
+                      {l}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
+          </div>
+
           <ol className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-3">
             {project.scenes.map((sc, i) =>
               sc.videoUrl ? (
@@ -1568,6 +1618,7 @@ export default function Studio({
                   videoUrl={sc.videoUrl}
                   audioUrl={sc.audioUrl}
                   subtitle={sc.narration}
+                  sub={sub}
                 />
               ) : null
             )}

@@ -75,6 +75,23 @@ export interface StepState {
   updatedAt: number;
 }
 
+// ── 자막 설정 (프로젝트 일괄) ────────────────────────────────────────────────
+export interface SubtitleSettings {
+  font: "sans" | "serif";
+  size: "small" | "medium" | "large";
+  position: "bottom" | "top";
+  align: "center" | "left";
+  box: "dark" | "light"; // dark=검은 박스+흰 글씨, light=흰 박스+검은 글씨
+}
+
+export const DEFAULT_SUBTITLE: SubtitleSettings = {
+  font: "sans",
+  size: "medium",
+  position: "bottom",
+  align: "center",
+  box: "dark",
+};
+
 // ── 프로젝트 ──────────────────────────────────────────────────────────────────
 export interface Project {
   id: string;
@@ -86,6 +103,7 @@ export interface Project {
   steps: Record<StepKind, StepState>;
   ttsEnabled: boolean;
   videoModelId: string; // config/video-models.json (기본 Seedance)
+  subtitle?: SubtitleSettings; // 자막 디자인(일괄). 없으면 DEFAULT_SUBTITLE.
   finalVideoUrl?: string;
   createdAt: number;
   updatedAt: number;

@@ -9,7 +9,13 @@ import { randomUUID } from "crypto";
 import { getRedis } from "./redis";
 import { getStyleProfile } from "./styleProfiles";
 import type { SourceMaterial } from "./source";
-import { STEP_ORDER, type Project, type StepKind, type StepState } from "./types";
+import {
+  STEP_ORDER,
+  DEFAULT_SUBTITLE,
+  type Project,
+  type StepKind,
+  type StepState,
+} from "./types";
 
 const KEY = (id: string) => `project:${id}`;
 const INDEX = "project:index"; // 최근 프로젝트 목록 (sorted set, score=updatedAt)
@@ -56,6 +62,7 @@ export async function createProject(args: CreateProjectArgs): Promise<Project> {
     steps,
     ttsEnabled,
     videoModelId,
+    subtitle: DEFAULT_SUBTITLE,
     createdAt: now,
     updatedAt: now,
   };
