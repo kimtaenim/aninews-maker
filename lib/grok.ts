@@ -29,6 +29,9 @@ function grokError(status: number, bodyText: string): string {
   if (/balance|credit|quota|insufficient/i.test(detail)) {
     return "Grok(xAI) 잔액/크레딧 부족 — console.x.ai 결제 확인.";
   }
+  if (/moderation|rejected|content|policy|safety|flag/i.test(detail)) {
+    return "콘텐츠 정책에 걸렸어요(영상 거부). 이 씬의 이미지·프롬프트를 더 순화하세요 — 시위·치켜든 주먹·군중·폭력·정치 묘사 등을 빼고 차분한 장면으로 다시 만들어보세요.";
+  }
   return `Grok ${status}: ${detail.slice(0, 200)}`;
 }
 
