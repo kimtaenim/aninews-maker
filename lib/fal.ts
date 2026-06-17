@@ -69,6 +69,21 @@ function falErrorMessage(e: unknown): string {
   return err?.message || "fal 요청 실패";
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// fal 일시 장애(다운스트림 다운·과부하·타임아웃)인지 — 이런 건 잠깐 뒤 재시도하면 됨.
+function isTransientFal(e: unknown): boolean {
+  const err = e as { status?: number; body?: unknown };
+  if (err?.status && [429, 500, 502, 503, 504].includes(err.status)) return true;
+  let s = "";
+  try {
+    s = JSON.stringify(err?.body ?? "");
+  } catch {
+    /* ignore */
+  }
+  return /downstream_service_unavailable|unavailable|temporarily|timeout|overload/i.test(s);
+}
+
 export type VideoPoll =
   | { status: "pending" | "running" }
   | { status: "completed"; videoUrl: string }
@@ -93,12 +108,17 @@ export async function generateVideo(opts: {
   if (opts.prompt) input.prompt = opts.prompt;
   if (typeof opts.duration === "number") input.duration = opts.duration;
 
+  // 일시 장애는 자동 재시도(최대 3회, 1.5s·3s·4.5s 백오프).
   let request_id: string | undefined;
-  try {
-    const r = await client.queue.submit(endpoint, { input });
-    request_id = r.request_id;
-  } catch (e) {
-    throw new Error(falErrorMessage(e));
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const r = await client.queue.submit(endpoint, { input });
+      request_id = r.request_id;
+      break;
+    } catch (e) {
+      if (!isTransientFal(e) || attempt === 2) throw new Error(falErrorMessage(e));
+      await sleep(1500 * (attempt + 1));
+    }
   }
   if (!request_id) throw new Error("fal 작업 제출 실패 — request_id 없음");
   return { jobId: `${endpoint}${JOB_SEP}${request_id}` };
