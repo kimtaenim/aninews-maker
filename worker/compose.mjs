@@ -108,6 +108,49 @@ function wrapSubtitle(text, fontsize, maxWidthPx, maxLines = 3) {
   return lines.join("\n");
 }
 
+// ASS 색상 &HAABBGGRR (AA=알파, 00=불투명 … FF=완전투명).
+function assColor(r, g, b, opacity = 1) {
+  const a = Math.round((1 - opacity) * 255);
+  const hh = (n) => n.toString(16).padStart(2, "0").toUpperCase();
+  return `&H${hh(a)}${hh(b)}${hh(g)}${hh(r)}`;
+}
+
+// .ass 자막 한 장 생성 — libass가 줄별 가운데 정렬 + 폭에 맞춰 필요한 만큼만
+// 자동 줄바꿈(WrapStyle 0=균형). drawtext의 좌측 쏠림·과다 줄바꿈을 없앤다.
+function buildAss(text, sub) {
+  const t = (text ?? "").trim().replace(/\s+/g, " ").replace(/[{}]/g, "");
+  const font = sub.font === "serif" ? "Noto Serif CJK KR" : "Noto Sans CJK KR";
+  const size = sub.size === "small" ? 52 : sub.size === "large" ? 80 : 64;
+  const bold = sub.weight === "bold" ? -1 : 0;
+  const light = sub.box === "light";
+  const primary = light ? assColor(0, 0, 0, 1) : assColor(255, 255, 255, 1);
+  const boxcol = light ? assColor(255, 255, 255, 0.85) : assColor(0, 0, 0, 0.6);
+  const back = assColor(0, 0, 0, 0);
+  // 정렬: 1=하단왼 2=하단중앙 7=상단왼 8=상단중앙
+  const top = sub.position === "top";
+  const left = sub.align === "left";
+  const alignment = top ? (left ? 7 : 8) : left ? 1 : 2;
+  const marginV = 96; // 가장자리에 더 붙임
+  const marginH = 64; // 좌우 여백(=줄바꿈 폭). 작을수록 가로를 넓게 씀
+  const outline = 6; // BorderStyle3 박스 안쪽 여백
+  return [
+    "[Script Info]",
+    "ScriptType: v4.00+",
+    `PlayResX: ${W}`,
+    `PlayResY: ${H}`,
+    "WrapStyle: 0",
+    "ScaledBorderAndShadow: yes",
+    "",
+    "[V4+ Styles]",
+    "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+    `Style: Default,${font},${size},${primary},&H000000FF,${boxcol},${back},${bold},0,0,0,100,100,0,0,3,${outline},0,${alignment},${marginH},${marginH},${marginV},1`,
+    "",
+    "[Events]",
+    "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+    `Dialogue: 0,0:00:00.00,9:59:59.99,Default,,0,0,0,,${t}`,
+  ].join("\n");
+}
+
 export async function composeProject(projectId, lang) {
   const project = await getProject(projectId);
   if (!project) throw new Error("프로젝트를 찾을 수 없어요");
@@ -118,13 +161,6 @@ export async function composeProject(projectId, lang) {
     font: "sans", weight: "regular", size: "medium",
     position: "bottom", align: "center", box: "dark", lang: "ko",
   };
-  const fontFamily = sub.font === "serif" ? "Noto Serif CJK KR" : "Noto Sans CJK KR";
-  const fontsize = sub.size === "small" ? 54 : sub.size === "large" ? 84 : 66;
-  const fontcolor = sub.box === "light" ? "black" : "white";
-  const boxcolor = sub.box === "light" ? "white@0.85" : "black@0.6";
-  const x = sub.align === "left" ? "80" : "(w-text_w)/2";
-  const y = sub.position === "top" ? "h*0.04" : "h-text_h-h*0.04";
-
   const dir = await mkdtemp(join(tmpdir(), "compose-"));
   try {
     const sceneFiles = [];
@@ -147,18 +183,15 @@ export async function composeProject(projectId, lang) {
       const speed = vd > 0 && target > vd ? target / vd : 1;
 
       const text = (lang === "en" ? s.narrationEn || s.narration : s.narration) ?? "";
-      const subPath = join(dir, `s${i}.txt`);
-      // 좌우 여백(각 ~9%) 확보 + 박스 보더만큼 더 빼서 화면 밖으로 안 나가게.
-      const subMaxWidth = W * 0.82 - 40;
-      await writeFile(subPath, wrapSubtitle(text, fontsize, subMaxWidth, 3), "utf8");
+      const assPath = join(dir, `s${i}.ass`);
+      await writeFile(assPath, buildAss(text, sub), "utf8");
 
+      // libass(subtitles 필터)로 번인 — 줄별 가운데 정렬 + 자동 줄바꿈.
       const vf =
         `scale=${W}:${H}:force_original_aspect_ratio=decrease,` +
         `pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black,` +
         `setpts=${speed.toFixed(4)}*PTS,fps=${FPS},` +
-        `drawtext=font='${fontFamily}':textfile='${subPath}':fontsize=${fontsize}:` +
-        `fontcolor=${fontcolor}:box=1:boxcolor=${boxcolor}:boxborderw=18:line_spacing=10:` +
-        `x=${x}:y=${y}`;
+        `subtitles=f='${assPath}'`;
 
       const out = join(dir, `scene${i}.mp4`);
       const args = ["-y", "-i", vPath];
