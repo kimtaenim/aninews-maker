@@ -12,13 +12,6 @@
       "defaultParams": {}
     },
     {
-      "id": "kling",
-      "provider": "fal",
-      "label": "Kling v1 (fal)",
-      "endpoint": "fal-ai/kling-video/v1/standard/image-to-video",
-      "defaultParams": { "duration": "5" }
-    },
-    {
       "id": "seedance",
       "provider": "fal",
       "label": "Seedance Pro (fal · 고품질)",
