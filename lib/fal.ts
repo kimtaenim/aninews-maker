@@ -80,11 +80,16 @@ export async function generateVideo(opts: {
   prompt?: string;
   duration?: number;
   endpoint?: string; // 선택한 fal 모델 경로 (없으면 기본)
+  params?: Record<string, unknown>; // 모델별 필수 기본 파라미터(aspect_ratio 등)
 }): Promise<{ jobId: string }> {
   const client = configureFal();
   const endpoint = opts.endpoint || videoEndpoint();
 
-  const input: Record<string, unknown> = { image_url: opts.imageUrl };
+  // 모델 defaultParams 를 먼저 깔고, image_url·prompt·duration 으로 덮어쓴다.
+  const input: Record<string, unknown> = {
+    ...(opts.params ?? {}),
+    image_url: opts.imageUrl,
+  };
   if (opts.prompt) input.prompt = opts.prompt;
   if (typeof opts.duration === "number") input.duration = opts.duration;
 

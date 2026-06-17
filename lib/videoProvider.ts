@@ -49,8 +49,12 @@ export async function submitVideo(
     const requestId = await submitGrokVideo(opts);
     return { jobId: `grok${SEP}${requestId}` };
   }
-  // fal — falGenerate 가 "<endpoint>::<requestId>" 를 돌려줌
-  const { jobId } = await falGenerate({ ...opts, endpoint: model.endpoint });
+  // fal — falGenerate 가 "<endpoint>::<requestId>" 를 돌려줌. 모델 필수 파라미터 전달.
+  const { jobId } = await falGenerate({
+    ...opts,
+    endpoint: model.endpoint,
+    params: model.defaultParams,
+  });
   return { jobId: `fal${SEP}${jobId}` };
 }
 
