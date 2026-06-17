@@ -1,0 +1,6 @@
+{
+  "version": "1.0",
+  "updated": "2026-06-17",
+  "_comment": "RSS 소스 목록 (cardnews rss-feeds.json 패턴). 골격 — 실제 피드는 합의하며 채운다.",
+  "feeds": []
+}

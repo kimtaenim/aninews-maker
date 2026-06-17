@@ -1,0 +1,25 @@
+{
+  "version": "1.0",
+  "updated": "2026-06-17",
+  "_comment": "스타일 프로필. 각 프로필이 image_bible + motion_style + post_fx 를 들고 전 단계(script/keyframe/images/videos/compose)에 자동 주입된다. 시작 프리셋 2개. 항목 추가 시 lib/styleProfiles.ts 의 StyleProfile 형태만 맞추면 됨. 문구는 골격 — 합의하며 다듬는다.",
+  "default": "2d-cartoon",
+  "profiles": [
+    {
+      "id": "2d-cartoon",
+      "label": "2D 카툰",
+      "imageBible": "Flat 2D cartoon illustration, clean vector-like shading, consistent character design, soft palette, 9:16 vertical composition.",
+      "motionStyle": "Smooth continuous motion, gentle camera moves, natural easing.",
+      "postFx": {}
+    },
+    {
+      "id": "3d-stopmotion",
+      "label": "3D 목각인형 스톱모션",
+      "imageBible": "Handcrafted wooden puppet characters, miniature diorama set, tactile felt and wood textures, warm practical lighting, shallow depth of field, 9:16 vertical.",
+      "motionStyle": "Steppy stop-motion movement, slightly jittery, posed-frame feel — NOT smooth. Hold poses between moves.",
+      "postFx": {
+        "frameSteppingFps": 10,
+        "_note": "compose 단계에서 8~12fps 프레임 스테핑으로 스톱모션 손맛 유지. 매끄러우면 손맛이 사라지니 주의."
+      }
+    }
+  ]
+}

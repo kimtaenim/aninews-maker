@@ -1,0 +1,17 @@
+{
+  "version": "1.0",
+  "updated": "2026-06-17",
+  "_comment": "fal image-to-video 모델 레지스트리. 기본 Seedance, 교체 가능. endpoint 는 fal 모델 경로. defaultParams 는 제출 시 기본값(실제 키 이름은 모델 문서 확인하며 채운다).",
+  "default": "seedance",
+  "models": [
+    {
+      "id": "seedance",
+      "label": "Seedance (기본)",
+      "endpoint": "fal-ai/bytedance/seedance/v1/pro/image-to-video",
+      "defaultParams": {
+        "aspect_ratio": "9:16",
+        "resolution": "1080p"
+      }
+    }
+  ]
+}

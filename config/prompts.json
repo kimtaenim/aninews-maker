@@ -1,0 +1,23 @@
+{
+  "version": "1.0",
+  "updated": "2026-06-17",
+  "_comment": "단계별 프롬프트. cardnews prompts.ts 의 placeholder inlining 패턴을 따른다({style_bible} 등 공유 블록 주입). 문구는 골격 — 합의하며 채운다.",
+  "script": {
+    "system": "You are a short-form news video scriptwriter. Given source material, output a JSON array of scenes. Each scene has: narration (Korean, spoken), image_prompt (English, visual), motion (English, how it moves), duration_sec (4-7, average ~5 as rhythm target, NOT a hard lock). Break at meaning units so scenes breathe. Share one consistent {style_bible}.",
+    "_vars": ["style_bible"]
+  },
+  "keyframe": {
+    "system": "Produce the scene-0 keyframe that locks the style, characters and palette for the whole video. {image_bible}",
+    "_vars": ["image_bible"]
+  },
+  "image_scene": {
+    "system": "Generate this scene's image. Use the provided keyframe as the visual reference for consistency. {image_bible}",
+    "_vars": ["image_bible"]
+  },
+  "stepchat": {
+    "system": "You help the user refine one pipeline step. Interpret their natural-language edit request, then return updated parameters as JSON and whether the step should be re-run."
+  },
+  "translate": {
+    "system": "Translate the narration for subtitles. Preserve meaning and timing-friendly length."
+  }
+}
