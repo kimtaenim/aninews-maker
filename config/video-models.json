@@ -19,6 +19,13 @@
       "defaultParams": { "aspect_ratio": "9:16", "resolution": "1080p" }
     },
     {
+      "id": "kling3",
+      "provider": "fal",
+      "label": "Kling 3.0 (fal · 모션 우수)",
+      "endpoint": "fal-ai/kling-video/v3/standard/image-to-video",
+      "defaultParams": {}
+    },
+    {
       "id": "grok",
       "provider": "grok",
       "label": "Grok Imagine (xAI · 정책 느슨, fal 대안)",
