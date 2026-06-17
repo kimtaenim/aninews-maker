@@ -5,26 +5,10 @@ import { useRouter } from "next/navigation";
 import Spinner from "@/components/Spinner";
 import type { RssItem, RssCategory } from "@/lib/rss";
 
-interface Option {
-  id: string;
-  label: string;
-}
-
 type Mode = "rss" | "url" | "text";
 
-export default function NewProjectForm({
-  profiles,
-  defaultProfile,
-  models,
-  defaultModel,
-  categories,
-}: {
-  profiles: Option[];
-  defaultProfile: string;
-  models: Option[];
-  defaultModel: string;
-  categories: RssCategory[];
-}) {
+// 첫 화면은 소스 입력만. 스타일·모델·음성·자막은 모두 스튜디오 각 단계에서 지정/변경.
+export default function NewProjectForm({ categories }: { categories: RssCategory[] }) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("rss");
   const [url, setUrl] = useState("");
@@ -37,6 +21,9 @@ export default function NewProjectForm({
   const [selectedLink, setSelectedLink] = useState("");
   const [articleQuery, setArticleQuery] = useState("");
 
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   const q = articleQuery.trim().toLowerCase();
   const shownArticles = q
     ? articles.filter(
@@ -46,14 +33,6 @@ export default function NewProjectForm({
           a.summary.toLowerCase().includes(q)
       )
     : articles;
-
-  const [styleProfileId, setStyleProfileId] = useState(
-    defaultProfile || profiles[0]?.id || ""
-  );
-  const [videoModelId, setVideoModelId] = useState(defaultModel);
-  const [ttsEnabled, setTtsEnabled] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   async function loadArticles() {
     setError(null);
@@ -78,7 +57,6 @@ export default function NewProjectForm({
 
   async function submit() {
     setError(null);
-    // 소스 결정
     let endpoint = "/api/source/from-url";
     let payload: Record<string, unknown>;
     if (mode === "rss") {
@@ -86,20 +64,20 @@ export default function NewProjectForm({
         setError("기사를 하나 선택해주세요");
         return;
       }
-      payload = { url: selectedLink, styleProfileId, videoModelId, ttsEnabled };
+      payload = { url: selectedLink };
     } else if (mode === "url") {
       if (!url.trim()) {
         setError("URL을 입력해주세요");
         return;
       }
-      payload = { url, styleProfileId, videoModelId, ttsEnabled };
+      payload = { url };
     } else {
       if (!text.trim()) {
         setError("텍스트를 입력해주세요");
         return;
       }
       endpoint = "/api/source/from-text";
-      payload = { text, styleProfileId, videoModelId, ttsEnabled };
+      payload = { text };
     }
 
     setLoading(true);
@@ -252,45 +230,10 @@ export default function NewProjectForm({
         />
       )}
 
-      <label className="grid gap-1.5">
-        <span className="text-xs font-semibold text-zinc-500">스타일</span>
-        <select
-          value={styleProfileId}
-          onChange={(e) => setStyleProfileId(e.target.value)}
-          className={selectCls}
-        >
-          {profiles.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.label}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label className="grid gap-1.5">
-        <span className="text-xs font-semibold text-zinc-500">영상 모델</span>
-        <select
-          value={videoModelId}
-          onChange={(e) => setVideoModelId(e.target.value)}
-          className={selectCls}
-        >
-          {models.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.label}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={ttsEnabled}
-          onChange={(e) => setTtsEnabled(e.target.checked)}
-          className="size-4 accent-[var(--color-accent)]"
-        />
-        보이스오버(TTS) 사용
-      </label>
+      <p className="text-[11px] text-zinc-400">
+        스타일(2D/3D)·영상 모델·음성·자막은 다음 스튜디오 단계에서 정하고 언제든 바꿀 수
+        있어요.
+      </p>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 

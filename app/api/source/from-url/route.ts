@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { extractFromUrl } from "@/lib/source";
 import { createProject } from "@/lib/projectStore";
-import { getStyleProfile } from "@/lib/styleProfiles";
+import { getStyleProfile, DEFAULT_STYLE_PROFILE_ID } from "@/lib/styleProfiles";
 import videoModels from "@/config/video-models.json";
 
 export const runtime = "nodejs";
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "url 필요" }, { status: 400 });
   }
 
-  const styleProfileId = body.styleProfileId || "2d-cartoon";
+  const styleProfileId = body.styleProfileId || DEFAULT_STYLE_PROFILE_ID;
   const videoModelId = body.videoModelId || videoModels.default;
   // 잘못된 프로필 id 면 createProject 내부 getStyleProfile 이 던지므로 미리 검증.
   try {
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
       material,
       styleProfileId,
       videoModelId,
-      ttsEnabled: body.ttsEnabled ?? false,
+      ttsEnabled: body.ttsEnabled ?? true,
     });
     return NextResponse.json({ ok: true, projectId: project.id });
   } catch (e) {
