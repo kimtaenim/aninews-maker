@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getProject, saveProject } from "@/lib/projectStore";
 import { generateKeyframe } from "@/lib/image";
 import { canStart } from "@/lib/stepMachine";
+import { formatKrw } from "@/lib/cost";
 import type { ImageQuality } from "@/lib/openai";
 
 export const runtime = "nodejs";
@@ -45,7 +46,7 @@ export async function POST(req: NextRequest) {
   await saveProject(project);
 
   try {
-    const { url } = await generateKeyframe({
+    const { url, costUsd } = await generateKeyframe({
       projectId,
       styleBible: project.styleBible,
       scenePrompt: scene0.imagePrompt,
@@ -57,7 +58,7 @@ export async function POST(req: NextRequest) {
     project.steps.keyframe.updatedAt = Date.now();
     project.updatedAt = Date.now();
     await saveProject(project);
-    return NextResponse.json({ ok: true, url });
+    return NextResponse.json({ ok: true, url, cost: formatKrw(costUsd) });
   } catch (e) {
     const error = e instanceof Error ? e.message : "키프레임 생성 실패";
     project.steps.keyframe.status = "error";

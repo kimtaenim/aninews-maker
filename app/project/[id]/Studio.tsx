@@ -52,6 +52,17 @@ export default function Studio({ project: initial }: { project: Project }) {
   const hasScenes = scenes.length > 0;
   const keyframeStatus = project.steps.keyframe.status;
   const keyframeApproved = keyframeStatus === "approved";
+  const imagesStatus = project.steps.images.status;
+  const imagesApproved = imagesStatus === "approved";
+
+  // 이미지 비용 라벨(₩) — keyframe + 씬별
+  const [keyframeCost, setKeyframeCost] = useState<string | null>(null);
+  const [sceneCost, setSceneCost] = useState<Record<number, string>>({});
+
+  // 씬1 이후(씬0=키프레임)가 모두 이미지를 가졌는지
+  const extraScenes = project.scenes.slice(1);
+  const allScenesHaveImage =
+    extraScenes.length > 0 && extraScenes.every((s) => !!s.imageUrl);
 
   function patchScene(i: number, patch: Partial<EditScene>) {
     setScenes((prev) => prev.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
@@ -165,9 +176,13 @@ export default function Studio({ project: initial }: { project: Project }) {
     setBusy("keyframe");
     try {
       const data = await call("/api/image/keyframe", { projectId: project.id });
+      setKeyframeCost((data.cost as string) ?? null);
       setProject((p) => ({
         ...p,
         keyframeUrl: data.url as string,
+        scenes: p.scenes.map((s, i) =>
+          i === 0 ? { ...s, imageUrl: data.url as string, status: "generated" } : s
+        ),
         steps: { ...p.steps, keyframe: { ...p.steps.keyframe, status: "generated" } },
       }));
     } catch (e) {
@@ -185,6 +200,73 @@ export default function Studio({ project: initial }: { project: Project }) {
       setProject((p) => ({
         ...p,
         steps: { ...p.steps, keyframe: { ...p.steps.keyframe, status: "approved" } },
+      }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "승인 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // 씬 한 장 생성/리롤. 성공하면 project.scenes 갱신 + 비용 라벨 저장.
+  // 반환: 성공 여부 (전체 생성 루프가 중단 판단에 사용)
+  async function generateOneScene(sceneIndex: number): Promise<boolean> {
+    const data = await call("/api/image/scene", { projectId: project.id, sceneIndex });
+    setSceneCost((c) => ({ ...c, [sceneIndex]: (data.cost as string) ?? "" }));
+    setProject((p) => ({
+      ...p,
+      scenes: p.scenes.map((s, i) =>
+        i === sceneIndex
+          ? { ...s, imageUrl: data.url as string, status: "generated" }
+          : s
+      ),
+      steps: {
+        ...p.steps,
+        images: {
+          ...p.steps.images,
+          status: (data.allDone ? "generated" : "generating") as "generated" | "generating",
+        },
+      },
+    }));
+    return true;
+  }
+
+  async function generateScene(sceneIndex: number) {
+    setError(null);
+    setBusy(`scene-${sceneIndex}`);
+    try {
+      await generateOneScene(sceneIndex);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "이미지 생성 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // 씬1 이후 이미지 없는 씬들을 순차 생성(병렬 금지 — last-write-wins 방지).
+  async function generateAllScenes() {
+    setError(null);
+    setBusy("images-all");
+    try {
+      for (let i = 1; i < project.scenes.length; i++) {
+        if (project.scenes[i].imageUrl) continue;
+        await generateOneScene(i);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "이미지 생성 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function approveImages() {
+    setError(null);
+    setBusy("approve-images");
+    try {
+      await call("/api/step/approve", { projectId: project.id, step: "images" });
+      setProject((p) => ({
+        ...p,
+        steps: { ...p.steps, images: { ...p.steps.images, status: "approved" } },
       }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "승인 실패");
@@ -445,6 +527,9 @@ export default function Studio({ project: initial }: { project: Project }) {
               alt="키프레임 (씬0)"
               className="w-44 rounded-xl border border-zinc-200 dark:border-zinc-800"
             />
+            {keyframeCost && (
+              <p className="mt-1 text-[11px] text-zinc-400">생성 비용 {keyframeCost}</p>
+            )}
             <p className="mt-2 text-[11px] text-zinc-400">
               이 한 장이 이후 모든 씬의 스타일·인물·팔레트 레퍼런스가 됩니다. 마음에
               들 때까지 다시 생성한 뒤 승인하세요.
@@ -460,6 +545,99 @@ export default function Studio({ project: initial }: { project: Project }) {
               </button>
             )}
           </div>
+        )}
+      </section>
+
+      {/* 4단계: 씬별 이미지 (키프레임 레퍼런스) */}
+      <section className="mt-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 p-5">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold">
+            4. 이미지 (씬별)
+            {imagesApproved && <span className="ml-2 text-xs text-accent">승인됨</span>}
+          </h2>
+          <button
+            type="button"
+            onClick={generateAllScenes}
+            disabled={!keyframeApproved || busy !== null || extraScenes.length === 0}
+            className="shrink-0 text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-medium px-3 py-1.5"
+          >
+            {busy === "images-all" ? (
+              <Busy>생성 중…</Busy>
+            ) : allScenesHaveImage ? (
+              "빈 씬만 생성"
+            ) : (
+              "전체 생성"
+            )}
+          </button>
+        </div>
+        {!keyframeApproved && (
+          <p className="mt-2 text-xs text-zinc-500">키프레임을 먼저 승인해주세요.</p>
+        )}
+        {extraScenes.length === 0 && keyframeApproved && (
+          <p className="mt-2 text-xs text-zinc-500">
+            추가 씬이 없어요 (씬1=키프레임 한 장).
+          </p>
+        )}
+        {imagesStatus === "error" && project.steps.images.error && (
+          <p className="mt-2 text-xs text-red-600">{project.steps.images.error}</p>
+        )}
+
+        {keyframeApproved && extraScenes.length > 0 && (
+          <>
+            <ol className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {project.scenes.map((sc, i) => {
+                if (i === 0) return null; // 씬0 = 키프레임 (3단계)
+                const sceneBusy =
+                  busy === `scene-${i}` || (busy === "images-all" && !sc.imageUrl);
+                return (
+                  <li key={i} className="grid gap-1.5">
+                    <div className="flex aspect-[2/3] items-center justify-center overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900">
+                      {sceneBusy ? (
+                        <span className="inline-flex flex-col items-center gap-1.5 text-[11px] text-zinc-400">
+                          <Spinner className="size-5" />
+                          생성 중…
+                        </span>
+                      ) : sc.imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={sc.imageUrl}
+                          alt={`씬 ${i + 1}`}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-[11px] text-zinc-400">미생성</span>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] text-zinc-500">씬 {i + 1}</span>
+                      <button
+                        type="button"
+                        onClick={() => generateScene(i)}
+                        disabled={busy !== null}
+                        className="text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
+                      >
+                        {sc.imageUrl ? "리롤" : "생성"}
+                      </button>
+                    </div>
+                    {sceneCost[i] && (
+                      <p className="text-[11px] text-zinc-400">{sceneCost[i]}</p>
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+
+            {allScenesHaveImage && !imagesApproved && (
+              <button
+                type="button"
+                onClick={approveImages}
+                disabled={busy !== null}
+                className="mt-4 text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-medium px-3 py-1.5"
+              >
+                {busy === "approve-images" ? <Busy>승인 중…</Busy> : "이미지 승인 →"}
+              </button>
+            )}
+          </>
         )}
       </section>
     </main>
