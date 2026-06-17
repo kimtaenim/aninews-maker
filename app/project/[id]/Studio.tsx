@@ -143,6 +143,18 @@ export default function Studio({
   const [sub, setSub] = useState<SubtitleSettings>(initial.subtitle ?? DEFAULT_SUBTITLE);
   const [composeLang, setComposeLang] = useState<"ko" | "en">("ko");
 
+  // 합성 경과 시간(초) — 합성 중에만 1초마다 증가. "이쯤이면 에러" 판단용.
+  const [composeElapsed, setComposeElapsed] = useState(0);
+  useEffect(() => {
+    if (busy !== "compose") {
+      setComposeElapsed(0);
+      return;
+    }
+    const t0 = Date.now();
+    const id = setInterval(() => setComposeElapsed(Math.floor((Date.now() - t0) / 1000)), 1000);
+    return () => clearInterval(id);
+  }, [busy]);
+
   // ── 다국어판(영어) ──────────────────────────────────────────────────────────
   // 영문 스크립트는 로컬에서 편집 → 저장. 더빙(audioUrlEn)은 영어 트랙으로 별도 생성.
   const [enScripts, setEnScripts] = useState<Record<number, string>>(
@@ -1870,21 +1882,46 @@ export default function Studio({
             );
           })()}
 
-          {busy === "compose" ? (
-            <p className="mt-3 inline-flex items-center gap-2 text-sm text-zinc-500">
-              <Spinner /> 합성 중… ({composeLang === "en" ? "영어판" : "한국어판"} · worker 처리, 닫지 말고 기다려주세요)
-            </p>
-          ) : (
-            <button
-              type="button"
-              onClick={startCompose}
-              disabled={busy !== null}
-              className="mt-3 w-full rounded-xl bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-semibold py-3 transition-colors"
-            >
-              {project.finalVideoUrl ? "🎬 다시 합성" : "🎬 최종 합성하기"} (
-              {composeLang === "en" ? "영어판" : "한국어판"})
-            </button>
-          )}
+          {(() => {
+            const n = project.scenes.filter((s) => s.videoUrl).length;
+            const estMin = Math.max(1, Math.ceil((n * 35 + 30) / 60)); // 씬당 ~35초 + 마무리
+            const fmt = (sec: number) =>
+              `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+            if (busy === "compose") {
+              const over = composeElapsed > estMin * 60 * 2; // 예상의 2배 넘으면 의심
+              return (
+                <div className="mt-3">
+                  <p className="inline-flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-300">
+                    <Spinner /> 합성 중… {composeLang === "en" ? "영어판" : "한국어판"} ·{" "}
+                    <span className="tabular-nums font-medium">{fmt(composeElapsed)}</span>
+                    <span className="text-zinc-400">/ 예상 ~{estMin}분</span>
+                  </p>
+                  <p className={`mt-1 text-[11px] ${over ? "text-red-600" : "text-zinc-400"}`}>
+                    {over
+                      ? "예상보다 오래 걸립니다 — Render Logs에서 워커 에러를 확인해보세요."
+                      : "닫지 말고 기다려주세요. (완성되면 아래에 영상이 뜹니다)"}
+                  </p>
+                </div>
+              );
+            }
+            return (
+              <>
+                <p className="mt-3 text-[11px] text-zinc-400">
+                  씬 {n}개 · 예상 합성 시간 <span className="font-medium text-zinc-500">~{estMin}분</span>
+                  {" "}(이보다 많이 넘으면 워커 에러일 수 있어요)
+                </p>
+                <button
+                  type="button"
+                  onClick={startCompose}
+                  disabled={busy !== null}
+                  className="mt-2 w-full rounded-xl bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-semibold py-3 transition-colors"
+                >
+                  {project.finalVideoUrl ? "🎬 다시 합성" : "🎬 최종 합성하기"} (
+                  {composeLang === "en" ? "영어판" : "한국어판"})
+                </button>
+              </>
+            );
+          })()}
 
           {project.finalVideoUrl && (
             <div className="mt-4 flex flex-col items-center">
