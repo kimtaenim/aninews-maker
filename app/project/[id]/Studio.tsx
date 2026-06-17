@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { STEP_ORDER, type Project, type Scene, type StepKind } from "@/lib/types";
 import type { SourceMaterial } from "@/lib/source";
 import Spinner from "@/components/Spinner";
+import ScenePreview from "./ScenePreview";
 
 // 진행 중 버튼 내용 — 스피너 + 라벨
 function Busy({ children }: { children: React.ReactNode }) {
@@ -1549,6 +1550,30 @@ export default function Studio({
           </>
         )}
       </section>
+
+      {/* 미리보기 — 영상+음성+자막 (씬별 근사 합성, 굽기 전 확인용) */}
+      {project.scenes.some((s) => s.videoUrl) && (
+        <section className="mt-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 p-5">
+          <h2 className="text-sm font-semibold">미리보기 (영상 + 음성 + 자막)</h2>
+          <p className="mt-1 text-[11px] text-zinc-400">
+            ▶ 누르면 영상이 음성에 맞춰 재생되고 자막이 얹혀 보입니다. 영상이 음성보다
+            짧으면 루프로 채웁니다. 정확한 길이 정렬·자막 번인은 최종 합성(worker)에서.
+          </p>
+          <ol className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {project.scenes.map((sc, i) =>
+              sc.videoUrl ? (
+                <ScenePreview
+                  key={i}
+                  index={i}
+                  videoUrl={sc.videoUrl}
+                  audioUrl={sc.audioUrl}
+                  subtitle={sc.narration}
+                />
+              ) : null
+            )}
+          </ol>
+        </section>
+      )}
       </main>
 
       {/* 누적 비용 — 항상 보이는 고정 푸터 (리롤마다 합산되는 게 바로 보이게) */}
