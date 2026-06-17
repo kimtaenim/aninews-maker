@@ -17,9 +17,10 @@ export function getOpenAI(): OpenAI {
 // gpt-image-2 기본. 계정에 아직 없으면 OPENAI_IMAGE_MODEL=gpt-image-1 로 override.
 export const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
 
-// 숏폼 세로 9:16. gpt-image-2 는 임의 해상도(WIDTHxHEIGHT)를 지원하므로
-// generate(키프레임)·edit(씬 레퍼런스) 둘 다 1080x1920 을 받는다.
-// (gpt-image-1 로 폴백하면 1080x1920 미지원 → 그땐 1024x1536 으로 내려야 함.)
-export const IMAGE_SIZE = "1080x1920" as const;
+// 숏폼 세로 9:16. gpt-image-2 는 임의 해상도를 받지만 가로·세로가 둘 다 16의
+// 배수여야 한다(1080 은 16 으로 안 나눠져 400 에러). 1008x1792 는 둘 다 16 배수면서
+// 비율이 정확히 9:16 (1008/1792 = 0.5625). generate·edit 둘 다 OK 확인됨.
+// (gpt-image-1 로 폴백하면 미지원 → 그땐 1024x1536 으로 내려야 함.)
+export const IMAGE_SIZE = "1008x1792" as const;
 
 export type ImageQuality = "low" | "medium" | "high";
