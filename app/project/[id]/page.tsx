@@ -1,8 +1,10 @@
 import { notFound } from "next/navigation";
 import { getProject } from "@/lib/projectStore";
+import { getStyleProfile, type StyleProfile } from "@/lib/styleProfiles";
 import Studio from "./Studio";
 
-// 단계별 스튜디오 — 현재는 1·2단계(소스 검수 + 스크립트 생성)까지 동작.
+// 단계별 스튜디오. 스타일 프로필(2D/3D 모드·모션·postFx)을 같이 넘겨 키프레임
+// 단계에서 표시·미세조정에 쓴다.
 export default async function ProjectStudioPage({
   params,
 }: {
@@ -11,5 +13,13 @@ export default async function ProjectStudioPage({
   const { id } = await params;
   const project = await getProject(id);
   if (!project) notFound();
-  return <Studio project={project} />;
+
+  let styleProfile: StyleProfile | null = null;
+  try {
+    styleProfile = getStyleProfile(project.styleProfileId);
+  } catch {
+    styleProfile = null; // 프로필이 사라졌어도 스튜디오는 떠야 함
+  }
+
+  return <Studio project={project} styleProfile={styleProfile} />;
 }

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { STEP_ORDER, type Project, type Scene, type StepKind } from "@/lib/types";
 import type { SourceMaterial } from "@/lib/source";
+import type { StyleProfile } from "@/lib/styleProfiles";
 import Spinner from "@/components/Spinner";
 
 // 진행 중 버튼 내용 — 스피너 + 라벨
@@ -36,7 +37,13 @@ function toEdit(s: Scene): EditScene {
   };
 }
 
-export default function Studio({ project: initial }: { project: Project }) {
+export default function Studio({
+  project: initial,
+  styleProfile,
+}: {
+  project: Project;
+  styleProfile: StyleProfile | null;
+}) {
   const [project, setProject] = useState<Project>(initial);
   const [busy, _setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +54,7 @@ export default function Studio({ project: initial }: { project: Project }) {
     const a = action.startsWith("approve-") ? action.slice(8) : action;
     if (a === "source") return "source";
     if (a === "script" || a === "save") return "script";
-    if (a === "keyframe") return "keyframe";
+    if (a.startsWith("keyframe")) return "keyframe";
     if (a.startsWith("scene") || a.startsWith("images")) return "images";
     if (a.startsWith("video")) return "videos";
     if (a.startsWith("audio") || a === "voiceover") return "voiceover";
@@ -72,6 +79,10 @@ export default function Studio({ project: initial }: { project: Project }) {
   const hasScenes = scenes.length > 0;
   const keyframeStatus = project.steps.keyframe.status;
   const keyframeApproved = keyframeStatus === "approved";
+
+  // 키프레임 StepChat (대화 미세조정)
+  const [chat, setChat] = useState(initial.steps.keyframe.chat);
+  const [chatInput, setChatInput] = useState("");
   const imagesStatus = project.steps.images.status;
   const imagesApproved = imagesStatus === "approved";
 
@@ -236,6 +247,28 @@ export default function Studio({ project: initial }: { project: Project }) {
       }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "승인 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // 키프레임 StepChat: 대화로 style bible 미세조정 → 갱신. 이후 "다시 생성"으로 적용.
+  async function sendKeyframeChat() {
+    const msg = chatInput.trim();
+    if (!msg || busy !== null) return;
+    setError(null);
+    setBusy("keyframe-chat");
+    try {
+      const data = await call("/api/stepchat", {
+        projectId: project.id,
+        step: "keyframe",
+        userMessage: msg,
+      });
+      setChat(data.chat as typeof chat);
+      setProject((p) => ({ ...p, styleBible: data.styleBible as string }));
+      setChatInput("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "미세조정 실패");
     } finally {
       setBusy(null);
     }
@@ -501,17 +534,8 @@ export default function Studio({ project: initial }: { project: Project }) {
       <section className="mt-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 p-5">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold">1. 소스</h2>
-          {sourceApproved ? (
+          {sourceApproved && (
             <span className="text-xs text-accent font-medium">승인됨</span>
-          ) : (
-            <button
-              type="button"
-              onClick={approveSource}
-              disabled={busy !== null}
-              className="text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-50 text-white font-medium px-3 py-1.5"
-            >
-              {busy === "approve-source" ? <Busy>승인 중…</Busy> : "승인하고 다음으로"}
-            </button>
           )}
         </div>
         {errorStep === "source" && error && (
@@ -527,6 +551,20 @@ export default function Studio({ project: initial }: { project: Project }) {
               {material.body}
             </p>
           </div>
+        )}
+        {!sourceApproved && (
+          <button
+            type="button"
+            onClick={approveSource}
+            disabled={busy !== null}
+            className="mt-3 w-full rounded-xl bg-accent hover:bg-accent-strong disabled:opacity-50 text-white font-semibold py-3 transition-colors"
+          >
+            {busy === "approve-source" ? (
+              <Busy>승인 중…</Busy>
+            ) : (
+              "✓ 소스 승인하고 스크립트 단계로 →"
+            )}
+          </button>
         )}
       </section>
 
@@ -719,6 +757,34 @@ export default function Studio({ project: initial }: { project: Project }) {
           <p className="mt-2 text-xs text-red-600">{error}</p>
         )}
 
+        {/* 스타일: 여기서 확정된다. 2D/3D 모드·팔레트·모션·포스트FX 표시 */}
+        {scriptApproved && (
+          <div className="mt-4 rounded-xl bg-zinc-50 dark:bg-zinc-900 p-3">
+            <div className="flex items-center gap-2">
+              <span className="rounded-md bg-accent/15 text-accent text-xs font-bold px-2 py-0.5">
+                {styleProfile?.label ?? project.styleProfileId}
+              </span>
+              <span className="text-[11px] text-zinc-500">스타일 (전 단계에 적용)</span>
+            </div>
+            <p className="mt-2 text-xs text-zinc-600 dark:text-zinc-400 whitespace-pre-wrap">
+              {project.styleBible}
+            </p>
+            {styleProfile && (
+              <div className="mt-2 grid gap-0.5 text-[11px] text-zinc-500">
+                <p>
+                  <span className="font-medium">모션:</span> {styleProfile.motionStyle}
+                </p>
+                {styleProfile.postFx?.frameSteppingFps != null && (
+                  <p>
+                    <span className="font-medium">스톱모션:</span>{" "}
+                    {String(styleProfile.postFx.frameSteppingFps)}fps 프레임 스테핑
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {busy === "keyframe" && (
           <div className="mt-4 flex w-44 aspect-[9/16] items-center justify-center rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700 text-zinc-400">
             <span className="inline-flex flex-col items-center gap-2 text-xs">
@@ -748,11 +814,69 @@ export default function Studio({ project: initial }: { project: Project }) {
                 type="button"
                 onClick={approveKeyframe}
                 disabled={busy !== null}
-                className="mt-3 text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-medium px-3 py-1.5"
+                className="mt-3 w-full rounded-xl bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-semibold py-3 transition-colors"
               >
-                {busy === "approve-keyframe" ? <Busy>승인 중…</Busy> : "키프레임 승인 →"}
+                {busy === "approve-keyframe" ? (
+                  <Busy>승인 중…</Busy>
+                ) : (
+                  "✓ 키프레임 승인하고 이미지 단계로 →"
+                )}
               </button>
             )}
+          </div>
+        )}
+
+        {/* StepChat — 대화로 스타일 미세조정 */}
+        {scriptApproved && (
+          <div className="mt-4 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
+            <p className="text-xs font-semibold text-zinc-600 dark:text-zinc-300">
+              스타일 미세조정 (대화)
+            </p>
+            <p className="mt-0.5 text-[11px] text-zinc-400">
+              예: “더 따뜻한 색감으로”, “인물을 더 단순하게”. 반영 후{" "}
+              <span className="font-medium">‘다시 생성’</span>을 누르면 적용됩니다.
+            </p>
+            {chat.length > 0 && (
+              <ul className="mt-2 grid gap-1.5 max-h-48 overflow-y-auto">
+                {chat.map((t, i) => (
+                  <li key={i} className={t.role === "user" ? "text-right" : ""}>
+                    <span
+                      className={
+                        "inline-block rounded-lg px-2.5 py-1.5 text-xs " +
+                        (t.role === "user"
+                          ? "bg-accent text-white"
+                          : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200")
+                      }
+                    >
+                      {t.text}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="mt-2 flex gap-2">
+              <input
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    sendKeyframeChat();
+                  }
+                }}
+                placeholder="스타일 수정 요청…"
+                disabled={busy !== null}
+                className="flex-1 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-accent disabled:opacity-50"
+              />
+              <button
+                type="button"
+                onClick={sendKeyframeChat}
+                disabled={busy !== null || !chatInput.trim()}
+                className="shrink-0 rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white text-sm font-medium px-4"
+              >
+                {busy === "keyframe-chat" ? <Busy>…</Busy> : "보내기"}
+              </button>
+            </div>
           </div>
         )}
       </section>
@@ -844,9 +968,13 @@ export default function Studio({ project: initial }: { project: Project }) {
                 type="button"
                 onClick={approveImages}
                 disabled={busy !== null}
-                className="mt-4 text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-medium px-3 py-1.5"
+                className="mt-4 w-full rounded-xl bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-semibold py-3 transition-colors"
               >
-                {busy === "approve-images" ? <Busy>승인 중…</Busy> : "이미지 승인 →"}
+                {busy === "approve-images" ? (
+                  <Busy>승인 중…</Busy>
+                ) : (
+                  "✓ 이미지 승인하고 비디오 단계로 →"
+                )}
               </button>
             )}
           </>
@@ -943,9 +1071,13 @@ export default function Studio({ project: initial }: { project: Project }) {
                 type="button"
                 onClick={approveVideos}
                 disabled={busy !== null}
-                className="mt-4 text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-medium px-3 py-1.5"
+                className="mt-4 w-full rounded-xl bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-semibold py-3 transition-colors"
               >
-                {busy === "approve-videos" ? <Busy>승인 중…</Busy> : "비디오 승인 →"}
+                {busy === "approve-videos" ? (
+                  <Busy>승인 중…</Busy>
+                ) : (
+                  "✓ 비디오 승인하고 음성 단계로 →"
+                )}
               </button>
             )}
           </>
@@ -1038,9 +1170,13 @@ export default function Studio({ project: initial }: { project: Project }) {
                 type="button"
                 onClick={approveVoiceover}
                 disabled={busy !== null}
-                className="mt-4 text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-medium px-3 py-1.5"
+                className="mt-4 w-full rounded-xl bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-semibold py-3 transition-colors"
               >
-                {busy === "approve-voiceover" ? <Busy>승인 중…</Busy> : "음성 승인 →"}
+                {busy === "approve-voiceover" ? (
+                  <Busy>승인 중…</Busy>
+                ) : (
+                  "✓ 음성 승인 →"
+                )}
               </button>
             )}
           </>
