@@ -41,6 +41,7 @@ export async function generateScript(
     '위 뉴스를 숏폼 영상용 "씬 배열"로 만들어줘. 반드시 다음 JSON 만 출력:',
     '{"scenes":[{"narration":"...","image_prompt":"...","motion":"...","duration_sec":5}]}',
     "narration 은 한국어 구어체, image_prompt 와 motion 은 영어. duration_sec 은 4~7.",
+    "motion 은 작고 잔잔한 움직임으로만 (느린 카메라, 미세한 움직임). 크거나 빠르거나 과한 액션은 금지.",
   ]
     .filter(Boolean)
     .join("\n");
