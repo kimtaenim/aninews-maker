@@ -31,3 +31,6 @@ next-env.d.ts
 /worker/dist
 /worker/tmp
 /tmp
+
+# 로컬 dev 이미지 폴백 (Blob 토큰 없을 때)
+/public/generated
