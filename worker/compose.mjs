@@ -43,9 +43,13 @@ async function download(url, dest) {
 }
 
 export async function composeProject(projectId, lang) {
+  // stderr 로 즉시 flush 되는 진행 로그 — 어디서 멈추는지 한 줄씩 보이게.
+  const log = (...a) => console.error("[worker]", ...a);
+  log("composeProject 진입 — getProject 호출…");
   const project = await getProject(projectId);
   if (!project) throw new Error("프로젝트를 찾을 수 없어요");
   const scenes = (project.scenes ?? []).filter((s) => s.videoUrl);
+  log(`프로젝트 로드됨 — 비디오 있는 씬 ${scenes.length}개`);
   if (scenes.length === 0) throw new Error("비디오가 있는 씬이 없어요");
 
   const sub = project.subtitle ?? {
@@ -61,6 +65,7 @@ export async function composeProject(projectId, lang) {
     for (let i = 0; i < scenes.length; i++) {
       const s = scenes[i];
       const vPath = join(dir, `v${i}.mp4`);
+      log(`씬 ${i + 1}/${scenes.length}: 영상 다운로드…`);
       await download(s.videoUrl, vPath);
 
       const audioUrl = lang === "en" ? s.audioUrlEn : s.audioUrl;
@@ -137,21 +142,24 @@ export async function composeProject(projectId, lang) {
         "-c:a", "aac", "-b:a", "128k",
         out
       );
+      log(`씬 ${i + 1}: 인코딩 (캡션 ${capPaths.length}개, ${duration.toFixed(1)}s)…`);
       await run("ffmpeg", args);
+      log(`씬 ${i + 1}: 완료`);
       sceneFiles.push(out);
     }
 
-    // 이어붙이기 (재인코딩 — 씬 파라미터를 동일하게 맞췄지만 안전하게).
+    // 이어붙이기 — 씬들이 동일 코덱/파라미터라 재인코딩 없이 무손실 복사(빠름).
+    log("이어붙이기(무손실 copy)…");
     const listPath = join(dir, "list.txt");
     await writeFile(listPath, sceneFiles.map((f) => `file '${f}'`).join("\n"), "utf8");
     const finalPath = join(dir, "final.mp4");
     await run("ffmpeg", [
       "-y", "-f", "concat", "-safe", "0", "-i", listPath,
-      "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-crf", "23",
-      "-c:a", "aac", "-b:a", "128k",
+      "-c", "copy", "-movflags", "+faststart",
       finalPath,
     ]);
 
+    log("Blob 업로드…");
     const bytes = await readFile(finalPath);
     const { url } = await put(
       `project/${projectId}/final-${lang}-${Date.now()}.mp4`,

@@ -28,7 +28,7 @@ async function tick() {
 }
 
 // 배포 검증용 버전 표식 — 이 줄이 Render 로그에 보이면 "새 자막(libass) 코드"가 떴다는 뜻.
-console.log("[worker] BUILD = subtitle-libass-v2 (가운데정렬 + 큰글씨 + cover-crop, 검은테두리 제거)");
+console.log("[worker] BUILD = subtitle-caption-png-v3 (캡션PNG 오버레이·3초·고정폭박스 + 무손실 concat)");
 console.log("[worker] 시작 — jobq:compose 폴링 중…");
 for (;;) {
   await tick();
