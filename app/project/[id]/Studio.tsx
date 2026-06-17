@@ -622,19 +622,10 @@ export default function Studio({
     "w-full rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2.5 py-1.5 text-sm outline-none focus:border-accent";
 
   return (
-    <main className="px-4 py-8 md:max-w-2xl md:mx-auto">
+    <>
+      <main className="px-4 py-8 pb-24 md:max-w-2xl md:mx-auto">
       <h1 className="text-lg font-semibold tracking-tight">{project.title}</h1>
-      <div className="mt-1 flex items-center justify-between gap-2">
-        <p className="text-xs text-zinc-500">project: {project.id}</p>
-        {totalKrw && (
-          <p className="text-xs text-zinc-500">
-            누적 비용{" "}
-            <span className="font-semibold text-zinc-700 dark:text-zinc-300">
-              {totalKrw}
-            </span>
-          </p>
-        )}
-      </div>
+      <p className="mt-1 text-xs text-zinc-500">project: {project.id}</p>
 
       {/* 스텝퍼 */}
       <ol className="mt-5 flex flex-wrap gap-2">
@@ -1225,6 +1216,7 @@ export default function Studio({
                           {sc.imageUrl ? "리롤" : "생성"}
                         </button>
                       </div>
+                      <span className="text-[10px] text-zinc-400">나레이션 (영상 대사)</span>
                       <textarea
                         value={ed?.narration ?? ""}
                         onChange={(e) => patchScene(i, { narration: e.target.value })}
@@ -1232,6 +1224,7 @@ export default function Studio({
                         placeholder="나레이션"
                         className="w-full rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1 text-xs outline-none focus:border-accent resize-y"
                       />
+                      <span className="text-[10px] text-zinc-400">이미지 프롬프트 (영문)</span>
                       <textarea
                         value={ed?.imagePrompt ?? ""}
                         onChange={(e) => patchScene(i, { imagePrompt: e.target.value })}
@@ -1482,6 +1475,15 @@ export default function Studio({
           </>
         )}
       </section>
-    </main>
+      </main>
+
+      {/* 누적 비용 — 항상 보이는 고정 푸터 (리롤마다 합산되는 게 바로 보이게) */}
+      <div className="fixed bottom-0 inset-x-0 z-40 border-t border-zinc-200/70 dark:border-zinc-800/70 bg-white/90 dark:bg-black/80 backdrop-blur px-4 py-2.5">
+        <p className="md:max-w-2xl md:mx-auto text-center text-xs text-zinc-600 dark:text-zinc-300">
+          누적 비용{" "}
+          <span className="font-semibold text-accent">{totalKrw ?? "₩0"}</span>
+        </p>
+      </div>
+    </>
   );
 }

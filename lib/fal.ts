@@ -46,6 +46,20 @@ export function videoEndpoint(): string {
 // jobId = "endpoint::requestId" — poll 이 endpoint 없이 자족하도록 인코딩.
 const JOB_SEP = "::";
 
+// fal 에러를 사람이 읽을 메시지로. 가장 흔한 건 잔액 부족(403 Forbidden).
+function falErrorMessage(e: unknown): string {
+  const err = e as { status?: number; message?: string; body?: { detail?: string } };
+  const detail = err?.body?.detail;
+  if (detail && /exhausted|locked|balance/i.test(detail)) {
+    return "fal 잔액이 부족해요. fal.ai/dashboard/billing 에서 충전(결제수단 등록)하면 비디오가 생성됩니다.";
+  }
+  if (detail) return `fal: ${detail}`;
+  if (err?.status === 403) {
+    return "fal 접근 거부(403) — 대개 잔액 부족입니다. fal.ai/dashboard/billing 확인.";
+  }
+  return err?.message || "fal 요청 실패";
+}
+
 export type VideoPoll =
   | { status: "pending" | "running" }
   | { status: "completed"; videoUrl: string }
@@ -64,7 +78,13 @@ export async function generateVideo(opts: {
   if (opts.prompt) input.prompt = opts.prompt;
   if (typeof opts.duration === "number") input.duration = opts.duration;
 
-  const { request_id } = await client.queue.submit(endpoint, { input });
+  let request_id: string | undefined;
+  try {
+    const r = await client.queue.submit(endpoint, { input });
+    request_id = r.request_id;
+  } catch (e) {
+    throw new Error(falErrorMessage(e));
+  }
   if (!request_id) throw new Error("fal 작업 제출 실패 — request_id 없음");
   return { jobId: `${endpoint}${JOB_SEP}${request_id}` };
 }
@@ -94,6 +114,6 @@ export async function pollVideo(jobId: string): Promise<VideoPoll> {
     if (st.status === "IN_QUEUE") return { status: "pending" };
     return { status: "running" }; // IN_PROGRESS 등
   } catch (e) {
-    return { status: "failed", error: e instanceof Error ? e.message : "fal 폴링 실패" };
+    return { status: "failed", error: falErrorMessage(e) };
   }
 }
