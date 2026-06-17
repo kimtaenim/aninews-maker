@@ -13,13 +13,16 @@ import { openaiImageCostUsd, recordCost } from "./cost";
 
 const REF_FETCH_TIMEOUT_MS = 30_000;
 
-export async function generateKeyframe(args: {
+// 3단계 — 키프레임 후보 N장(기본 3장) 생성. 사용자가 그중 하나를 고른다.
+// 품질은 빠름·저렴(low) 고정(호출부에서 지정).
+export async function generateKeyframes(args: {
   projectId: string;
   styleBible: string;
   scenePrompt: string;
   quality?: ImageQuality;
-}): Promise<{ url: string; costUsd: number }> {
-  const { projectId, styleBible, scenePrompt, quality = "medium" } = args;
+  count?: number;
+}): Promise<{ urls: string[]; costUsd: number }> {
+  const { projectId, styleBible, scenePrompt, quality = "low", count = 3 } = args;
   const client = getOpenAI();
 
   const prompt = `${styleBible}\n\nScene: ${scenePrompt}`;
@@ -28,30 +31,36 @@ export async function generateKeyframe(args: {
     prompt,
     size: IMAGE_SIZE,
     quality,
-    n: 1,
+    n: count,
   });
 
-  const b64 = result.data?.[0]?.b64_json;
-  if (!b64) throw new Error("이미지 생성 실패 — 응답에 이미지가 없어요");
-  const bytes = Buffer.from(b64, "base64");
+  const items = result.data ?? [];
+  if (items.length === 0) throw new Error("이미지 생성 실패 — 응답에 이미지가 없어요");
 
-  // 유니크 경로 → 재생성 시 새 URL(캐시 버스팅), 덮어쓰기 충돌 없음.
-  const { url } = await uploadAsset(
-    `project/${projectId}/keyframe-${Date.now()}.png`,
-    bytes,
-    "image/png"
-  );
+  const ts = Date.now();
+  const urls: string[] = [];
+  for (let i = 0; i < items.length; i++) {
+    const b64 = items[i].b64_json;
+    if (!b64) continue;
+    const { url } = await uploadAsset(
+      `project/${projectId}/keyframe-${ts}-${i}.png`,
+      Buffer.from(b64, "base64"),
+      "image/png"
+    );
+    urls.push(url);
+  }
+  if (urls.length === 0) throw new Error("이미지 업로드 실패");
 
-  const costUsd = openaiImageCostUsd(IMAGE_MODEL, quality, 1);
+  const costUsd = openaiImageCostUsd(IMAGE_MODEL, quality, urls.length);
   await recordCost({
     projectId,
     vendor: "openai",
     model: IMAGE_MODEL,
     costUsd,
-    meta: { kind: "keyframe", quality },
+    meta: { kind: "keyframe", quality, count: urls.length },
   });
 
-  return { url, costUsd };
+  return { urls, costUsd };
 }
 
 // 4단계 — 씬별 이미지. 키프레임을 레퍼런스(images.edit)로 넣어 스타일·인물·

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProject, saveProject } from "@/lib/projectStore";
-import { generateKeyframe } from "@/lib/image";
+import { generateKeyframes } from "@/lib/image";
 import { canStart } from "@/lib/stepMachine";
 import { formatKrw } from "@/lib/cost";
 import type { ImageQuality } from "@/lib/openai";
@@ -46,19 +46,23 @@ export async function POST(req: NextRequest) {
   await saveProject(project);
 
   try {
-    const { url, costUsd } = await generateKeyframe({
+    // 후보 3장 생성. 빠름·저렴(low) 고정. 선택은 /select 에서.
+    const { urls, costUsd } = await generateKeyframes({
       projectId,
       styleBible: project.styleBible,
       scenePrompt: scene0.imagePrompt,
-      quality: body.quality,
+      quality: body.quality ?? "low",
+      count: 3,
     });
-    project.keyframeUrl = url;
-    project.scenes[0] = { ...scene0, imageUrl: url, status: "generated" };
+    project.steps.keyframe.params = {
+      ...project.steps.keyframe.params,
+      candidates: urls,
+    };
     project.steps.keyframe.status = "generated";
     project.steps.keyframe.updatedAt = Date.now();
     project.updatedAt = Date.now();
     await saveProject(project);
-    return NextResponse.json({ ok: true, url, cost: formatKrw(costUsd) });
+    return NextResponse.json({ ok: true, urls, cost: formatKrw(costUsd) });
   } catch (e) {
     const error = e instanceof Error ? e.message : "키프레임 생성 실패";
     project.steps.keyframe.status = "error";

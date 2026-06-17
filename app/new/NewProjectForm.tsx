@@ -14,11 +14,13 @@ type Mode = "rss" | "url" | "text";
 
 export default function NewProjectForm({
   profiles,
+  defaultProfile,
   models,
   defaultModel,
   categories,
 }: {
   profiles: Option[];
+  defaultProfile: string;
   models: Option[];
   defaultModel: string;
   categories: RssCategory[];
@@ -45,7 +47,9 @@ export default function NewProjectForm({
       )
     : articles;
 
-  const [styleProfileId, setStyleProfileId] = useState(profiles[0]?.id ?? "");
+  const [styleProfileId, setStyleProfileId] = useState(
+    defaultProfile || profiles[0]?.id || ""
+  );
   const [videoModelId, setVideoModelId] = useState(defaultModel);
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const [loading, setLoading] = useState(false);

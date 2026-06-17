@@ -1,5 +1,5 @@
 import NewProjectForm from "./NewProjectForm";
-import { listStyleProfiles } from "@/lib/styleProfiles";
+import { listStyleProfiles, DEFAULT_STYLE_PROFILE_ID } from "@/lib/styleProfiles";
 import { listCategories } from "@/lib/rss";
 import videoModels from "@/config/video-models.json";
 
@@ -19,6 +19,7 @@ export default function NewProjectPage() {
       </p>
       <NewProjectForm
         profiles={profiles}
+        defaultProfile={DEFAULT_STYLE_PROFILE_ID}
         models={models}
         defaultModel={videoModels.default}
         categories={categories}

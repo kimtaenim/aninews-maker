@@ -79,10 +79,12 @@ export default function Studio({
   const keyframeStatus = project.steps.keyframe.status;
   const keyframeApproved = keyframeStatus === "approved";
 
-  // 키프레임 직접 조정: 품질 파라미터 + 스타일/프롬프트 편집
-  const [quality, setQuality] = useState<"low" | "medium" | "high">("medium");
+  // 키프레임 직접 조정: 스타일/프롬프트 편집 + 후보 3장 선택
   const [editBible, setEditBible] = useState(initial.styleBible);
   const [bibleDirty, setBibleDirty] = useState(false);
+  const [candidates, setCandidates] = useState<string[]>(
+    (initial.steps.keyframe.params.candidates as string[]) ?? []
+  );
 
   // 키프레임 StepChat (대화 미세조정)
   const [chat, setChat] = useState(initial.steps.keyframe.chat);
@@ -223,18 +225,38 @@ export default function Studio({
     setError(null);
     setBusy("keyframe");
     try {
-      const data = await call("/api/image/keyframe", { projectId: project.id, quality });
+      const data = await call("/api/image/keyframe", { projectId: project.id });
       setKeyframeCost((data.cost as string) ?? null);
+      setCandidates(data.urls as string[]);
+      // 새로 3장 생성 → 기존 선택 해제(다시 고르게)
       setProject((p) => ({
         ...p,
-        keyframeUrl: data.url as string,
-        scenes: p.scenes.map((s, i) =>
-          i === 0 ? { ...s, imageUrl: data.url as string, status: "generated" } : s
-        ),
+        keyframeUrl: undefined,
         steps: { ...p.steps, keyframe: { ...p.steps.keyframe, status: "generated" } },
       }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "키프레임 생성 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // 후보 3장 중 하나 선택 → 키프레임 확정
+  async function selectKeyframe(url: string) {
+    if (busy !== null) return;
+    setError(null);
+    setBusy("keyframe-select");
+    try {
+      await call("/api/image/keyframe/select", { projectId: project.id, url });
+      setProject((p) => ({
+        ...p,
+        keyframeUrl: url,
+        scenes: p.scenes.map((s, i) =>
+          i === 0 ? { ...s, imageUrl: url, status: "generated" } : s
+        ),
+      }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "선택 실패");
     } finally {
       setBusy(null);
     }
@@ -822,21 +844,12 @@ export default function Studio({
                   ))}
                 </select>
               </label>
-              <label className="grid gap-1">
+              <div className="grid gap-1">
                 <span className="text-[11px] font-medium text-zinc-500">품질</span>
-                <select
-                  value={quality}
-                  onChange={(e) =>
-                    setQuality(e.target.value as "low" | "medium" | "high")
-                  }
-                  disabled={busy !== null}
-                  className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2.5 py-1.5 text-sm outline-none focus:border-accent disabled:opacity-50"
-                >
-                  <option value="low">저 (빠름·저렴)</option>
-                  <option value="medium">중</option>
-                  <option value="high">고 (느림·고품질)</option>
-                </select>
-              </label>
+                <span className="rounded-lg bg-zinc-100 dark:bg-zinc-800 px-2.5 py-1.5 text-sm text-zinc-500">
+                  빠름·저렴 (고정)
+                </span>
+              </div>
             </div>
 
             <label className="grid gap-1">
@@ -873,29 +886,66 @@ export default function Studio({
         )}
 
         {busy === "keyframe" && (
-          <div className="mt-4 flex w-44 aspect-[9/16] items-center justify-center rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700 text-zinc-400">
-            <span className="inline-flex flex-col items-center gap-2 text-xs">
-              <Spinner className="size-6" />
-              이미지 생성 중…
-            </span>
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="flex aspect-[9/16] items-center justify-center rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700 text-zinc-400"
+              >
+                <Spinner className="size-5" />
+              </div>
+            ))}
           </div>
         )}
 
-        {project.keyframeUrl && busy !== "keyframe" && (
+        {/* 후보 3장 — 클릭해서 선택 */}
+        {candidates.length > 0 && busy !== "keyframe" && (
           <div className="mt-4">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={project.keyframeUrl}
-              alt="키프레임 (씬0)"
-              className="w-44 rounded-xl border border-zinc-200 dark:border-zinc-800"
-            />
+            <p className="mb-2 text-[11px] text-zinc-500">
+              마음에 드는 키프레임을 고르세요. (3장 중 1장 · 이게 이후 모든 씬의 스타일·인물·팔레트 레퍼런스)
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              {candidates.map((u) => {
+                const selected = project.keyframeUrl === u;
+                return (
+                  <button
+                    key={u}
+                    type="button"
+                    onClick={() => selectKeyframe(u)}
+                    disabled={busy !== null}
+                    className={
+                      "relative rounded-xl overflow-hidden border-2 transition-colors disabled:opacity-60 " +
+                      (selected
+                        ? "border-accent"
+                        : "border-transparent hover:border-zinc-300 dark:hover:border-zinc-600")
+                    }
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={u}
+                      alt="키프레임 후보"
+                      className="w-full aspect-[9/16] object-cover"
+                    />
+                    {selected && (
+                      <span className="absolute top-1 right-1 rounded bg-accent text-white text-[10px] font-bold px-1.5 py-0.5">
+                        선택됨
+                      </span>
+                    )}
+                    {busy === "keyframe-select" && (
+                      <span className="absolute inset-0 flex items-center justify-center bg-black/30">
+                        <Spinner className="size-5 text-white" />
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
             {keyframeCost && (
               <p className="mt-1 text-[11px] text-zinc-400">생성 비용 {keyframeCost}</p>
             )}
-            <p className="mt-2 text-[11px] text-zinc-400">
-              이 한 장이 이후 모든 씬의 스타일·인물·팔레트 레퍼런스가 됩니다. 마음에
-              들 때까지 다시 생성한 뒤 승인하세요.
-            </p>
+            {!project.keyframeUrl && (
+              <p className="mt-1 text-[11px] text-amber-600">한 장을 선택해야 승인할 수 있어요.</p>
+            )}
           </div>
         )}
 

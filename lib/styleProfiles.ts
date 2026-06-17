@@ -9,6 +9,8 @@
 
 import profilesJson from "../config/style-profiles.json";
 
+export const DEFAULT_STYLE_PROFILE_ID = profilesJson.default;
+
 export interface StyleProfile {
   id: string;
   label: string;

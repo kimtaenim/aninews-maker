@@ -1,25 +1,46 @@
 {
-  "version": "1.0",
+  "version": "2.0",
   "updated": "2026-06-17",
-  "_comment": "스타일 프로필. 각 프로필이 image_bible + motion_style + post_fx 를 들고 전 단계(script/keyframe/images/videos/compose)에 자동 주입된다. 시작 프리셋 2개. 항목 추가 시 lib/styleProfiles.ts 의 StyleProfile 형태만 맞추면 됨. 문구는 골격 — 합의하며 다듬는다.",
-  "default": "2d-cartoon",
+  "_comment": "스타일 프로필(=모드). cardnews categories.json image_styles 방식 — config 프리셋으로 드롭다운 제공. 각 프로필이 image_bible(팔레트·룩) + motion_style + post_fx 를 들고 전 단계에 자동 주입. 'custom'은 직접 입력용(빈 bible → 사용자가 textarea 로 작성). 기본값은 3d-stopmotion.",
+  "default": "3d-stopmotion",
   "profiles": [
     {
       "id": "2d-cartoon",
-      "label": "2D 카툰",
-      "imageBible": "Flat 2D cartoon illustration, clean vector-like shading, consistent character design, soft palette, 9:16 vertical composition.",
+      "label": "2D 카툰 일반",
+      "imageBible": "Flat 2D cartoon illustration, clean vector-like shading, bold confident outlines, consistent character design, balanced modern color palette, simple readable shapes, 9:16 vertical composition.",
       "motionStyle": "Smooth continuous motion, gentle camera moves, natural easing.",
+      "postFx": {}
+    },
+    {
+      "id": "2d-cute",
+      "label": "2D 카툰 귀엽게",
+      "imageBible": "Cute 2D cartoon style, soft rounded shapes, slightly chibi proportions, big expressive eyes, pastel candy color palette, gentle soft shading, adorable consistent characters, 9:16 vertical composition.",
+      "motionStyle": "Bouncy soft motion, playful gentle camera moves.",
+      "postFx": {}
+    },
+    {
+      "id": "2d-anime",
+      "label": "2D 저패니메이션",
+      "imageBible": "Japanese anime style, cel shading, detailed expressive eyes and flowing hair, crisp dynamic line art, vibrant saturated palette, soft gradient backgrounds, consistent character design, 9:16 vertical composition.",
+      "motionStyle": "Smooth anime-style motion, dynamic camera, speed-line accents on action.",
       "postFx": {}
     },
     {
       "id": "3d-stopmotion",
       "label": "3D 목각인형 스톱모션",
-      "imageBible": "Handcrafted wooden puppet characters, miniature diorama set, tactile felt and wood textures, warm practical lighting, shallow depth of field, 9:16 vertical.",
+      "imageBible": "Handcrafted wooden puppet characters, miniature diorama set, tactile felt and wood textures, warm practical lighting, shallow depth of field, 9:16 vertical composition.",
       "motionStyle": "Steppy stop-motion movement, slightly jittery, posed-frame feel — NOT smooth. Hold poses between moves.",
       "postFx": {
         "frameSteppingFps": 10,
-        "_note": "compose 단계에서 8~12fps 프레임 스테핑으로 스톱모션 손맛 유지. 매끄러우면 손맛이 사라지니 주의."
+        "_note": "compose 단계에서 8~12fps 프레임 스테핑으로 스톱모션 손맛 유지."
       }
+    },
+    {
+      "id": "custom",
+      "label": "직접 입력",
+      "imageBible": "Describe your own art style, characters and color palette here. (직접 입력 — 아래 프롬프트 칸에 원하는 스타일을 영어로 작성하세요.) 9:16 vertical composition.",
+      "motionStyle": "Smooth continuous motion, natural easing.",
+      "postFx": {}
     }
   ]
 }
