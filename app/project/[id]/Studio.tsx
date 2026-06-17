@@ -896,20 +896,6 @@ export default function Studio({
               이 한 장이 이후 모든 씬의 스타일·인물·팔레트 레퍼런스가 됩니다. 마음에
               들 때까지 다시 생성한 뒤 승인하세요.
             </p>
-            {!keyframeApproved && (
-              <button
-                type="button"
-                onClick={approveKeyframe}
-                disabled={busy !== null}
-                className="mt-3 w-full rounded-xl bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-semibold py-3 transition-colors"
-              >
-                {busy === "approve-keyframe" ? (
-                  <Busy>승인 중…</Busy>
-                ) : (
-                  "✓ 키프레임 승인하고 이미지 단계로 →"
-                )}
-              </button>
-            )}
           </div>
         )}
 
@@ -965,6 +951,27 @@ export default function Studio({
               </button>
             </div>
           </div>
+        )}
+
+        {/* 승인은 맨 아래 — 모드·품질·프롬프트·대화로 다 조정한 뒤 마지막에 */}
+        {project.keyframeUrl && !keyframeApproved && (
+          <button
+            type="button"
+            onClick={approveKeyframe}
+            disabled={busy !== null}
+            className="mt-4 w-full rounded-xl bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-semibold py-3 transition-colors"
+          >
+            {busy === "approve-keyframe" ? (
+              <Busy>승인 중…</Busy>
+            ) : (
+              "✓ 키프레임 승인하고 이미지 단계로 →"
+            )}
+          </button>
+        )}
+        {keyframeApproved && (
+          <p className="mt-4 text-xs text-accent font-medium">
+            ✓ 키프레임 승인됨 — 아래 이미지 단계로 진행하세요.
+          </p>
         )}
       </section>
 
