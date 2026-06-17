@@ -70,5 +70,6 @@ export async function GET(req: NextRequest) {
     status: project.steps.compose.status,
     finalVideoUrl: project.finalVideoUrl,
     error: project.steps.compose.error,
+    updatedAt: project.steps.compose.updatedAt, // 합성 시작 시각(경과시간 복원용)
   });
 }

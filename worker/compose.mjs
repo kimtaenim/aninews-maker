@@ -52,19 +52,20 @@ function assColor(r, g, b, opacity = 1) {
 function buildAss(text, sub) {
   const t = (text ?? "").trim().replace(/\s+/g, " ").replace(/[{}]/g, "");
   const font = sub.font === "serif" ? "Noto Serif CJK KR" : "Noto Sans CJK KR";
-  const size = sub.size === "small" ? 52 : sub.size === "large" ? 80 : 64;
+  // 1080폭 숏폼 기준. 미리보기보다 또렷하게 크게.
+  const size = sub.size === "small" ? 64 : sub.size === "large" ? 104 : 84;
   const bold = sub.weight === "bold" ? -1 : 0;
   const light = sub.box === "light";
   const primary = light ? assColor(0, 0, 0, 1) : assColor(255, 255, 255, 1);
   const boxcol = light ? assColor(255, 255, 255, 0.85) : assColor(0, 0, 0, 0.6);
   const back = assColor(0, 0, 0, 0);
-  // 정렬: 1=하단왼 2=하단중앙 7=상단왼 8=상단중앙
+  // 정렬: 1=하단왼 2=하단중앙 7=상단왼 8=상단중앙. 기본 가운데(2).
   const top = sub.position === "top";
   const left = sub.align === "left";
   const alignment = top ? (left ? 7 : 8) : left ? 1 : 2;
-  const marginV = 96; // 가장자리에 더 붙임
-  const marginH = 64; // 좌우 여백(=줄바꿈 폭). 작을수록 가로를 넓게 씀
-  const outline = 6; // BorderStyle3 박스 안쪽 여백
+  const marginV = 70; // 미리보기(하단 3%)처럼 아래에 가깝게
+  const marginH = 56; // 좌우 여백(=줄바꿈 폭). 작을수록 가로를 넓게 씀
+  const outline = 8; // BorderStyle3 박스 안쪽 여백(글자-박스 패딩)
   return [
     "[Script Info]",
     "ScriptType: v4.00+",
@@ -118,10 +119,11 @@ export async function composeProject(projectId, lang) {
       const assPath = join(dir, `s${i}.ass`);
       await writeFile(assPath, buildAss(text, sub), "utf8");
 
-      // libass(subtitles 필터)로 번인 — 줄별 가운데 정렬 + 자동 줄바꿈.
+      // 미리보기(object-cover)와 동일하게: 9:16을 꽉 채우고 넘치는 부분만 가운데
+      // 크롭 → 양옆 검은 테두리 없음. 그 뒤 libass 자막 번인.
       const vf =
-        `scale=${W}:${H}:force_original_aspect_ratio=decrease,` +
-        `pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black,` +
+        `scale=${W}:${H}:force_original_aspect_ratio=increase,` +
+        `crop=${W}:${H},` +
         `setpts=${speed.toFixed(4)}*PTS,fps=${FPS},` +
         `subtitles=f='${assPath}'`;
 

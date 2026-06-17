@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   STEP_ORDER,
   DEFAULT_SUBTITLE,
@@ -143,17 +143,81 @@ export default function Studio({
   const [sub, setSub] = useState<SubtitleSettings>(initial.subtitle ?? DEFAULT_SUBTITLE);
   const [composeLang, setComposeLang] = useState<"ko" | "en">("ko");
 
-  // 합성 경과 시간(초) — 합성 중에만 1초마다 증가. "이쯤이면 에러" 판단용.
+  // 합성 진행 여부는 "서버 상태(steps.compose.status)"가 진실. busy(로컬)와 무관하게
+  // 페이지를 떠났다 와도(remount), 백그라운드 갔다 와도 이걸로 복원한다.
+  const composing = project.steps.compose.status === "generating";
+
+  // 합성 경과 시간(초) — 시작 시각을 서버 updatedAt 으로 잡아서 재방문해도 정확.
   const [composeElapsed, setComposeElapsed] = useState(0);
+  const composeStartRef = useRef<number | null>(null);
   useEffect(() => {
-    if (busy !== "compose") {
+    if (!composing) {
+      composeStartRef.current = null;
       setComposeElapsed(0);
       return;
     }
-    const t0 = Date.now();
-    const id = setInterval(() => setComposeElapsed(Math.floor((Date.now() - t0) / 1000)), 1000);
+    if (composeStartRef.current == null) {
+      composeStartRef.current = project.steps.compose.updatedAt || Date.now();
+    }
+    const tick = () =>
+      setComposeElapsed(
+        Math.max(0, Math.floor((Date.now() - (composeStartRef.current as number)) / 1000))
+      );
+    tick();
+    const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [busy]);
+  }, [composing, project.steps.compose.updatedAt]);
+
+  // 합성 폴링 — 한 번에 하나만 돌게 ref 로 가드. 어디서 시작하든(버튼/remount/복귀)
+  // 동일 함수로 수렴. 워커는 서버에서 돌고 결과는 Redis 라, 폴링은 "상태 동기화"일 뿐.
+  const composePollRef = useRef(false);
+  async function runComposePoll() {
+    if (composePollRef.current) return;
+    composePollRef.current = true;
+    try {
+      for (let t = 0; t < 240; t++) {
+        // ~12분. 그 안에 끝나면 반영, 넘으면 폴링만 멈추고 상태는 서버에 그대로.
+        const r = await fetch(`/api/compose?projectId=${encodeURIComponent(project.id)}`);
+        const d = await r.json();
+        if (d.updatedAt) composeStartRef.current = d.updatedAt as number;
+        if (d.status === "generated" && d.finalVideoUrl) {
+          setProject((p) => ({
+            ...p,
+            finalVideoUrl: d.finalVideoUrl as string,
+            steps: { ...p.steps, compose: { ...p.steps.compose, status: "generated" } },
+          }));
+          return;
+        }
+        if (d.status === "error" || d.error) {
+          setError(d.error || "합성 실패");
+          setProject((p) => ({
+            ...p,
+            steps: {
+              ...p.steps,
+              compose: { ...p.steps.compose, status: "error", error: d.error },
+            },
+          }));
+          return;
+        }
+        await new Promise((res) => setTimeout(res, 3000));
+      }
+    } catch {
+      /* 네트워크 끊김 등은 조용히 — 다음 방문/복귀 때 다시 폴링 */
+    } finally {
+      composePollRef.current = false;
+    }
+  }
+
+  // 진입/복원: 합성 중이면 폴링 시작. 백그라운드→복귀(visibilitychange) 때도 재개.
+  useEffect(() => {
+    if (composing) void runComposePoll();
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && composing) void runComposePoll();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [composing]);
 
   // ── 다국어판(영어) ──────────────────────────────────────────────────────────
   // 영문 스크립트는 로컬에서 편집 → 저장. 더빙(audioUrlEn)은 영어 트랙으로 별도 생성.
@@ -243,34 +307,29 @@ export default function Studio({
     }
   }
 
-  // 7단계: 합성 — worker 에 작업 적재 후 완성될 때까지 폴링.
+  // 7단계: 합성 — worker 에 작업 적재. 진행 추적은 서버 상태 + runComposePoll 이 담당하므로
+  // 이 함수가 끝나도(페이지를 떠나도) 합성은 계속되고, 돌아오면 자동으로 이어진다.
   async function startCompose() {
     setError(null);
     setBusy("compose");
     try {
       await call("/api/compose", { projectId: project.id, lang: composeLang });
-      for (let t = 0; t < 120; t++) {
-        await new Promise((r) => setTimeout(r, 3000));
-        const r = await fetch(`/api/compose?projectId=${encodeURIComponent(project.id)}`);
-        const d = await r.json();
-        if (d.status === "generated" && d.finalVideoUrl) {
-          setProject((p) => ({
-            ...p,
-            finalVideoUrl: d.finalVideoUrl as string,
-            steps: { ...p.steps, compose: { ...p.steps.compose, status: "generated" } },
-          }));
-          return;
-        }
-        if (d.status === "error" || d.error) {
-          throw new Error(d.error || "합성 실패");
-        }
-      }
-      throw new Error("합성이 시간 내 안 끝났어요 — worker 가 떠 있는지 확인하세요.");
+      const now = Date.now();
+      composeStartRef.current = now;
+      setProject((p) => ({
+        ...p,
+        finalVideoUrl: undefined,
+        steps: {
+          ...p.steps,
+          compose: { ...p.steps.compose, status: "generating", error: undefined, updatedAt: now },
+        },
+      }));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "합성 실패");
+      setError(e instanceof Error ? e.message : "합성 요청 실패");
     } finally {
       setBusy(null);
     }
+    // status 가 generating 으로 바뀌면 위 useEffect 가 폴링을 시작한다.
   }
 
   // 키프레임 StepChat (대화 미세조정)
@@ -1887,7 +1946,7 @@ export default function Studio({
             const estMin = Math.max(1, Math.ceil((n * 35 + 30) / 60)); // 씬당 ~35초 + 마무리
             const fmt = (sec: number) =>
               `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
-            if (busy === "compose") {
+            if (composing) {
               const over = composeElapsed > estMin * 60 * 2; // 예상의 2배 넘으면 의심
               return (
                 <div className="mt-3">
@@ -1899,7 +1958,7 @@ export default function Studio({
                   <p className={`mt-1 text-[11px] ${over ? "text-red-600" : "text-zinc-400"}`}>
                     {over
                       ? "예상보다 오래 걸립니다 — Render Logs에서 워커 에러를 확인해보세요."
-                      : "닫지 말고 기다려주세요. (완성되면 아래에 영상이 뜹니다)"}
+                      : "이 페이지를 닫거나 다른 앱을 봐도 됩니다 — 워커가 서버에서 처리하고, 돌아오면 자동으로 이어집니다."}
                   </p>
                 </div>
               );
@@ -1908,7 +1967,7 @@ export default function Studio({
               <>
                 <p className="mt-3 text-[11px] text-zinc-400">
                   씬 {n}개 · 예상 합성 시간 <span className="font-medium text-zinc-500">~{estMin}분</span>
-                  {" "}(이보다 많이 넘으면 워커 에러일 수 있어요)
+                  {" "}· 합성은 서버에서 처리되니 페이지를 닫아도 됩니다
                 </p>
                 <button
                   type="button"
