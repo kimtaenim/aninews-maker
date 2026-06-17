@@ -110,6 +110,17 @@ export default function Studio({
     };
   }, [initial.id]);
 
+  // 4단계: 선택한 씬만 일괄 생성/리롤 (선택 안 된 건 그대로)
+  const [selectedScenes, setSelectedScenes] = useState<Set<number>>(new Set());
+  function toggleScene(i: number) {
+    setSelectedScenes((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+  }
+
   // 키프레임 StepChat (대화 미세조정)
   const [chat, setChat] = useState(initial.steps.keyframe.chat);
   const [chatInput, setChatInput] = useState("");
@@ -409,6 +420,23 @@ export default function Studio({
     try {
       for (let i = 1; i < project.scenes.length; i++) {
         if (project.scenes[i].imageUrl) continue;
+        await generateOneScene(i);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "이미지 생성 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // 선택한 씬들만 순차 생성/리롤. (병렬은 프로젝트 통째 저장이라 last-write-wins 위험)
+  async function generateSelectedScenes() {
+    if (selectedScenes.size === 0 || busy !== null) return;
+    setError(null);
+    setBusy("images-selected");
+    try {
+      for (const i of [...selectedScenes].sort((a, b) => a - b)) {
+        if (i < 1 || i >= project.scenes.length) continue;
         await generateOneScene(i);
       }
     } catch (e) {
@@ -984,6 +1012,21 @@ export default function Studio({
           </div>
         )}
 
+        {/* 선택된 씬0 — 크게 표시 (잘 보이게) */}
+        {project.keyframeUrl && (
+          <div className="mt-4">
+            <p className="mb-1 text-[11px] font-medium text-zinc-500">
+              ✓ 선택된 씬0 — 이 스타일·인물이 이후 모든 씬에 적용됩니다
+            </p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={project.keyframeUrl}
+              alt="선택된 씬0 키프레임"
+              className="w-48 aspect-[9/16] object-cover rounded-xl border-2 border-accent"
+            />
+          </div>
+        )}
+
         {/* StepChat — 대화로 스타일 미세조정 */}
         {scriptApproved && (
           <div className="mt-4 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
@@ -1067,21 +1110,40 @@ export default function Studio({
             4. 이미지 (씬별)
             {imagesApproved && <span className="ml-2 text-xs text-accent">승인됨</span>}
           </h2>
-          <button
-            type="button"
-            onClick={generateAllScenes}
-            disabled={!keyframeApproved || busy !== null || extraScenes.length === 0}
-            className="shrink-0 text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-medium px-3 py-1.5"
-          >
-            {busy === "images-all" ? (
-              <Busy>생성 중…</Busy>
-            ) : allScenesHaveImage ? (
-              "빈 씬만 생성"
-            ) : (
-              "전체 생성"
-            )}
-          </button>
         </div>
+        {keyframeApproved && extraScenes.length > 0 && (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={generateSelectedScenes}
+              disabled={busy !== null || selectedScenes.size === 0}
+              className="text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-medium px-3 py-1.5"
+            >
+              {busy === "images-selected" ? (
+                <Busy>생성 중…</Busy>
+              ) : (
+                `선택 생성·리롤${selectedScenes.size ? ` (${selectedScenes.size})` : ""}`
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={generateAllScenes}
+              disabled={busy !== null}
+              className="text-xs rounded-lg border border-accent text-accent px-3 py-1.5 hover:bg-accent/10 disabled:opacity-40"
+            >
+              {busy === "images-all" ? (
+                <Busy>생성 중…</Busy>
+              ) : allScenesHaveImage ? (
+                "빈 씬만 생성"
+              ) : (
+                "전체 생성"
+              )}
+            </button>
+            <span className="text-[11px] text-zinc-400">
+              체크한 씬만 생성/리롤됩니다 (선택 안 한 건 그대로).
+            </span>
+          </div>
+        )}
         {!keyframeApproved && (
           <p className="mt-2 text-xs text-zinc-500">키프레임을 먼저 승인해주세요.</p>
         )}
@@ -1119,7 +1181,9 @@ export default function Studio({
               {project.scenes.map((sc, i) => {
                 if (i === 0) return null; // 씬0 = 키프레임
                 const sceneBusy =
-                  busy === `scene-${i}` || (busy === "images-all" && !sc.imageUrl);
+                  busy === `scene-${i}` ||
+                  (busy === "images-all" && !sc.imageUrl) ||
+                  (busy === "images-selected" && selectedScenes.has(i));
                 const ed = scenes[i];
                 return (
                   <li
@@ -1142,9 +1206,16 @@ export default function Studio({
                     </div>
                     <div className="grid gap-1.5 min-w-0">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-[11px] font-medium text-zinc-500">
+                        <label className="flex items-center gap-1.5 text-[11px] font-medium text-zinc-500">
+                          <input
+                            type="checkbox"
+                            checked={selectedScenes.has(i)}
+                            onChange={() => toggleScene(i)}
+                            disabled={busy !== null}
+                            className="size-3.5 accent-[var(--color-accent)]"
+                          />
                           씬 {i + 1} · {sc.durationSec}s
-                        </span>
+                        </label>
                         <button
                           type="button"
                           onClick={() => generateScene(i)}
