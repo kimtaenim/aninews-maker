@@ -9,9 +9,10 @@ export const runtime = "nodejs";
 export const maxDuration = 60; // TTS 는 동기·짧음
 
 // 6. voiceover — 씬 나레이션 → ElevenLabs TTS(mp3) → Blob 저장. 동기 호출이라
-// GET 폴링 없음. body: { projectId, sceneIndex, text? }
+// GET 폴링 없음. body: { projectId, sceneIndex, text?, lang? }
+// lang="en" 이면 다국어판 더빙: narrationEn → audioUrlEn 에 저장(한국어 단계 상태는 안 건드림).
 export async function POST(req: NextRequest) {
-  let body: { projectId?: string; sceneIndex?: number; text?: string };
+  let body: { projectId?: string; sceneIndex?: number; text?: string; lang?: "ko" | "en" };
   try {
     body = await req.json();
   } catch {
@@ -41,30 +42,49 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "sceneIndex 범위 밖" }, { status: 422 });
   }
   const scene = project.scenes[sceneIndex];
-  const text = (body.text ?? scene?.narration ?? "").trim();
+  const lang = body.lang === "en" ? "en" : "ko";
+  const base = lang === "en" ? scene?.narrationEn : scene?.narration;
+  const text = (body.text ?? base ?? "").trim();
   if (!text) {
     return NextResponse.json(
-      { ok: false, error: `씬${sceneIndex + 1} 나레이션이 없어요` },
+      {
+        ok: false,
+        error:
+          lang === "en"
+            ? `씬${sceneIndex + 1} 영문 스크립트가 없어요 (번역 먼저)`
+            : `씬${sceneIndex + 1} 나레이션이 없어요`,
+      },
       { status: 422 }
     );
   }
 
-  project.steps.voiceover.status = "generating";
-  project.steps.voiceover.updatedAt = Date.now();
-  await saveProject(project);
+  // 한국어판만 voiceover 단계 상태를 움직인다. 영어판(다국어)은 별도 트랙.
+  if (lang === "ko") {
+    project.steps.voiceover.status = "generating";
+    project.steps.voiceover.updatedAt = Date.now();
+    await saveProject(project);
+  }
 
   try {
     const { audioBuffer, costUsd } = await synthesizeSpeech({ text });
     const { url } = await uploadAsset(
-      `project/${projectId}/scene-${sceneIndex}-audio-${Date.now()}.mp3`,
+      `project/${projectId}/scene-${sceneIndex}-audio-${lang}-${Date.now()}.mp3`,
       Buffer.from(audioBuffer),
       "audio/mpeg"
     );
-    project.scenes[sceneIndex] = { ...scene, audioUrl: url, status: "generated" };
+    project.scenes[sceneIndex] =
+      lang === "en"
+        ? { ...scene, audioUrlEn: url }
+        : { ...scene, audioUrl: url, status: "generated" };
 
-    const allDone = project.scenes.every((s) => !!s.audioUrl);
-    project.steps.voiceover.status = allDone ? "generated" : "generating";
-    project.steps.voiceover.updatedAt = Date.now();
+    const allDone =
+      lang === "en"
+        ? project.scenes.every((s) => !!s.audioUrlEn)
+        : project.scenes.every((s) => !!s.audioUrl);
+    if (lang === "ko") {
+      project.steps.voiceover.status = allDone ? "generated" : "generating";
+      project.steps.voiceover.updatedAt = Date.now();
+    }
     project.updatedAt = Date.now();
     await saveProject(project);
 
@@ -73,10 +93,10 @@ export async function POST(req: NextRequest) {
       vendor: "elevenlabs",
       model: "eleven_multilingual_v2",
       costUsd,
-      meta: { kind: "voiceover", sceneIndex, chars: text.length },
+      meta: { kind: "voiceover", sceneIndex, chars: text.length, lang },
     });
 
-    return NextResponse.json({ ok: true, url, sceneIndex, allDone, cost: formatKrw(costUsd) });
+    return NextResponse.json({ ok: true, url, sceneIndex, lang, allDone, cost: formatKrw(costUsd) });
   } catch (e) {
     const error = e instanceof Error ? e.message : "음성 생성 실패";
     project.steps.voiceover.status = "error";

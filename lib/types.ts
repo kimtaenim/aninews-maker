@@ -48,7 +48,8 @@ export interface Scene {
   videoUrl?: string;
   videoJobId?: string; // 비동기 작업 id ("provider::..." 인코딩)
   videoModelId?: string; // 이 씬 비디오를 만든 모델 (fal/grok 등) — 비용 계산용
-  audioUrl?: string; // 씬별 TTS 클립
+  audioUrl?: string; // 씬별 TTS 클립 (한국어)
+  audioUrlEn?: string; // 영어 더빙 클립 (다국어판)
   ttsTimestamps?: TtsWord[]; // 자막 타이밍 (TTS 타임스탬프 기준)
 }
 

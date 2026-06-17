@@ -141,7 +141,86 @@ export default function Studio({
 
   // 자막 설정 (프로젝트 일괄)
   const [sub, setSub] = useState<SubtitleSettings>(initial.subtitle ?? DEFAULT_SUBTITLE);
-  const [composeLang] = useState<"ko" | "en">("ko");
+  const [composeLang, setComposeLang] = useState<"ko" | "en">("ko");
+
+  // ── 다국어판(영어) ──────────────────────────────────────────────────────────
+  // 영문 스크립트는 로컬에서 편집 → 저장. 더빙(audioUrlEn)은 영어 트랙으로 별도 생성.
+  const [enScripts, setEnScripts] = useState<Record<number, string>>(
+    Object.fromEntries(initial.scenes.map((s) => [s.index, s.narrationEn ?? ""]))
+  );
+  const [enDirty, setEnDirty] = useState(false);
+
+  async function translateEn() {
+    setError(null);
+    setBusy("translate-en");
+    try {
+      const data = await call("/api/subtitle/translate", { projectId: project.id });
+      const rows = (data.scenes as Array<{ index: number; narrationEn?: string }>) ?? [];
+      const map = Object.fromEntries(rows.map((r) => [r.index, r.narrationEn ?? ""]));
+      setEnScripts((prev) => ({ ...prev, ...map }));
+      setProject((p) => ({
+        ...p,
+        scenes: p.scenes.map((s) => ({ ...s, narrationEn: map[s.index] ?? s.narrationEn })),
+      }));
+      setEnDirty(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "영문 번역 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function saveEnScripts() {
+    setError(null);
+    setBusy("save-en");
+    try {
+      const payload = project.scenes.map((s) => ({
+        index: s.index,
+        narrationEn: enScripts[s.index] ?? "",
+      }));
+      await call("/api/i18n/script", { projectId: project.id, scenes: payload });
+      setProject((p) => ({
+        ...p,
+        scenes: p.scenes.map((s) => ({ ...s, narrationEn: enScripts[s.index] ?? "" })),
+      }));
+      setEnDirty(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "영문 스크립트 저장 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function generateOneAudioEn(sceneIndex: number): Promise<void> {
+    const data = await call("/api/audio/scene", {
+      projectId: project.id,
+      sceneIndex,
+      lang: "en",
+    });
+    setProject((p) => ({
+      ...p,
+      scenes: p.scenes.map((s, i) =>
+        i === sceneIndex ? { ...s, audioUrlEn: data.url as string } : s
+      ),
+    }));
+  }
+
+  async function generateAllAudioEn() {
+    // 저장 안 한 편집이 있으면 먼저 저장(더빙은 저장된 영문 기준).
+    if (enDirty) await saveEnScripts();
+    setError(null);
+    setBusy("audio-en-all");
+    try {
+      for (let i = 0; i < project.scenes.length; i++) {
+        if (!(enScripts[project.scenes[i].index] ?? "").trim()) continue;
+        await generateOneAudioEn(i);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "영어 더빙 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
   async function saveSubtitle(patch: Partial<SubtitleSettings>) {
     const next = { ...sub, ...patch };
     setSub(next);
@@ -1660,6 +1739,92 @@ export default function Studio({
         </section>
       )}
 
+      {/* 다국어판 (영어) — 미리보기와 합성 사이. 영문 자막 + 영어 더빙 별도 트랙. */}
+      {project.scenes.some((s) => s.videoUrl) && (
+        <section className="mt-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 p-5">
+          <h2 className="text-sm font-semibold">🌐 다국어판 (영어)</h2>
+          <p className="mt-1 text-[11px] text-zinc-400">
+            한국어 영상은 그대로 두고, 영문 자막 + 영어 더빙을 따로 만듭니다. 합성 때
+            한국어판/영어판 중 하나를 골라 구워요. (스페인어·일본어 등은 추후 추가)
+          </p>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={translateEn}
+              disabled={busy !== null}
+              className="rounded-lg border border-accent text-accent px-3 py-1.5 text-xs font-medium hover:bg-accent/10 disabled:opacity-40"
+            >
+              {busy === "translate-en" ? <Busy>번역 중…</Busy> : "① Claude 영문 번역 생성"}
+            </button>
+            <button
+              type="button"
+              onClick={saveEnScripts}
+              disabled={busy !== null || !enDirty}
+              className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-1.5 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
+            >
+              {busy === "save-en" ? <Busy>저장 중…</Busy> : enDirty ? "영문 저장" : "저장됨"}
+            </button>
+            <button
+              type="button"
+              onClick={generateAllAudioEn}
+              disabled={busy !== null}
+              className="rounded-lg border border-accent text-accent px-3 py-1.5 text-xs font-medium hover:bg-accent/10 disabled:opacity-40"
+            >
+              {busy === "audio-en-all" ? <Busy>더빙 중…</Busy> : "② 영어 더빙 생성 (전체)"}
+            </button>
+          </div>
+
+          {/* 영문 스크립트 편집 */}
+          <div className="mt-3 grid gap-2">
+            {project.scenes.map((sc, i) => (
+              <label key={i} className="grid gap-1">
+                <span className="text-[10px] text-zinc-500">
+                  씬 {i + 1}
+                  <span className="ml-1 text-zinc-400">· {sc.narration}</span>
+                  <span className={`ml-2 ${sc.audioUrlEn ? "text-accent" : "text-zinc-400"}`}>
+                    {sc.audioUrlEn ? "🔊 더빙됨" : "더빙 없음"}
+                  </span>
+                </span>
+                <textarea
+                  value={enScripts[sc.index] ?? ""}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setEnScripts((prev) => ({ ...prev, [sc.index]: v }));
+                    setEnDirty(true);
+                  }}
+                  rows={2}
+                  placeholder="English narration… (①로 자동 번역 후 다듬기)"
+                  className={fieldCls}
+                />
+              </label>
+            ))}
+          </div>
+
+          {/* 다국어 미리보기 — 영어 자막 + 영어 더빙 */}
+          {project.scenes.some((s) => s.audioUrlEn || s.narrationEn) && (
+            <>
+              <h3 className="mt-4 text-xs font-semibold text-zinc-500">다국어 미리보기</h3>
+              <ol className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {project.scenes.map((sc, i) =>
+                  sc.videoUrl ? (
+                    <ScenePreview
+                      key={i}
+                      index={i}
+                      videoUrl={sc.videoUrl}
+                      audioUrl={sc.audioUrlEn}
+                      subtitle={sc.narration}
+                      subtitleEn={enScripts[sc.index] || sc.narrationEn}
+                      sub={{ ...sub, lang: "en" }}
+                    />
+                  ) : null
+                )}
+              </ol>
+            </>
+          )}
+        </section>
+      )}
+
       {/* 7단계: 최종 합성 (worker) */}
       {project.scenes.some((s) => s.videoUrl) && (
         <section className="mt-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 p-5">
@@ -1680,9 +1845,34 @@ export default function Studio({
             <p className="mt-2 text-xs text-red-600">{project.steps.compose.error}</p>
           )}
 
+          {/* 언어 선택 — 한국어판 / 영어판(다국어). 영어판은 영어 더빙이 있어야 함. */}
+          {(() => {
+            const enReady = project.scenes.some((s) => s.audioUrlEn);
+            return (
+              <div className="mt-3 inline-flex rounded-xl border border-zinc-200 dark:border-zinc-800 p-0.5 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setComposeLang("ko")}
+                  className={`rounded-lg px-3 py-1.5 font-medium transition-colors ${composeLang === "ko" ? "bg-accent text-white" : "text-zinc-500"}`}
+                >
+                  한국어판
+                </button>
+                <button
+                  type="button"
+                  onClick={() => enReady && setComposeLang("en")}
+                  disabled={!enReady}
+                  title={enReady ? "" : "위 다국어판에서 영어 더빙을 먼저 생성하세요"}
+                  className={`rounded-lg px-3 py-1.5 font-medium transition-colors disabled:opacity-40 ${composeLang === "en" ? "bg-accent text-white" : "text-zinc-500"}`}
+                >
+                  영어판
+                </button>
+              </div>
+            );
+          })()}
+
           {busy === "compose" ? (
             <p className="mt-3 inline-flex items-center gap-2 text-sm text-zinc-500">
-              <Spinner /> 합성 중… (worker 처리, 닫지 말고 기다려주세요)
+              <Spinner /> 합성 중… ({composeLang === "en" ? "영어판" : "한국어판"} · worker 처리, 닫지 말고 기다려주세요)
             </p>
           ) : (
             <button
@@ -1691,17 +1881,18 @@ export default function Studio({
               disabled={busy !== null}
               className="mt-3 w-full rounded-xl bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-semibold py-3 transition-colors"
             >
-              {project.finalVideoUrl ? "🎬 다시 합성" : "🎬 최종 합성하기 (한국어판)"}
+              {project.finalVideoUrl ? "🎬 다시 합성" : "🎬 최종 합성하기"} (
+              {composeLang === "en" ? "영어판" : "한국어판"})
             </button>
           )}
 
           {project.finalVideoUrl && (
-            <div className="mt-4">
+            <div className="mt-4 flex flex-col items-center">
               <video
                 src={project.finalVideoUrl}
                 controls
                 playsInline
-                className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800"
+                className="max-h-[80vh] w-auto max-w-full rounded-xl border border-zinc-200 dark:border-zinc-800"
               />
               <a
                 href={project.finalVideoUrl}

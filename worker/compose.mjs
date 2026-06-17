@@ -40,15 +40,72 @@ async function download(url, dest) {
   await writeFile(dest, Buffer.from(await r.arrayBuffer()));
 }
 
-// 자막 줄바꿈(최대 2줄). 공백 있으면 중간 공백에서, 없으면 글자수로.
-function wrapSubtitle(text, perLine = 18) {
-  const t = (text ?? "").trim();
-  if (t.length <= perLine) return t;
-  const sp = t.lastIndexOf(" ", perLine + 4);
-  if (sp > perLine * 0.5) {
-    return t.slice(0, sp) + "\n" + t.slice(sp + 1, sp + 1 + perLine * 1.6);
+// 글자 폭(단위: fontsize 배수). CJK·전각 ≈ 1.0, 그 외(영문/숫자/기호) ≈ 0.55.
+function charUnits(ch) {
+  return /[ᄀ-ᇿ⺀-꓏가-힣豈-﫿︰-﹏＀-￯]/.test(
+    ch
+  )
+    ? 1.0
+    : 0.55;
+}
+function strUnits(s) {
+  let u = 0;
+  for (const c of s) u += charUnits(c);
+  return u;
+}
+
+// 폭 기반 자동 줄바꿈(최대 maxLines줄). 어절(공백) 단위로 채우되, 한 어절이
+// 한 줄보다 길면 글자 단위로 쪼갠다. 화면 폭(maxWidthPx)을 절대 넘기지 않는다.
+function wrapSubtitle(text, fontsize, maxWidthPx, maxLines = 3) {
+  const t = (text ?? "").trim().replace(/\s+/g, " ");
+  if (!t) return "";
+  const maxUnits = maxWidthPx / (fontsize * 1.02); // 글리프 advance 여유
+  const lines = [];
+  let cur = "";
+  let curU = 0;
+  const pushCur = () => {
+    if (cur) lines.push(cur);
+    cur = "";
+    curU = 0;
+  };
+  for (const word of t.split(" ")) {
+    const wU = strUnits(word);
+    if (wU > maxUnits) {
+      // 어절 자체가 한 줄보다 김 → 글자 단위로 강제 분할
+      pushCur();
+      let chunk = "";
+      let chunkU = 0;
+      for (const c of word) {
+        const cu = charUnits(c);
+        if (chunkU + cu > maxUnits) {
+          lines.push(chunk);
+          chunk = "";
+          chunkU = 0;
+        }
+        chunk += c;
+        chunkU += cu;
+      }
+      cur = chunk;
+      curU = chunkU;
+      continue;
+    }
+    const withSpace = curU === 0 ? wU : curU + charUnits(" ") + wU;
+    if (withSpace > maxUnits && cur) {
+      pushCur();
+      cur = word;
+      curU = wU;
+    } else {
+      cur = cur ? cur + " " + word : word;
+      curU = withSpace;
+    }
   }
-  return t.slice(0, perLine) + "\n" + t.slice(perLine, perLine * 2);
+  pushCur();
+  if (lines.length > maxLines) {
+    const kept = lines.slice(0, maxLines);
+    kept[maxLines - 1] = kept[maxLines - 1].replace(/.$/, "…");
+    return kept.join("\n");
+  }
+  return lines.join("\n");
 }
 
 export async function composeProject(projectId, lang) {
@@ -91,7 +148,9 @@ export async function composeProject(projectId, lang) {
 
       const text = (lang === "en" ? s.narrationEn || s.narration : s.narration) ?? "";
       const subPath = join(dir, `s${i}.txt`);
-      await writeFile(subPath, wrapSubtitle(text), "utf8");
+      // 좌우 여백(각 ~9%) 확보 + 박스 보더만큼 더 빼서 화면 밖으로 안 나가게.
+      const subMaxWidth = W * 0.82 - 40;
+      await writeFile(subPath, wrapSubtitle(text, fontsize, subMaxWidth, 3), "utf8");
 
       const vf =
         `scale=${W}:${H}:force_original_aspect_ratio=decrease,` +
