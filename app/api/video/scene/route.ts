@@ -26,6 +26,7 @@ export async function POST(req: NextRequest) {
     sceneIndex?: number;
     prompt?: string;
     videoModelId?: string;
+    motionScale?: "subtle" | "large";
   };
   try {
     body = await req.json();
@@ -66,11 +67,14 @@ export async function POST(req: NextRequest) {
   const modelId =
     body.videoModelId || project.videoModelId || DEFAULT_VIDEO_MODEL_ID;
   try {
-    // 표준: 동작은 작게. 큰/과한 액션 대신 미세하고 잔잔한 움직임.
+    // 기본은 잔잔. 씬별로 "크게" 선택하면 더 역동적으로.
     const motion = (body.prompt ?? scene.motion ?? "").trim();
     const SUBTLE =
       "Keep motion subtle and minimal — small, gentle movements only; no large, fast, or dramatic action; slow steady camera.";
-    const prompt = motion ? `${motion}. ${SUBTLE}` : SUBTLE;
+    const LARGE =
+      "Use larger, more dynamic motion and noticeable camera movement, while keeping it coherent (not chaotic).";
+    const guidance = body.motionScale === "large" ? LARGE : SUBTLE;
+    const prompt = motion ? `${motion}. ${guidance}` : guidance;
     const { jobId } = await submitVideo(modelId, {
       imageUrl: scene.imageUrl,
       prompt,

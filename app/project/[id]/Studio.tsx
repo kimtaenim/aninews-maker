@@ -127,6 +127,8 @@ export default function Studio({
   const [videoModelId, setVideoModelId] = useState(
     initial.videoModelId || videoModels[0]?.id || ""
   );
+  // 씬별 모션 크기 (기본 잔잔, 가끔 크게)
+  const [motionScale, setMotionScale] = useState<Record<number, "subtle" | "large">>({});
 
   // 키프레임 StepChat (대화 미세조정)
   const [chat, setChat] = useState(initial.steps.keyframe.chat);
@@ -474,7 +476,12 @@ export default function Studio({
 
   // 한 씬: 제출 → 완료까지 폴링(최대 ~5분). 완료 시 project.scenes 갱신.
   async function submitAndPollVideo(sceneIndex: number): Promise<void> {
-    await call("/api/video/scene", { projectId: project.id, sceneIndex, videoModelId });
+    await call("/api/video/scene", {
+      projectId: project.id,
+      sceneIndex,
+      videoModelId,
+      motionScale: motionScale[sceneIndex] ?? "subtle",
+    });
     const MAX_TRIES = 60; // 60 × 5s = 5분
     for (let t = 0; t < MAX_TRIES; t++) {
       await sleep(5000);
@@ -1377,6 +1384,23 @@ export default function Studio({
                       >
                         {sc.videoUrl ? "리롤" : "비디오 생성"}
                       </button>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-zinc-400">움직임 크기</span>
+                      <select
+                        value={motionScale[i] ?? "subtle"}
+                        onChange={(e) =>
+                          setMotionScale((m) => ({
+                            ...m,
+                            [i]: e.target.value as "subtle" | "large",
+                          }))
+                        }
+                        disabled={busy !== null}
+                        className="rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-1.5 py-0.5 text-[10px] outline-none focus:border-accent disabled:opacity-50"
+                      >
+                        <option value="subtle">잔잔 (기본)</option>
+                        <option value="large">크게</option>
+                      </select>
                     </div>
                     <span className="text-[10px] text-zinc-400">비디오 모션 프롬프트 (영문)</span>
                     <textarea
