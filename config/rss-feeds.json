@@ -1,6 +1,182 @@
 {
-  "version": "1.0",
-  "updated": "2026-06-17",
-  "_comment": "RSS 소스 목록 (cardnews rss-feeds.json 패턴). 골격 — 실제 피드는 합의하며 채운다.",
-  "feeds": []
+  "version": "1.3",
+  "updated": "2026-05-17",
+  "categories": {
+    "BOOK": {
+      "label": "도서·북리뷰",
+      "feeds": [
+        { "name": "NYT Book Review", "url": "https://rss.nytimes.com/services/xml/rss/nyt/Books.xml", "lang": "en" },
+        { "name": "The Guardian Books", "url": "https://www.theguardian.com/books/rss", "lang": "en" },
+        { "name": "Literary Hub", "url": "https://lithub.com/feed/", "lang": "en" },
+        { "name": "Public Books", "url": "https://www.publicbooks.org/feed/", "lang": "en" }
+      ]
+    },
+    "AI": {
+      "label": "AI·테크",
+      "feeds": [
+        { "name": "MIT Technology Review", "url": "https://www.technologyreview.com/feed/", "lang": "en" },
+        { "name": "TechCrunch AI", "url": "https://techcrunch.com/category/artificial-intelligence/feed/", "lang": "en" },
+        { "name": "Gizmodo AI", "url": "https://gizmodo.com/tech/artificial-intelligence/feed", "lang": "en" },
+        { "name": "Wired AI", "url": "https://www.wired.com/feed/tag/ai/latest/rss", "lang": "en" },
+        { "name": "The Verge", "url": "https://www.theverge.com/rss/index.xml", "lang": "en" },
+        { "name": "Ars Technica", "url": "https://feeds.arstechnica.com/arstechnica/index", "lang": "en" },
+        { "name": "Gizmodo AI (Tag)", "url": "https://gizmodo.com/tag/artificial-intelligence/rss", "lang": "en" },
+        { "name": "Gizmodo Reviews", "url": "https://gizmodo.com/reviews/feed", "lang": "en" }
+      ]
+    },
+    "INTL": {
+      "label": "국제뉴스",
+      "feeds": [
+        { "name": "BBC World", "url": "http://feeds.bbci.co.uk/news/world/rss.xml", "lang": "en" },
+        { "name": "The Guardian World", "url": "https://www.theguardian.com/world/rss", "lang": "en" },
+        { "name": "NYT World", "url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml", "lang": "en" },
+        { "name": "Al Jazeera", "url": "https://www.aljazeera.com/xml/rss/all.xml", "lang": "en" },
+        { "name": "NPR News", "url": "https://feeds.npr.org/1001/rss.xml", "lang": "en" },
+        { "name": "Google News World", "url": "https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRFp0Y1RjU0FtVnVHZ0pWVXlnQVAB", "lang": "en" },
+        { "name": "Amnesty International", "url": "https://www.amnesty.org/en/latest/news/feed/", "lang": "en" },
+        { "name": "Human Rights Watch", "url": "https://www.hrw.org/rss/news", "lang": "en" },
+        { "name": "UN Press Releases", "url": "https://press.un.org/en/rss.xml", "lang": "en" }
+      ]
+    },
+    "LIFE": {
+      "label": "라이프스타일",
+      "feeds": [
+        { "name": "VinePair", "url": "https://vinepair.com/feed/", "lang": "en" },
+        { "name": "PUNCH", "url": "https://feeds.feedburner.com/punchdrink", "lang": "en" },
+        { "name": "Sprudge", "url": "https://sprudge.com/feed", "lang": "en" },
+        { "name": "Imbibe Magazine", "url": "https://imbibemagazine.com/feed/", "lang": "en" },
+        { "name": "The Drinks Business", "url": "https://www.thedrinksbusiness.com/feed/", "lang": "en" },
+        { "name": "The Spirits Business", "url": "https://www.thespiritsbusiness.com/feed/", "lang": "en" }
+      ]
+    },
+    "PARANORMAL": {
+      "label": "파라노말·미스터리",
+      "feeds": [
+        { "name": "Mysterious Universe", "url": "https://mysteriousuniverse.org/feed/", "lang": "en" },
+        { "name": "Phantoms and Monsters", "url": "https://phantomsandmonsters.com/feeds/posts/default", "lang": "en" },
+        { "name": "Higgypop", "url": "https://higgypop.com/feed.xml", "lang": "en" },
+        { "name": "Mysterium Incognita", "url": "https://mysterium-incognita.com/feed/", "lang": "de" },
+        { "name": "Mystère du Monde", "url": "https://www.mysteredumonde.com/rss", "lang": "fr" },
+        { "name": "Grenzwissenschaft-Aktuell", "url": "https://www.grenzwissenschaft-aktuell.de/feed/", "lang": "de" }
+      ]
+    },
+    "SAFETY": {
+      "label": "아동·청소년 안전",
+      "feeds": [
+        { "name": "WHO News", "url": "https://www.who.int/rss-feeds/news-english.xml", "lang": "en" },
+        { "name": "Child Mind Institute", "url": "https://childmind.org/feed/", "lang": "en" },
+        { "name": "MedlinePlus Child Safety", "url": "https://medlineplus.gov/feeds/topics/childsafety.xml", "lang": "en" },
+        { "name": "MedlinePlus Teen Mental Health", "url": "https://medlineplus.gov/feeds/topics/teenmentalhealth.xml", "lang": "en" },
+        { "name": "Cyberbullying Research Center", "url": "https://cyberbullying.org/feed", "lang": "en" },
+        { "name": "UNICEF France", "url": "https://www.unicef.fr/feed/", "lang": "fr" },
+        { "name": "SantéMentale.fr", "url": "https://www.santementale.fr/feed/", "lang": "fr" }
+      ]
+    },
+    "ARTS": {
+      "label": "예술·문화",
+      "feeds": [
+        { "name": "The Art Newspaper", "url": "https://www.theartnewspaper.com/rss.xml", "lang": "en" },
+        { "name": "Artsy News", "url": "https://www.artsy.net/rss/news", "lang": "en" },
+        { "name": "Guardian Arts", "url": "https://www.theguardian.com/artanddesign/rss", "lang": "en" },
+        { "name": "Hyperallergic", "url": "https://hyperallergic.com/feed/", "lang": "en" },
+        { "name": "NYT Arts", "url": "https://rss.nytimes.com/services/xml/rss/nyt/Arts.xml", "lang": "en" }
+      ]
+    },
+    "ESG": {
+      "label": "ESG·환경",
+      "feeds": [
+        { "name": "Carbon Brief", "url": "https://www.carbonbrief.org/feed/", "lang": "en" },
+        { "name": "Grist", "url": "https://grist.org/feed/", "lang": "en" },
+        { "name": "Inside Climate News", "url": "https://insideclimatenews.org/feed/", "lang": "en" },
+        { "name": "ImpactAlpha", "url": "https://impactalpha.com/feed/", "lang": "en" },
+        { "name": "Novethic", "url": "https://www.novethic.fr/feed", "lang": "fr" },
+        { "name": "UNEP News", "url": "https://www.unep.org/rss.xml", "lang": "en" }
+      ]
+    },
+    "만협": {
+      "label": "만화·웹툰·애니",
+      "feeds": [
+        { "name": "Google News 웹툰·만화", "url": "https://news.google.com/rss/search?q=%EC%9B%B9%ED%88%B0+%EB%A7%8C%ED%99%94&hl=ko&gl=KR&ceid=KR:ko", "lang": "ko" },
+        { "name": "コミックナタリー", "url": "https://natalie.mu/comic/feed/news", "lang": "ja" },
+        { "name": "Anime News Network", "url": "https://www.animenewsnetwork.com/news/rss.xml", "lang": "en" },
+        { "name": "CBR", "url": "https://www.cbr.com/feed/", "lang": "en" },
+        { "name": "BDZoom", "url": "http://www.bdzoom.com/feed/", "lang": "fr" },
+        { "name": "Sumikai", "url": "https://sumikai.com/feed/", "lang": "de" }
+      ]
+    },
+    "SPORTS": {
+      "label": "스포츠",
+      "feeds": [
+        { "name": "ESPN", "url": "https://www.espn.com/espn/rss/news", "lang": "en" },
+        { "name": "The Guardian Sport", "url": "https://www.theguardian.com/sport/rss", "lang": "en" },
+        { "name": "Reuters Sports", "url": "https://feeds.reuters.com/reuters/sportsNews", "lang": "en" },
+        { "name": "Red Bull Sports", "url": "https://www.redbull.com/rss/en_INT/sports", "lang": "en" },
+        { "name": "Formula 1", "url": "https://www.formula1.com/content/fom-website/en/latest/all.xml", "lang": "en" },
+        { "name": "Tennis World USA", "url": "https://www.tennisworldusa.org/rss/news.xml", "lang": "en" },
+        { "name": "MLB News", "url": "https://www.mlb.com/feeds/news/rss.xml", "lang": "en" },
+        { "name": "The Guardian Football", "url": "https://www.theguardian.com/football/rss", "lang": "en" },
+        { "name": "NBA News", "url": "https://www.nba.com/news/rss.xml", "lang": "en" }
+      ]
+    },
+    "KCULTURE": {
+      "label": "K-Culture",
+      "feeds": [
+        { "name": "한겨레 문화", "url": "https://www.hani.co.kr/rss/culture/", "lang": "ko" },
+        { "name": "경향신문 문화", "url": "https://www.khan.co.kr/rss/rssdata/culture_news.xml", "lang": "ko" },
+        { "name": "경향신문 인물", "url": "https://www.khan.co.kr/rss/rssdata/people_news.xml", "lang": "ko" },
+        { "name": "BBC Entertainment & Arts", "url": "https://feeds.bbci.co.uk/news/entertainment_and_arts/rss.xml", "lang": "en" },
+        { "name": "Le Monde Culture", "url": "https://www.lemonde.fr/culture/rss_full.xml", "lang": "fr" },
+        { "name": "KBS World English", "url": "https://world.kbs.co.kr/rss/rss_news.htm?lang=e", "lang": "en" },
+        { "name": "KBS World Français", "url": "https://world.kbs.co.kr/rss/rss_news.htm?lang=f", "lang": "fr" },
+        { "name": "SBS 문화", "url": "https://news.sbs.co.kr/news/SectionRssFeed.do?sectionId=07&plink=RSSREADER", "lang": "ko" },
+        { "name": "한겨레 사이언스 (학술서)", "url": "https://www.hani.co.kr/rss/science/", "lang": "ko" },
+        { "name": "정책브리핑 문체부", "url": "https://www.korea.kr/rss/dept_mcst.xml", "lang": "ko" }
+      ]
+    },
+    "KLIFE": {
+      "label": "K-Life",
+      "feeds": [
+        { "name": "경향신문 라이프", "url": "https://www.khan.co.kr/rss/rssdata/life_news.xml", "lang": "ko" },
+        { "name": "한겨레 사회", "url": "https://www.hani.co.kr/rss/society/", "lang": "ko" },
+        { "name": "경향신문 사회", "url": "https://www.khan.co.kr/rss/rssdata/society_news.xml", "lang": "ko" },
+        { "name": "KBS World English", "url": "https://world.kbs.co.kr/rss/rss_news.htm?lang=e", "lang": "en" },
+        { "name": "KBS World Français", "url": "https://world.kbs.co.kr/rss/rss_news.htm?lang=f", "lang": "fr" },
+        { "name": "SBS 사회", "url": "https://news.sbs.co.kr/news/SectionRssFeed.do?sectionId=03&plink=RSSREADER", "lang": "ko" },
+        { "name": "정책브리핑 질병청", "url": "https://www.korea.kr/rss/dept_kdca.xml", "lang": "ko" },
+        { "name": "정책브리핑 기상청", "url": "https://www.korea.kr/rss/dept_kma.xml", "lang": "ko" }
+      ]
+    },
+    "KRNEWS": {
+      "label": "Korea News",
+      "feeds": [
+        { "name": "한겨레 정치", "url": "https://www.hani.co.kr/rss/politics/", "lang": "ko" },
+        { "name": "경향신문 정치", "url": "https://www.khan.co.kr/rss/rssdata/politic_news.xml", "lang": "ko" },
+        { "name": "한겨레 경제", "url": "https://www.hani.co.kr/rss/economy/", "lang": "ko" },
+        { "name": "경향신문 경제", "url": "https://www.khan.co.kr/rss/rssdata/economy_news.xml", "lang": "ko" },
+        { "name": "한겨레 사설·칼럼", "url": "https://www.hani.co.kr/rss/opinion/", "lang": "ko" },
+        { "name": "SBS 정치", "url": "https://news.sbs.co.kr/news/SectionRssFeed.do?sectionId=01&plink=RSSREADER", "lang": "ko" },
+        { "name": "SBS 경제", "url": "https://news.sbs.co.kr/news/SectionRssFeed.do?sectionId=02&plink=RSSREADER", "lang": "ko" },
+        { "name": "오마이뉴스 메인", "url": "http://rss.ohmynews.com/rss/Ohmynews.xml", "lang": "ko" },
+        { "name": "오마이뉴스 정치", "url": "http://rss.ohmynews.com/rss/politics.xml", "lang": "ko" },
+        { "name": "VOA 한국어", "url": "https://www.voakorea.com/api/epiqq", "lang": "ko" },
+        { "name": "KBS World English", "url": "https://world.kbs.co.kr/rss/rss_news.htm?lang=e", "lang": "en" },
+        { "name": "KBS World Français", "url": "https://world.kbs.co.kr/rss/rss_news.htm?lang=f", "lang": "fr" },
+        { "name": "정책브리핑 정책뉴스", "url": "https://www.korea.kr/rss/policy.xml", "lang": "ko" },
+        { "name": "정책브리핑 대통령실", "url": "https://www.korea.kr/rss/president.xml", "lang": "ko" },
+        { "name": "정책브리핑 외교부", "url": "https://www.korea.kr/rss/dept_mofa.xml", "lang": "ko" },
+        { "name": "정책브리핑 통일부", "url": "https://www.korea.kr/rss/dept_unikorea.xml", "lang": "ko" }
+      ]
+    },
+    "ASIA": {
+      "label": "Asia",
+      "feeds": [
+        { "name": "The Diplomat", "url": "https://thediplomat.com/feed/", "lang": "en" },
+        { "name": "France 24 Asie", "url": "https://www.france24.com/fr/asie-pacifique/rss", "lang": "fr" },
+        { "name": "Le Monde International", "url": "https://www.lemonde.fr/international/rss_full.xml", "lang": "fr" },
+        { "name": "Al Jazeera English", "url": "https://www.aljazeera.com/xml/rss/all.xml", "lang": "en" },
+        { "name": "BBC Asia", "url": "https://feeds.bbci.co.uk/news/world/asia/rss.xml", "lang": "en" },
+        { "name": "SCMP Asia", "url": "https://www.scmp.com/rss/91/feed", "lang": "en" }
+      ]
+    }
+  }
 }
