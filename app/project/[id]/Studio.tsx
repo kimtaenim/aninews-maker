@@ -1099,19 +1099,36 @@ export default function Studio({
 
         {keyframeApproved && extraScenes.length > 0 && (
           <>
-            <ol className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {/* 씬0 키프레임 = 레퍼런스 (3단계에서 확정한 스타일·인물) */}
+            {project.keyframeUrl && (
+              <div className="mt-4 flex items-center gap-3 rounded-xl bg-zinc-50 dark:bg-zinc-900 p-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={project.keyframeUrl}
+                  alt="씬0 키프레임"
+                  className="w-12 aspect-[9/16] object-cover rounded-lg border border-zinc-200 dark:border-zinc-800"
+                />
+                <p className="text-[11px] text-zinc-500">
+                  씬0 키프레임 — 모든 씬이 이 스타일·인물·팔레트를 레퍼런스로 따릅니다.
+                </p>
+              </div>
+            )}
+
+            {/* 씬별: 이미지 + 스크립트(편집) + 리롤 */}
+            <ol className="mt-3 grid gap-3">
               {project.scenes.map((sc, i) => {
-                if (i === 0) return null; // 씬0 = 키프레임 (3단계)
+                if (i === 0) return null; // 씬0 = 키프레임
                 const sceneBusy =
                   busy === `scene-${i}` || (busy === "images-all" && !sc.imageUrl);
+                const ed = scenes[i];
                 return (
-                  <li key={i} className="grid gap-1.5">
-                    <div className="flex aspect-[9/16] items-center justify-center overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900">
+                  <li
+                    key={i}
+                    className="grid grid-cols-[80px_1fr] gap-3 rounded-xl border border-zinc-200 dark:border-zinc-800 p-2.5"
+                  >
+                    <div className="flex aspect-[9/16] items-center justify-center overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900">
                       {sceneBusy ? (
-                        <span className="inline-flex flex-col items-center gap-1.5 text-[11px] text-zinc-400">
-                          <Spinner className="size-5" />
-                          생성 중…
-                        </span>
+                        <Spinner className="size-5" />
                       ) : sc.imageUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
@@ -1120,27 +1137,60 @@ export default function Studio({
                           className="h-full w-full object-cover"
                         />
                       ) : (
-                        <span className="text-[11px] text-zinc-400">미생성</span>
+                        <span className="text-[10px] text-zinc-400">미생성</span>
                       )}
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] text-zinc-500">씬 {i + 1}</span>
-                      <button
-                        type="button"
-                        onClick={() => generateScene(i)}
-                        disabled={busy !== null}
-                        className="text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
-                      >
-                        {sc.imageUrl ? "리롤" : "생성"}
-                      </button>
+                    <div className="grid gap-1.5 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-medium text-zinc-500">
+                          씬 {i + 1} · {sc.durationSec}s
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => generateScene(i)}
+                          disabled={busy !== null}
+                          className="shrink-0 text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
+                        >
+                          {sc.imageUrl ? "리롤" : "생성"}
+                        </button>
+                      </div>
+                      <textarea
+                        value={ed?.narration ?? ""}
+                        onChange={(e) => patchScene(i, { narration: e.target.value })}
+                        rows={2}
+                        placeholder="나레이션"
+                        className="w-full rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1 text-xs outline-none focus:border-accent resize-y"
+                      />
+                      <textarea
+                        value={ed?.imagePrompt ?? ""}
+                        onChange={(e) => patchScene(i, { imagePrompt: e.target.value })}
+                        rows={2}
+                        placeholder="이미지 프롬프트 (영문)"
+                        className="w-full rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1 font-mono text-[11px] outline-none focus:border-accent resize-y"
+                      />
+                      {sceneCost[i] && (
+                        <p className="text-[11px] text-zinc-400">{sceneCost[i]}</p>
+                      )}
                     </div>
-                    {sceneCost[i] && (
-                      <p className="text-[11px] text-zinc-400">{sceneCost[i]}</p>
-                    )}
                   </li>
                 );
               })}
             </ol>
+
+            {dirty && (
+              <button
+                type="button"
+                onClick={saveScenes}
+                disabled={busy !== null}
+                className="mt-3 text-xs rounded-lg border border-accent text-accent px-3 py-1.5 hover:bg-accent/10 disabled:opacity-40"
+              >
+                {busy === "save" ? <Busy>저장 중…</Busy> : "스크립트 편집 저장"}
+              </button>
+            )}
+            <p className="mt-1 text-[11px] text-zinc-400">
+              스크립트를 고치면 <span className="font-medium">저장</span> 후{" "}
+              <span className="font-medium">리롤</span>해야 새 프롬프트로 이미지가 나옵니다.
+            </p>
 
             {allScenesHaveImage && !imagesApproved && (
               <button
