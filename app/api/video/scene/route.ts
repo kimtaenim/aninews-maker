@@ -66,9 +66,14 @@ export async function POST(req: NextRequest) {
   const modelId =
     body.videoModelId || project.videoModelId || DEFAULT_VIDEO_MODEL_ID;
   try {
+    // 표준: 동작은 작게. 큰/과한 액션 대신 미세하고 잔잔한 움직임.
+    const motion = (body.prompt ?? scene.motion ?? "").trim();
+    const SUBTLE =
+      "Keep motion subtle and minimal — small, gentle movements only; no large, fast, or dramatic action; slow steady camera.";
+    const prompt = motion ? `${motion}. ${SUBTLE}` : SUBTLE;
     const { jobId } = await submitVideo(modelId, {
       imageUrl: scene.imageUrl,
-      prompt: (body.prompt ?? scene.motion ?? "").trim() || undefined,
+      prompt,
     });
     project.scenes[sceneIndex] = {
       ...scene,
