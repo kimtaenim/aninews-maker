@@ -1378,6 +1378,14 @@ export default function Studio({
                         {sc.videoUrl ? "리롤" : "비디오 생성"}
                       </button>
                     </div>
+                    <span className="text-[10px] text-zinc-400">비디오 모션 프롬프트 (영문)</span>
+                    <textarea
+                      value={scenes[i]?.motion ?? ""}
+                      onChange={(e) => patchScene(i, { motion: e.target.value })}
+                      rows={2}
+                      placeholder="예: slow camera push-in, gentle wind"
+                      className="w-full rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1 font-mono text-[11px] outline-none focus:border-accent resize-y"
+                    />
                     {videoCost[i] && (
                       <p className="text-[11px] text-zinc-400">{videoCost[i]}</p>
                     )}
@@ -1385,6 +1393,21 @@ export default function Studio({
                 );
               })}
             </ol>
+
+            {dirty && (
+              <button
+                type="button"
+                onClick={saveScenes}
+                disabled={busy !== null}
+                className="mt-3 text-xs rounded-lg border border-accent text-accent px-3 py-1.5 hover:bg-accent/10 disabled:opacity-40"
+              >
+                {busy === "save" ? <Busy>저장 중…</Busy> : "프롬프트 저장"}
+              </button>
+            )}
+            <p className="mt-1 text-[11px] text-zinc-400">
+              모션 프롬프트를 고치면 <span className="font-medium">저장</span> 후{" "}
+              <span className="font-medium">리롤</span>하면 그 프롬프트로 생성됩니다.
+            </p>
 
             {allScenesHaveVideo && !videosApproved && (
               <button
