@@ -380,6 +380,26 @@ export default function Studio({
     // status 가 generating 으로 바뀌면 위 useEffect 가 폴링을 시작한다.
   }
 
+  // 합성 중단 — 멈춘/매달린 합성을 취소하고 상태 리셋(스피너 해제 + 재시도 가능).
+  async function cancelCompose() {
+    try {
+      await fetch(`/api/compose?projectId=${encodeURIComponent(project.id)}`, {
+        method: "DELETE",
+      });
+    } catch {
+      /* 무시 */
+    }
+    composePollRef.current = false;
+    setProject((p) => ({
+      ...p,
+      steps: {
+        ...p.steps,
+        compose: { ...p.steps.compose, status: "error", error: "사용자가 중단했어요" },
+      },
+    }));
+    setBusy(null);
+  }
+
   // 키프레임 StepChat (대화 미세조정)
   const [chat, setChat] = useState(initial.steps.keyframe.chat);
   const [chatInput, setChatInput] = useState("");
@@ -2041,6 +2061,13 @@ export default function Studio({
                       ? "예상보다 오래 걸립니다 — Render Logs에서 워커 에러를 확인해보세요."
                       : "이 페이지를 닫거나 다른 앱을 봐도 됩니다 — 워커가 서버에서 처리하고, 돌아오면 자동으로 이어집니다."}
                   </p>
+                  <button
+                    type="button"
+                    onClick={cancelCompose}
+                    className="mt-2 rounded-lg border border-red-400 text-red-600 px-3 py-1.5 text-xs hover:bg-red-50 dark:hover:bg-red-950/30"
+                  >
+                    ■ 합성 중단
+                  </button>
                 </div>
               );
             }

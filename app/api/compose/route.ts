@@ -56,6 +56,24 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ ok: true, jobId: job.id });
 }
 
+// 합성 중단 — 멈춘(또는 매달린) 합성을 취소하고 상태를 리셋해 UI 스피너를 푼다.
+// (워커가 실제 처리 중이면 곧 워커 타임아웃이 정리한다.)
+export async function DELETE(req: NextRequest) {
+  const projectId = (req.nextUrl.searchParams.get("projectId") ?? "").trim();
+  if (!projectId) {
+    return NextResponse.json({ ok: false, error: "projectId 필요" }, { status: 400 });
+  }
+  const project = await getProject(projectId);
+  if (project) {
+    project.steps.compose.status = "error";
+    project.steps.compose.error = "사용자가 중단했어요";
+    project.steps.compose.updatedAt = Date.now();
+    project.updatedAt = Date.now();
+    await saveProject(project);
+  }
+  return NextResponse.json({ ok: true });
+}
+
 export async function GET(req: NextRequest) {
   const projectId = (req.nextUrl.searchParams.get("projectId") ?? "").trim();
   if (!projectId) {

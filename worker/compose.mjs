@@ -1,6 +1,6 @@
 // 최종 합성 — 씬별로 (영상 길이를 음성에 맞춰 슬로모션/트림) + 음성 + 자막 번인 →
 // 이어붙이기 → mp4 → Blob. lang="ko"|"en" 으로 어느 판을 구울지 결정.
-import { getProject, saveProject } from "./store.mjs";
+import { getProject, saveProject, logProgress, resetProgress } from "./store.mjs";
 import { put } from "@vercel/blob";
 import { spawn } from "node:child_process";
 import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
@@ -43,8 +43,13 @@ async function download(url, dest) {
 }
 
 export async function composeProject(projectId, lang) {
-  // stderr 로 즉시 flush 되는 진행 로그 — 어디서 멈추는지 한 줄씩 보이게.
-  const log = (...a) => console.error("[worker]", ...a);
+  // 진행 로그 — stderr(즉시 flush) + Redis(원격에서 lrange 로 추적). 어디서 멈추는지 보이게.
+  await resetProgress(projectId);
+  const log = (...a) => {
+    const msg = a.join(" ");
+    console.error("[worker]", msg);
+    void logProgress(projectId, msg);
+  };
   log("composeProject 진입 — getProject 호출…");
   const project = await getProject(projectId);
   if (!project) throw new Error("프로젝트를 찾을 수 없어요");

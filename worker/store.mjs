@@ -30,3 +30,38 @@ export async function updateJob(id, patch) {
   if (!cur) return;
   await redis.set(`job:${id}`, { ...cur, ...patch, updatedAt: Date.now() });
 }
+
+// 합성 단계별 진행 로그 — Redis 리스트에 append. 클라/개발자가 lrange 로 읽어 어디서
+// 멈췄는지 본다. (Render 로그 복붙 없이 원격에서 진행 추적 가능)
+const progKey = (projectId) => `compose:progress:${projectId}`;
+export async function resetProgress(projectId) {
+  try {
+    await redis.del(progKey(projectId));
+  } catch {}
+}
+export async function logProgress(projectId, msg) {
+  try {
+    const line = `${new Date().toISOString().slice(11, 23)} ${msg}`;
+    await redis.rpush(progKey(projectId), line);
+    await redis.expire(progKey(projectId), 3600);
+  } catch {}
+}
+export async function getProgress(projectId) {
+  try {
+    return await redis.lrange(progKey(projectId), 0, -1);
+  } catch {
+    return [];
+  }
+}
+
+// 합성 실패 표시 — 프로젝트 단계 상태를 error 로. (타임아웃 등 composeProject 밖에서 호출)
+export async function failCompose(projectId, error) {
+  try {
+    const p = await getProject(projectId);
+    if (!p) return;
+    p.steps.compose.status = "error";
+    p.steps.compose.error = String(error);
+    p.steps.compose.updatedAt = Date.now();
+    await saveProject(p);
+  } catch {}
+}
