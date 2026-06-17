@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { STEP_ORDER, type Project, type Scene, type StepKind } from "@/lib/types";
 import type { SourceMaterial } from "@/lib/source";
 import Spinner from "@/components/Spinner";
@@ -86,6 +86,30 @@ export default function Studio({
     (initial.steps.keyframe.params.candidates as string[]) ?? []
   );
 
+  // 누적 비용(이 프로젝트, 리롤 포함 전부 합산)
+  const [totalKrw, setTotalKrw] = useState<string | null>(null);
+  async function refreshCost() {
+    try {
+      const r = await fetch(`/api/cost?projectId=${encodeURIComponent(initial.id)}`);
+      const d = await r.json();
+      if (typeof d.totalKrw === "string") setTotalKrw(d.totalKrw);
+    } catch {
+      /* ignore */
+    }
+  }
+  useEffect(() => {
+    let active = true;
+    fetch(`/api/cost?projectId=${encodeURIComponent(initial.id)}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (active && typeof d.totalKrw === "string") setTotalKrw(d.totalKrw);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [initial.id]);
+
   // 키프레임 StepChat (대화 미세조정)
   const [chat, setChat] = useState(initial.steps.keyframe.chat);
   const [chatInput, setChatInput] = useState("");
@@ -148,6 +172,7 @@ export default function Studio({
     });
     const data = await r.json();
     if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
+    void refreshCost(); // 생성·리롤 등 모든 액션 후 누적 비용 갱신
     return data;
   }
 
@@ -571,7 +596,17 @@ export default function Studio({
   return (
     <main className="px-4 py-8 md:max-w-2xl md:mx-auto">
       <h1 className="text-lg font-semibold tracking-tight">{project.title}</h1>
-      <p className="mt-1 text-xs text-zinc-500">project: {project.id}</p>
+      <div className="mt-1 flex items-center justify-between gap-2">
+        <p className="text-xs text-zinc-500">project: {project.id}</p>
+        {totalKrw && (
+          <p className="text-xs text-zinc-500">
+            누적 비용{" "}
+            <span className="font-semibold text-zinc-700 dark:text-zinc-300">
+              {totalKrw}
+            </span>
+          </p>
+        )}
+      </div>
 
       {/* 스텝퍼 */}
       <ol className="mt-5 flex flex-wrap gap-2">

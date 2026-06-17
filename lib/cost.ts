@@ -107,7 +107,11 @@ export async function recordCost(
   }
 }
 
-export async function totalCostUsd(): Promise<number> {
+// projectId 주면 그 프로젝트 누적만, 없으면 전체 누적. (리롤 포함 모든 생성 합산)
+export async function totalCostUsd(projectId?: string): Promise<number> {
   const entries = (await getRedis().lrange<CostEntry>(KEY, 0, -1)) ?? [];
-  return entries.reduce((sum, e) => sum + (e.costUsd ?? 0), 0);
+  const filtered = projectId
+    ? entries.filter((e) => e.projectId === projectId)
+    : entries;
+  return filtered.reduce((sum, e) => sum + (e.costUsd ?? 0), 0);
 }

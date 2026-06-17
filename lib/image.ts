@@ -13,6 +13,10 @@ import { openaiImageCostUsd, recordCost } from "./cost";
 
 const REF_FETCH_TIMEOUT_MS = 30_000;
 
+// 영상용 이미지엔 글자가 많으면 깨지고 지저분하다 — 최소화(금지는 아님).
+const NO_TEXT =
+  "Keep on-image text minimal: avoid signs, banners, paragraphs, or lots of words. A few short words are okay if natural, but no heavy text overlays.";
+
 // 3단계 — 키프레임 후보 N장(기본 3장) 생성. 사용자가 그중 하나를 고른다.
 // 품질은 빠름·저렴(low) 고정(호출부에서 지정).
 export async function generateKeyframes(args: {
@@ -25,7 +29,7 @@ export async function generateKeyframes(args: {
   const { projectId, styleBible, scenePrompt, quality = "low", count = 3 } = args;
   const client = getOpenAI();
 
-  const prompt = `${styleBible}\n\nScene: ${scenePrompt}`;
+  const prompt = `${styleBible}\n\nScene: ${scenePrompt}\n\n${NO_TEXT}`;
   const result = await client.images.generate({
     model: IMAGE_MODEL,
     prompt,
@@ -96,7 +100,7 @@ export async function generateScene(args: {
     `${styleBible}\n\n` +
     "Match the art style, character design, color palette and overall look of the " +
     "reference image exactly. Render a NEW scene described below in that same world.\n\n" +
-    `Scene: ${scenePrompt}`;
+    `Scene: ${scenePrompt}\n\n${NO_TEXT}`;
 
   const result = await client.images.edit({
     model: IMAGE_MODEL,
