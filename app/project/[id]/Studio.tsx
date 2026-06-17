@@ -3,6 +3,16 @@
 import { useState } from "react";
 import { STEP_ORDER, type Project, type Scene, type StepKind } from "@/lib/types";
 import type { SourceMaterial } from "@/lib/source";
+import Spinner from "@/components/Spinner";
+
+// 진행 중 버튼 내용 — 스피너 + 라벨
+function Busy({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <Spinner /> {children}
+    </span>
+  );
+}
 
 const STEP_LABELS: Record<StepKind, string> = {
   source: "소스",
@@ -226,7 +236,7 @@ export default function Studio({ project: initial }: { project: Project }) {
               disabled={busy !== null}
               className="text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-50 text-white font-medium px-3 py-1.5"
             >
-              {busy === "approve-source" ? "승인 중…" : "승인하고 다음으로"}
+              {busy === "approve-source" ? <Busy>승인 중…</Busy> : "승인하고 다음으로"}
             </button>
           )}
         </div>
@@ -257,7 +267,7 @@ export default function Studio({ project: initial }: { project: Project }) {
             disabled={!sourceApproved || busy !== null}
             className="shrink-0 text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-medium px-3 py-1.5"
           >
-            {busy === "script" ? "생성 중…" : hasScenes ? "AI 재생성" : "스크립트 생성"}
+            {busy === "script" ? <Busy>생성 중…</Busy> : hasScenes ? "AI 재생성" : "스크립트 생성"}
           </button>
         </div>
         {!sourceApproved && (
@@ -369,7 +379,7 @@ export default function Studio({ project: initial }: { project: Project }) {
                 disabled={busy !== null || !dirty}
                 className="text-xs rounded-lg border border-accent text-accent px-3 py-1.5 hover:bg-accent/10 disabled:opacity-40"
               >
-                {busy === "save" ? "저장 중…" : "편집 저장"}
+                {busy === "save" ? <Busy>저장 중…</Busy> : "편집 저장"}
               </button>
               <div className="grow" />
               {!scriptApproved && (
@@ -379,7 +389,7 @@ export default function Studio({ project: initial }: { project: Project }) {
                   disabled={busy !== null}
                   className="text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-medium px-3 py-1.5"
                 >
-                  {busy === "approve-script" ? "승인 중…" : "스크립트 승인 →"}
+                  {busy === "approve-script" ? <Busy>승인 중…</Busy> : "스크립트 승인 →"}
                 </button>
               )}
             </div>
@@ -405,7 +415,7 @@ export default function Studio({ project: initial }: { project: Project }) {
             className="shrink-0 text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-medium px-3 py-1.5"
           >
             {busy === "keyframe"
-              ? "생성 중…"
+              ? <Busy>생성 중…</Busy>
               : project.keyframeUrl
                 ? "다시 생성"
                 : "키프레임 생성"}
@@ -418,7 +428,16 @@ export default function Studio({ project: initial }: { project: Project }) {
           <p className="mt-2 text-xs text-red-600">{project.steps.keyframe.error}</p>
         )}
 
-        {project.keyframeUrl && (
+        {busy === "keyframe" && (
+          <div className="mt-4 flex w-44 aspect-[2/3] items-center justify-center rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700 text-zinc-400">
+            <span className="inline-flex flex-col items-center gap-2 text-xs">
+              <Spinner className="size-6" />
+              이미지 생성 중…
+            </span>
+          </div>
+        )}
+
+        {project.keyframeUrl && busy !== "keyframe" && (
           <div className="mt-4">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -437,7 +456,7 @@ export default function Studio({ project: initial }: { project: Project }) {
                 disabled={busy !== null}
                 className="mt-3 text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-medium px-3 py-1.5"
               >
-                {busy === "approve-keyframe" ? "승인 중…" : "키프레임 승인 →"}
+                {busy === "approve-keyframe" ? <Busy>승인 중…</Busy> : "키프레임 승인 →"}
               </button>
             )}
           </div>
