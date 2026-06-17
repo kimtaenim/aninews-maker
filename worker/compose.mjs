@@ -6,6 +6,8 @@ import { spawn } from "node:child_process";
 import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { segmentCaptions } from "./captions.mjs";
+import { renderCaptionPng } from "./subtitle-image.mjs";
 
 const W = 1080;
 const H = 1920;
@@ -40,50 +42,6 @@ async function download(url, dest) {
   await writeFile(dest, Buffer.from(await r.arrayBuffer()));
 }
 
-// ASS 색상 &HAABBGGRR (AA=알파, 00=불투명 … FF=완전투명).
-function assColor(r, g, b, opacity = 1) {
-  const a = Math.round((1 - opacity) * 255);
-  const hh = (n) => n.toString(16).padStart(2, "0").toUpperCase();
-  return `&H${hh(a)}${hh(b)}${hh(g)}${hh(r)}`;
-}
-
-// .ass 자막 한 장 생성 — libass가 줄별 가운데 정렬 + 폭에 맞춰 필요한 만큼만
-// 자동 줄바꿈(WrapStyle 0=균형). drawtext의 좌측 쏠림·과다 줄바꿈을 없앤다.
-function buildAss(text, sub) {
-  const t = (text ?? "").trim().replace(/\s+/g, " ").replace(/[{}]/g, "");
-  const font = sub.font === "serif" ? "Noto Serif CJK KR" : "Noto Sans CJK KR";
-  // 1080폭 숏폼 기준. 미리보기보다 또렷하게 크게.
-  const size = sub.size === "small" ? 64 : sub.size === "large" ? 104 : 84;
-  const bold = sub.weight === "bold" ? -1 : 0;
-  const light = sub.box === "light";
-  const primary = light ? assColor(0, 0, 0, 1) : assColor(255, 255, 255, 1);
-  const boxcol = light ? assColor(255, 255, 255, 0.85) : assColor(0, 0, 0, 0.6);
-  const back = assColor(0, 0, 0, 0);
-  // 정렬: 1=하단왼 2=하단중앙 7=상단왼 8=상단중앙. 기본 가운데(2).
-  const top = sub.position === "top";
-  const left = sub.align === "left";
-  const alignment = top ? (left ? 7 : 8) : left ? 1 : 2;
-  const marginV = 70; // 미리보기(하단 3%)처럼 아래에 가깝게
-  const marginH = 56; // 좌우 여백(=줄바꿈 폭). 작을수록 가로를 넓게 씀
-  const outline = 8; // BorderStyle3 박스 안쪽 여백(글자-박스 패딩)
-  return [
-    "[Script Info]",
-    "ScriptType: v4.00+",
-    `PlayResX: ${W}`,
-    `PlayResY: ${H}`,
-    "WrapStyle: 0",
-    "ScaledBorderAndShadow: yes",
-    "",
-    "[V4+ Styles]",
-    "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-    `Style: Default,${font},${size},${primary},&H000000FF,${boxcol},${back},${bold},0,0,0,100,100,0,0,3,${outline},0,${alignment},${marginH},${marginH},${marginV},1`,
-    "",
-    "[Events]",
-    "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
-    `Dialogue: 0,0:00:00.00,9:59:59.99,Default,,0,0,0,,${t}`,
-  ].join("\n");
-}
-
 export async function composeProject(projectId, lang) {
   const project = await getProject(projectId);
   if (!project) throw new Error("프로젝트를 찾을 수 없어요");
@@ -94,6 +52,9 @@ export async function composeProject(projectId, lang) {
     font: "sans", weight: "regular", size: "medium",
     position: "bottom", align: "center", box: "dark", lang: "ko",
   };
+  console.log(
+    `[worker] 렌더러=캡션PNG 오버레이(미리보기와 동일 디자인·캡션 분할) + cover-crop, 씬 ${scenes.length}개, lang=${lang}`
+  );
   const dir = await mkdtemp(join(tmpdir(), "compose-"));
   try {
     const sceneFiles = [];
@@ -111,30 +72,66 @@ export async function composeProject(projectId, lang) {
 
       const vd = await probeDuration(vPath);
       const ad = aPath ? await probeDuration(aPath) : 0;
-      const target = ad > 0 ? ad : s.durationSec || vd || 5;
-      // 음성이 영상보다 길면 영상을 슬로모션으로(루프 X). 짧으면 트림(-t).
-      const speed = vd > 0 && target > vd ? target / vd : 1;
+      const audioLen = ad > 0 ? ad : s.durationSec || vd || 5;
 
       const text = (lang === "en" ? s.narrationEn || s.narration : s.narration) ?? "";
-      const assPath = join(dir, `s${i}.ass`);
-      await writeFile(assPath, buildAss(text, sub), "utf8");
+      // 긴 나레이션은 캡션 여러 개로 분할(미리보기와 동일 알고리즘) → 씬 안에서 순차 표시.
+      const caps = segmentCaptions(text, sub.size);
+      // 각 캡션을 미리보기와 같은 디자인의 전체프레임 투명 PNG로 렌더.
+      const capPaths = [];
+      for (let j = 0; j < caps.length; j++) {
+        const png = await renderCaptionPng(caps[j], sub, { W, H });
+        const cp = join(dir, `cap${i}_${j}.png`);
+        await writeFile(cp, png);
+        capPaths.push(cp);
+      }
+      // 캡션당 3초 보장. 캡션 수×3초가 음성보다 길면 장면을 그만큼 늘린다(음성은 끝까지).
+      const PER = 3;
+      const duration = capPaths.length
+        ? Math.max(audioLen, capPaths.length * PER)
+        : audioLen;
+      // 음성/자막이 영상보다 길면 영상을 슬로모션으로 늘림(루프 X).
+      const speed = vd > 0 && duration > vd ? duration / vd : 1;
+      const spans = [];
+      let acc = 0;
+      capPaths.forEach((_, j) => {
+        const start = acc;
+        acc += PER;
+        const end = j === capPaths.length - 1 ? duration + 0.5 : acc;
+        spans.push([start, end]);
+      });
 
-      // 미리보기(object-cover)와 동일하게: 9:16을 꽉 채우고 넘치는 부분만 가운데
-      // 크롭 → 양옆 검은 테두리 없음. 그 뒤 libass 자막 번인.
-      const vf =
-        `scale=${W}:${H}:force_original_aspect_ratio=increase,` +
-        `crop=${W}:${H},` +
-        `setpts=${speed.toFixed(4)}*PTS,fps=${FPS},` +
-        `subtitles=f='${assPath}'`;
+      // 미리보기(object-cover)와 동일: 9:16 꽉 채우고 가운데 크롭(검은 테두리 없음).
+      const base =
+        `[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase,` +
+        `crop=${W}:${H},setpts=${speed.toFixed(4)}*PTS,fps=${FPS}`;
+      // 자막 PNG들을 시간 구간별로 오버레이(앞 0=video, 1=audio, 2..=png).
+      let filter;
+      if (capPaths.length === 0) {
+        filter = `${base}[v]`;
+      } else {
+        filter = `${base}[bg]`;
+        let prev = "bg";
+        capPaths.forEach((_, j) => {
+          const inIdx = 2 + j;
+          const label = j === capPaths.length - 1 ? "v" : `o${j}`;
+          const [st, en] = spans[j];
+          filter +=
+            `;[${prev}][${inIdx}:v]overlay=0:0:` +
+            `enable='between(t,${st.toFixed(3)},${en.toFixed(3)})'[${label}]`;
+          prev = label;
+        });
+      }
 
       const out = join(dir, `scene${i}.mp4`);
       const args = ["-y", "-i", vPath];
       if (aPath) args.push("-i", aPath);
       else args.push("-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100");
+      for (const cp of capPaths) args.push("-i", cp);
       args.push(
-        "-filter_complex", `[0:v]${vf}[v]`,
+        "-filter_complex", filter,
         "-map", "[v]", "-map", "1:a",
-        "-t", String(target),
+        "-t", String(duration),
         "-r", String(FPS),
         "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-crf", "23",
         "-c:a", "aac", "-b:a", "128k",

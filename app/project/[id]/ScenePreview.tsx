@@ -1,12 +1,13 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { resolveSubtitleStyle } from "@/lib/subtitle";
+import { segmentCaptions } from "@/lib/captions";
 import type { SubtitleSettings } from "@/lib/types";
 
-// 씬 미리보기 — 영상(루프) + 음성 동기 재생 + 자막(나레이션) 오버레이.
-// 정확한 길이 정렬(홀드/트림)은 최종 worker(ffmpeg)가 하고, 여기선 근사 미리보기.
-// 음성이 마스터: 재생하면 영상은 루프로 음성 길이를 채우고, 음성이 끝나면 멈춘다.
+// 씬 미리보기 — 영상 + 음성 동기 재생 + 자막(캡션) 오버레이.
+// 긴 나레이션은 캡션으로 분할(합성과 동일 segmentCaptions)해 재생 중 순차로 보여준다.
+// 캡션당 3초 기본(음성이 짧으면 균등 분할). 음성이 마스터.
 export default function ScenePreview({
   index,
   videoUrl,
@@ -23,35 +24,50 @@ export default function ScenePreview({
   sub: SubtitleSettings;
 }) {
   const st = resolveSubtitleStyle(sub);
-  // 언어 설정에 따라 표시할 줄
-  const lines =
-    sub.lang === "en"
-      ? [subtitleEn || subtitle]
-      : sub.lang === "both"
-        ? [subtitle, subtitleEn || ""].filter(Boolean)
-        : [subtitle];
+  const koCaps = useMemo(() => segmentCaptions(subtitle, sub.size), [subtitle, sub.size]);
+  const enCaps = useMemo(
+    () => segmentCaptions(subtitleEn || subtitle, sub.size),
+    [subtitleEn, subtitle, sub.size]
+  );
+  // 인덱싱 기준 캡션 수(주 언어).
+  const capCount = (sub.lang === "en" ? enCaps : koCaps).length || 1;
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
+  const [capIdx, setCapIdx] = useState(0);
+
+  // 현재 캡션(언어별).
+  const lines =
+    sub.lang === "en"
+      ? [enCaps[capIdx] ?? ""]
+      : sub.lang === "both"
+        ? [koCaps[capIdx] ?? "", enCaps[capIdx] ?? ""].filter(Boolean)
+        : [koCaps[capIdx] ?? ""];
+
+  function onTime() {
+    const a = audioRef.current;
+    if (!a || !a.duration) return;
+    const per = capCount * 3 <= a.duration ? 3 : a.duration / capCount;
+    setCapIdx(Math.min(capCount - 1, Math.floor(a.currentTime / per)));
+  }
 
   function play() {
     const v = videoRef.current;
     const a = audioRef.current;
+    setCapIdx(0);
     if (a) {
       a.currentTime = 0;
       if (v) {
         v.currentTime = 0;
-        // 영상이 음성보다 짧으면 루프 대신 '천천히'(슬로모션)로 길이를 채움.
         const vd = v.duration;
         const ad = a.duration;
-        v.playbackRate =
-          vd > 0 && ad > 0 && ad > vd ? Math.max(0.25, vd / ad) : 1;
+        v.playbackRate = vd > 0 && ad > 0 && ad > vd ? Math.max(0.25, vd / ad) : 1;
         v.play().catch(() => {});
       }
       a.play().catch(() => {});
       setPlaying(true);
     } else if (v) {
-      // 음성 없으면 영상만 한 번 재생
       v.currentTime = 0;
       v.playbackRate = 1;
       v.play().catch(() => {});
@@ -81,14 +97,14 @@ export default function ScenePreview({
             영상 없음
           </div>
         )}
-        {/* 자막 오버레이 (프로젝트 자막 설정 반영) */}
+        {/* 자막 오버레이 (현재 캡션). 박스는 폭 가득(문단형)이라 끝줄이 짧아도 안 비뚤어짐. */}
         <div className={`absolute inset-x-2 ${st.containerPosClass} ${st.alignClass}`}>
           <span
             style={{ fontFamily: st.fontFamily }}
             className={`inline-block rounded px-2 py-1 leading-snug ${st.weightClass} ${st.sizeClass} ${st.boxClass}`}
           >
             {lines.map((l, idx) => (
-              <span key={idx} className="block line-clamp-2">
+              <span key={idx} className="block line-clamp-3">
                 {l}
               </span>
             ))}
@@ -97,7 +113,13 @@ export default function ScenePreview({
       </div>
 
       {audioUrl && (
-        <audio ref={audioRef} src={audioUrl} onEnded={stop} className="hidden" />
+        <audio
+          ref={audioRef}
+          src={audioUrl}
+          onTimeUpdate={onTime}
+          onEnded={stop}
+          className="hidden"
+        />
       )}
 
       <div className="flex items-center justify-between">

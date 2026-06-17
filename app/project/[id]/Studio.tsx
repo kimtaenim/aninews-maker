@@ -219,6 +219,54 @@ export default function Studio({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [composing]);
 
+  // ── 서버 상태 복원(rehydrate) — 지하철/백그라운드/네트워크 끊김에도 robust ────────
+  // 모든 작업의 진실은 서버(Redis)다. 페이지를 떠났다 와도, 화면을 잠갔다 켜도,
+  // 신호가 끊겼다 붙어도 — 돌아오는 순간 서버에서 최신 상태를 다시 읽어 반영한다.
+  // (편집 버퍼 scenes/enScripts/sub 는 별도 state 라 덮어쓰지 않는다.)
+  const syncingRef = useRef(false);
+  async function syncFromServer() {
+    if (syncingRef.current) return;
+    syncingRef.current = true;
+    try {
+      const r = await fetch(`/api/project/state?projectId=${encodeURIComponent(project.id)}`);
+      if (!r.ok) return;
+      const d = await r.json();
+      if (d?.ok && d.project) setProject(d.project as Project);
+    } catch {
+      /* 오프라인 등 — 다음 기회에 */
+    } finally {
+      syncingRef.current = false;
+    }
+  }
+
+  // 진입 / 백그라운드 복귀 / 네트워크 복귀 시 서버에서 한 번 복원.
+  useEffect(() => {
+    void syncFromServer();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void syncFromServer();
+    };
+    const onOnline = () => void syncFromServer();
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", onOnline);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", onOnline);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 제출됐지만 아직 저장 전인 영상 작업을, 상태가 바뀔 때마다 자동으로 마저 폴링한다.
+  // (직접 생성하든, 복원으로 알게 됐든 동일 경로. videoPollRef 로 씬당 1개만.)
+  const videoPollRef = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    project.scenes.forEach((s, i) => {
+      if (s.videoJobId && !s.videoUrl && s.status !== "error" && !videoPollRef.current.has(i)) {
+        void pollVideoUntilDone(i);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.scenes]);
+
   // ── 다국어판(영어) ──────────────────────────────────────────────────────────
   // 영문 스크립트는 로컬에서 편집 → 저장. 더빙(audioUrlEn)은 영어 트랙으로 별도 생성.
   const [enScripts, setEnScripts] = useState<Record<number, string>>(
@@ -676,47 +724,80 @@ export default function Studio({
   // ── 5단계: 비디오 (fal image-to-video, 비동기 제출 → 폴링) ────────────────────
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-  // 한 씬: 제출 → 완료까지 폴링(최대 ~5분). 완료 시 project.scenes 갱신.
+  // 제출된 한 씬의 영상을 완료까지 폴링(씬당 1개만 — videoPollRef 가드). GET 호출이
+  // fal/grok 작업을 진행시키고 완료 시 Blob 저장 + 상태 갱신을 서버가 한다. 페이지를
+  // 떠나도 이 함수가 죽을 뿐, 서버 작업·결과는 유지되고 복귀 시 다시 이 경로로 재개된다.
+  async function pollVideoUntilDone(sceneIndex: number): Promise<void> {
+    if (videoPollRef.current.has(sceneIndex)) return;
+    videoPollRef.current.add(sceneIndex);
+    try {
+      const MAX_TRIES = 120; // 120 × 5s = 10분
+      for (let t = 0; t < MAX_TRIES; t++) {
+        const r = await fetch(
+          `/api/video/scene?projectId=${encodeURIComponent(project.id)}&sceneIndex=${sceneIndex}`
+        );
+        const data = await r.json();
+        if (!r.ok) {
+          if (r.status === 409) return; // 제출 안 된 씬 — 폴링 대상 아님
+          throw new Error(data.error || `HTTP ${r.status}`);
+        }
+        if (data.status === "failed") {
+          setError(data.error || `씬${sceneIndex + 1} 비디오 생성 실패`);
+          setProject((p) => ({
+            ...p,
+            scenes: p.scenes.map((s, i) => (i === sceneIndex ? { ...s, status: "error" } : s)),
+          }));
+          return;
+        }
+        if (data.status === "completed") {
+          setVideoCost((c) => ({ ...c, [sceneIndex]: (data.cost as string) ?? "" }));
+          setProject((p) => ({
+            ...p,
+            scenes: p.scenes.map((s, i) =>
+              i === sceneIndex
+                ? { ...s, videoUrl: data.videoUrl as string, status: "generated" }
+                : s
+            ),
+            steps: {
+              ...p.steps,
+              videos: {
+                ...p.steps.videos,
+                status: (data.allDone ? "generated" : "generating") as
+                  | "generated"
+                  | "generating",
+              },
+            },
+          }));
+          return;
+        }
+        await sleep(5000); // pending / running → 계속
+      }
+      // 시간 초과 — 상태는 서버에 그대로. 다음 진입/복귀 때 자동 재개.
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "비디오 폴링 실패");
+    } finally {
+      videoPollRef.current.delete(sceneIndex);
+    }
+  }
+
+  // 한 씬: 제출 → 완료까지 폴링. 제출 직후 로컬 상태를 generating 으로 표시.
   async function submitAndPollVideo(sceneIndex: number): Promise<void> {
-    await call("/api/video/scene", {
+    const data = await call("/api/video/scene", {
       projectId: project.id,
       sceneIndex,
       videoModelId,
       motionScale: motionScale[sceneIndex] ?? "subtle",
     });
-    const MAX_TRIES = 60; // 60 × 5s = 5분
-    for (let t = 0; t < MAX_TRIES; t++) {
-      await sleep(5000);
-      const r = await fetch(
-        `/api/video/scene?projectId=${encodeURIComponent(project.id)}&sceneIndex=${sceneIndex}`
-      );
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
-      if (data.status === "failed") throw new Error(data.error || "비디오 생성 실패");
-      if (data.status === "completed") {
-        setVideoCost((c) => ({ ...c, [sceneIndex]: (data.cost as string) ?? "" }));
-        setProject((p) => ({
-          ...p,
-          scenes: p.scenes.map((s, i) =>
-            i === sceneIndex
-              ? { ...s, videoUrl: data.videoUrl as string, status: "generated" }
-              : s
-          ),
-          steps: {
-            ...p.steps,
-            videos: {
-              ...p.steps.videos,
-              status: (data.allDone ? "generated" : "generating") as
-                | "generated"
-                | "generating",
-            },
-          },
-        }));
-        return;
-      }
-      // pending / running → 계속 폴링
-    }
-    throw new Error("비디오 생성이 시간 내 끝나지 않았어요 (잠시 후 다시 시도)");
+    setProject((p) => ({
+      ...p,
+      scenes: p.scenes.map((s, i) =>
+        i === sceneIndex
+          ? { ...s, videoJobId: (data.jobId as string) ?? s.videoJobId, videoUrl: undefined, status: "generating" }
+          : s
+      ),
+      steps: { ...p.steps, videos: { ...p.steps.videos, status: "generating" } },
+    }));
+    await pollVideoUntilDone(sceneIndex);
   }
 
   async function generateVideo(sceneIndex: number) {
