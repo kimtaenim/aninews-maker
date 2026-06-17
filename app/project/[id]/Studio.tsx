@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { STEP_ORDER, type Project, type Scene, type StepKind } from "@/lib/types";
 import type { SourceMaterial } from "@/lib/source";
-import type { StyleProfile } from "@/lib/styleProfiles";
 import Spinner from "@/components/Spinner";
 
 // 진행 중 버튼 내용 — 스피너 + 라벨
@@ -39,10 +38,10 @@ function toEdit(s: Scene): EditScene {
 
 export default function Studio({
   project: initial,
-  styleProfile,
+  styleProfiles,
 }: {
   project: Project;
-  styleProfile: StyleProfile | null;
+  styleProfiles: { id: string; label: string }[];
 }) {
   const [project, setProject] = useState<Project>(initial);
   const [busy, _setBusy] = useState<string | null>(null);
@@ -79,6 +78,11 @@ export default function Studio({
   const hasScenes = scenes.length > 0;
   const keyframeStatus = project.steps.keyframe.status;
   const keyframeApproved = keyframeStatus === "approved";
+
+  // 키프레임 직접 조정: 품질 파라미터 + 스타일/프롬프트 편집
+  const [quality, setQuality] = useState<"low" | "medium" | "high">("medium");
+  const [editBible, setEditBible] = useState(initial.styleBible);
+  const [bibleDirty, setBibleDirty] = useState(false);
 
   // 키프레임 StepChat (대화 미세조정)
   const [chat, setChat] = useState(initial.steps.keyframe.chat);
@@ -219,7 +223,7 @@ export default function Studio({
     setError(null);
     setBusy("keyframe");
     try {
-      const data = await call("/api/image/keyframe", { projectId: project.id });
+      const data = await call("/api/image/keyframe", { projectId: project.id, quality });
       setKeyframeCost((data.cost as string) ?? null);
       setProject((p) => ({
         ...p,
@@ -252,6 +256,46 @@ export default function Studio({
     }
   }
 
+  // 모드(2D/3D) 변경 — style bible 을 그 모드 기본값으로 리셋.
+  async function changeMode(styleProfileId: string) {
+    if (styleProfileId === project.styleProfileId) return;
+    setError(null);
+    setBusy("keyframe-mode");
+    try {
+      const data = await call("/api/project/style", { projectId: project.id, styleProfileId });
+      setProject((p) => ({
+        ...p,
+        styleProfileId: data.styleProfileId as string,
+        styleBible: data.styleBible as string,
+      }));
+      setEditBible(data.styleBible as string);
+      setBibleDirty(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "모드 변경 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // 스타일/팔레트/프롬프트 직접 편집 저장.
+  async function saveBible() {
+    setError(null);
+    setBusy("keyframe-bible");
+    try {
+      const data = await call("/api/project/style", {
+        projectId: project.id,
+        styleBible: editBible,
+      });
+      setProject((p) => ({ ...p, styleBible: data.styleBible as string }));
+      setEditBible(data.styleBible as string);
+      setBibleDirty(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "스타일 저장 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   // 키프레임 StepChat: 대화로 style bible 미세조정 → 갱신. 이후 "다시 생성"으로 적용.
   async function sendKeyframeChat() {
     const msg = chatInput.trim();
@@ -266,6 +310,8 @@ export default function Studio({
       });
       setChat(data.chat as typeof chat);
       setProject((p) => ({ ...p, styleBible: data.styleBible as string }));
+      setEditBible(data.styleBible as string);
+      setBibleDirty(false);
       setChatInput("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "미세조정 실패");
@@ -757,31 +803,72 @@ export default function Studio({
           <p className="mt-2 text-xs text-red-600">{error}</p>
         )}
 
-        {/* 스타일: 여기서 확정된다. 2D/3D 모드·팔레트·모션·포스트FX 표시 */}
+        {/* 스타일 직접 조정: 모드 선택 · 품질 파라미터 · 프롬프트(팔레트) 편집 */}
         {scriptApproved && (
-          <div className="mt-4 rounded-xl bg-zinc-50 dark:bg-zinc-900 p-3">
-            <div className="flex items-center gap-2">
-              <span className="rounded-md bg-accent/15 text-accent text-xs font-bold px-2 py-0.5">
-                {styleProfile?.label ?? project.styleProfileId}
-              </span>
-              <span className="text-[11px] text-zinc-500">스타일 (전 단계에 적용)</span>
+          <div className="mt-4 rounded-xl bg-zinc-50 dark:bg-zinc-900 p-3 grid gap-3">
+            <div className="flex flex-wrap gap-3">
+              <label className="grid gap-1">
+                <span className="text-[11px] font-medium text-zinc-500">모드</span>
+                <select
+                  value={project.styleProfileId}
+                  onChange={(e) => changeMode(e.target.value)}
+                  disabled={busy !== null}
+                  className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2.5 py-1.5 text-sm outline-none focus:border-accent disabled:opacity-50"
+                >
+                  {styleProfiles.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="grid gap-1">
+                <span className="text-[11px] font-medium text-zinc-500">품질</span>
+                <select
+                  value={quality}
+                  onChange={(e) =>
+                    setQuality(e.target.value as "low" | "medium" | "high")
+                  }
+                  disabled={busy !== null}
+                  className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2.5 py-1.5 text-sm outline-none focus:border-accent disabled:opacity-50"
+                >
+                  <option value="low">저 (빠름·저렴)</option>
+                  <option value="medium">중</option>
+                  <option value="high">고 (느림·고품질)</option>
+                </select>
+              </label>
             </div>
-            <p className="mt-2 text-xs text-zinc-600 dark:text-zinc-400 whitespace-pre-wrap">
-              {project.styleBible}
-            </p>
-            {styleProfile && (
-              <div className="mt-2 grid gap-0.5 text-[11px] text-zinc-500">
-                <p>
-                  <span className="font-medium">모션:</span> {styleProfile.motionStyle}
-                </p>
-                {styleProfile.postFx?.frameSteppingFps != null && (
-                  <p>
-                    <span className="font-medium">스톱모션:</span>{" "}
-                    {String(styleProfile.postFx.frameSteppingFps)}fps 프레임 스테핑
-                  </p>
-                )}
-              </div>
-            )}
+
+            <label className="grid gap-1">
+              <span className="text-[11px] font-medium text-zinc-500">
+                스타일·팔레트·프롬프트 (직접 편집 — 영문)
+              </span>
+              <textarea
+                value={editBible}
+                onChange={(e) => {
+                  setEditBible(e.target.value);
+                  setBibleDirty(true);
+                }}
+                rows={4}
+                disabled={busy !== null}
+                className="w-full rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2.5 py-1.5 text-xs outline-none focus:border-accent resize-y disabled:opacity-50"
+              />
+            </label>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={saveBible}
+                disabled={busy !== null || !bibleDirty}
+                className="text-xs rounded-lg border border-accent text-accent px-3 py-1.5 hover:bg-accent/10 disabled:opacity-40"
+              >
+                {busy === "keyframe-bible" ? <Busy>저장 중…</Busy> : "스타일 저장"}
+              </button>
+              {bibleDirty && (
+                <span className="text-[11px] text-amber-600">
+                  ● 저장 후 ‘다시 생성’을 눌러야 반영됩니다
+                </span>
+              )}
+            </div>
           </div>
         )}
 
