@@ -680,7 +680,7 @@ export default function Studio({ project: initial }: { project: Project }) {
         )}
 
         {busy === "keyframe" && (
-          <div className="mt-4 flex w-44 aspect-[2/3] items-center justify-center rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700 text-zinc-400">
+          <div className="mt-4 flex w-44 aspect-[9/16] items-center justify-center rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700 text-zinc-400">
             <span className="inline-flex flex-col items-center gap-2 text-xs">
               <Spinner className="size-6" />
               이미지 생성 중…
@@ -760,7 +760,7 @@ export default function Studio({ project: initial }: { project: Project }) {
                   busy === `scene-${i}` || (busy === "images-all" && !sc.imageUrl);
                 return (
                   <li key={i} className="grid gap-1.5">
-                    <div className="flex aspect-[2/3] items-center justify-center overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900">
+                    <div className="flex aspect-[9/16] items-center justify-center overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900">
                       {sceneBusy ? (
                         <span className="inline-flex flex-col items-center gap-1.5 text-[11px] text-zinc-400">
                           <Spinner className="size-5" />
@@ -846,7 +846,7 @@ export default function Studio({ project: initial }: { project: Project }) {
                 const videoBusy = busy === `video-${i}` || activeVideo === i;
                 return (
                   <li key={i} className="grid gap-1.5">
-                    <div className="relative flex aspect-[2/3] items-center justify-center overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900">
+                    <div className="relative flex aspect-[9/16] items-center justify-center overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900">
                       {sc.videoUrl ? (
                         <video
                           src={sc.videoUrl}
