@@ -37,16 +37,24 @@ export default function ScenePreview({
   function play() {
     const v = videoRef.current;
     const a = audioRef.current;
-    if (v) {
-      v.currentTime = 0;
-      v.play().catch(() => {});
-    }
     if (a) {
       a.currentTime = 0;
+      if (v) {
+        v.currentTime = 0;
+        // 영상이 음성보다 짧으면 루프 대신 '천천히'(슬로모션)로 길이를 채움.
+        const vd = v.duration;
+        const ad = a.duration;
+        v.playbackRate =
+          vd > 0 && ad > 0 && ad > vd ? Math.max(0.25, vd / ad) : 1;
+        v.play().catch(() => {});
+      }
       a.play().catch(() => {});
       setPlaying(true);
-    } else {
+    } else if (v) {
       // 음성 없으면 영상만 한 번 재생
+      v.currentTime = 0;
+      v.playbackRate = 1;
+      v.play().catch(() => {});
       setPlaying(true);
     }
   }
@@ -66,7 +74,6 @@ export default function ScenePreview({
             src={videoUrl}
             className="h-full w-full object-cover"
             muted
-            loop
             playsInline
           />
         ) : (
