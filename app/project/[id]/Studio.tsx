@@ -661,22 +661,30 @@ export default function Studio({ project: initial }: { project: Project }) {
               >
                 {busy === "save" ? <Busy>저장 중…</Busy> : "편집 저장"}
               </button>
-              <div className="grow" />
-              {!scriptApproved && (
-                <button
-                  type="button"
-                  onClick={approveScript}
-                  disabled={busy !== null}
-                  className="text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-medium px-3 py-1.5"
-                >
-                  {busy === "approve-script" ? <Busy>승인 중…</Busy> : "스크립트 승인 →"}
-                </button>
-              )}
             </div>
             <p className="mt-2 text-[11px] text-zinc-400">
               길이는 4~7초로 저장 시 자동 보정됩니다. 편집 후 “편집 저장”을 눌러야
               반영됩니다.
             </p>
+            {/* 승인 = 다음 단계 잠금 해제. 눈에 띄게 전체 폭으로. */}
+            {!scriptApproved ? (
+              <button
+                type="button"
+                onClick={approveScript}
+                disabled={busy !== null}
+                className="mt-3 w-full rounded-xl bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-semibold py-3 transition-colors"
+              >
+                {busy === "approve-script" ? (
+                  <Busy>승인 중…</Busy>
+                ) : (
+                  "✓ 스크립트 승인하고 키프레임 단계로 →"
+                )}
+              </button>
+            ) : (
+              <p className="mt-3 text-xs text-accent font-medium">
+                ✓ 스크립트 승인됨 — 아래 키프레임 단계로 진행하세요.
+              </p>
+            )}
           </>
         )}
       </section>
