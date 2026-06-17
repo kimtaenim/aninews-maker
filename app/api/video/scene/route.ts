@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProject, saveProject } from "@/lib/projectStore";
-import { generateVideo, pollVideo, videoEndpoint } from "@/lib/fal";
+import {
+  submitVideo,
+  pollVideoJob,
+  videoCostUsd,
+  videoVendor,
+  DEFAULT_VIDEO_MODEL_ID,
+} from "@/lib/videoProvider";
 import { canStart } from "@/lib/stepMachine";
 import { uploadAsset } from "@/lib/blob";
-import { falVideoCostUsd, formatKrw, recordCost } from "@/lib/cost";
+import { formatKrw, recordCost } from "@/lib/cost";
 
 export const runtime = "nodejs";
 export const maxDuration = 120; // 완료 폴링 시 비디오 다운로드+Blob 업로드
@@ -15,7 +21,12 @@ const VIDEO_FETCH_TIMEOUT_MS = 60_000;
 //   GET   ?projectId&sceneIndex                → 폴링 → { status, videoUrl?, cost?, allDone? }
 // 서버리스 타임아웃 회피: 각 호출은 짧게(제출/상태). 완료까지의 반복 폴링은 클라이언트.
 export async function POST(req: NextRequest) {
-  let body: { projectId?: string; sceneIndex?: number; prompt?: string };
+  let body: {
+    projectId?: string;
+    sceneIndex?: number;
+    prompt?: string;
+    videoModelId?: string;
+  };
   try {
     body = await req.json();
   } catch {
@@ -52,14 +63,17 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const modelId =
+    body.videoModelId || project.videoModelId || DEFAULT_VIDEO_MODEL_ID;
   try {
-    const { jobId } = await generateVideo({
+    const { jobId } = await submitVideo(modelId, {
       imageUrl: scene.imageUrl,
       prompt: (body.prompt ?? scene.motion ?? "").trim() || undefined,
     });
     project.scenes[sceneIndex] = {
       ...scene,
       videoJobId: jobId,
+      videoModelId: modelId,
       videoUrl: undefined,
       status: "generating",
     };
@@ -74,10 +88,7 @@ export async function POST(req: NextRequest) {
     project.steps.videos.error = error;
     project.steps.videos.updatedAt = Date.now();
     await saveProject(project);
-    const hint = /FAL_KEY|credential/i.test(error)
-      ? " (FAL_KEY 가 .env.local 에 있는지 확인해주세요)"
-      : "";
-    return NextResponse.json({ ok: false, error: error + hint }, { status: 500 });
+    return NextResponse.json({ ok: false, error }, { status: 500 });
   }
 }
 
@@ -101,7 +112,8 @@ export async function GET(req: NextRequest) {
   }
   const scene = project.scenes[sceneIndex];
 
-  const cost = formatKrw(falVideoCostUsd(videoEndpoint()));
+  const modelId = scene.videoModelId || project.videoModelId || DEFAULT_VIDEO_MODEL_ID;
+  const cost = formatKrw(videoCostUsd(modelId));
 
   // 이미 완료(Blob 저장 끝) → 그대로 반환(idempotent).
   if (scene.videoUrl) {
@@ -121,7 +133,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const poll = await pollVideo(scene.videoJobId);
+  const poll = await pollVideoJob(scene.videoJobId);
 
   if (poll.status === "failed") {
     project.scenes[sceneIndex] = { ...scene, status: "error" };
@@ -170,9 +182,9 @@ export async function GET(req: NextRequest) {
   // 완료 시 1회만 비용 기록(다음 폴링은 위 videoUrl 분기에서 조기 반환).
   await recordCost({
     projectId,
-    vendor: "fal",
-    model: videoEndpoint(),
-    costUsd: falVideoCostUsd(videoEndpoint()),
+    vendor: videoVendor(modelId),
+    model: modelId,
+    costUsd: videoCostUsd(modelId),
     meta: { kind: "video", sceneIndex },
   });
 

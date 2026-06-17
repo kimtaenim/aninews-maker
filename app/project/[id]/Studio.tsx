@@ -39,9 +39,11 @@ function toEdit(s: Scene): EditScene {
 export default function Studio({
   project: initial,
   styleProfiles,
+  videoModels,
 }: {
   project: Project;
   styleProfiles: { id: string; label: string }[];
+  videoModels: { id: string; label: string }[];
 }) {
   const [project, setProject] = useState<Project>(initial);
   const [busy, _setBusy] = useState<string | null>(null);
@@ -120,6 +122,11 @@ export default function Studio({
       return next;
     });
   }
+
+  // 5단계 비디오 모델 (프로바이더 교차: fal / grok)
+  const [videoModelId, setVideoModelId] = useState(
+    initial.videoModelId || videoModels[0]?.id || ""
+  );
 
   // 키프레임 StepChat (대화 미세조정)
   const [chat, setChat] = useState(initial.steps.keyframe.chat);
@@ -467,7 +474,7 @@ export default function Studio({
 
   // 한 씬: 제출 → 완료까지 폴링(최대 ~5분). 완료 시 project.scenes 갱신.
   async function submitAndPollVideo(sceneIndex: number): Promise<void> {
-    await call("/api/video/scene", { projectId: project.id, sceneIndex });
+    await call("/api/video/scene", { projectId: project.id, sceneIndex, videoModelId });
     const MAX_TRIES = 60; // 60 × 5s = 5분
     for (let t = 0; t < MAX_TRIES; t++) {
       await sleep(5000);
@@ -1296,6 +1303,26 @@ export default function Studio({
             )}
           </button>
         </div>
+        {imagesApproved && (
+          <label className="mt-2 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+            비디오 모델 (프로바이더 교차)
+            <select
+              value={videoModelId}
+              onChange={(e) => setVideoModelId(e.target.value)}
+              disabled={busy !== null}
+              className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2.5 py-1.5 text-sm text-zinc-700 dark:text-zinc-200 outline-none focus:border-accent disabled:opacity-50"
+            >
+              {videoModels.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+            <span className="text-[11px] text-zinc-400">
+              fal 막히면 Grok으로 바꿔서 생성/리롤
+            </span>
+          </label>
+        )}
         {!imagesApproved && (
           <p className="mt-2 text-xs text-zinc-500">이미지를 먼저 승인해주세요.</p>
         )}

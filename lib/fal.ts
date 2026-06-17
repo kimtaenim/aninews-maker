@@ -70,9 +70,10 @@ export async function generateVideo(opts: {
   imageUrl: string;
   prompt?: string;
   duration?: number;
+  endpoint?: string; // 선택한 fal 모델 경로 (없으면 기본)
 }): Promise<{ jobId: string }> {
   const client = configureFal();
-  const endpoint = videoEndpoint();
+  const endpoint = opts.endpoint || videoEndpoint();
 
   const input: Record<string, unknown> = { image_url: opts.imageUrl };
   if (opts.prompt) input.prompt = opts.prompt;

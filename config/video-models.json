@@ -1,31 +1,36 @@
 {
-  "version": "1.0",
+  "version": "2.0",
   "updated": "2026-06-17",
-  "_comment": "fal image-to-video 모델 레지스트리. 기본 Seedance, 교체 가능. endpoint 는 fal 모델 경로. defaultParams 는 제출 시 기본값(실제 키 이름은 모델 문서 확인하며 채운다).",
+  "_comment": "image-to-video 모델 레지스트리. provider(fal|grok)별로 교차 사용. fal endpoint 는 fal 모델 경로, grok endpoint 는 xAI 모델명. 한 프로바이더가 막히면(잔액·콘텐츠 정책) 다른 걸로 교차.",
   "default": "minimax",
   "models": [
     {
       "id": "minimax",
-      "label": "MiniMax video-01 (기본·가성비)",
+      "provider": "fal",
+      "label": "MiniMax (fal · 가성비)",
       "endpoint": "fal-ai/minimax-video/image-to-video",
       "defaultParams": {}
     },
     {
       "id": "kling",
-      "label": "Kling v1 Standard",
+      "provider": "fal",
+      "label": "Kling v1 (fal)",
       "endpoint": "fal-ai/kling-video/v1/standard/image-to-video",
-      "defaultParams": {
-        "duration": "5"
-      }
+      "defaultParams": { "duration": "5" }
     },
     {
       "id": "seedance",
-      "label": "Seedance Pro (고품질)",
+      "provider": "fal",
+      "label": "Seedance Pro (fal · 고품질)",
       "endpoint": "fal-ai/bytedance/seedance/v1/pro/image-to-video",
-      "defaultParams": {
-        "aspect_ratio": "9:16",
-        "resolution": "1080p"
-      }
+      "defaultParams": { "aspect_ratio": "9:16", "resolution": "1080p" }
+    },
+    {
+      "id": "grok",
+      "provider": "grok",
+      "label": "Grok Imagine (xAI · 정책 느슨, fal 대안)",
+      "endpoint": "grok-imagine-video",
+      "defaultParams": {}
     }
   ]
 }

@@ -45,7 +45,8 @@ export interface Scene {
   status: StepStatus; // 씬 단위 리롤 시 generated 로 되돌림
   imageUrl?: string;
   videoUrl?: string;
-  videoJobId?: string; // fal 비동기 작업 id ("endpoint::requestId" 인코딩)
+  videoJobId?: string; // 비동기 작업 id ("provider::..." 인코딩)
+  videoModelId?: string; // 이 씬 비디오를 만든 모델 (fal/grok 등) — 비용 계산용
   audioUrl?: string; // 씬별 TTS 클립
   ttsTimestamps?: TtsWord[]; // 자막 타이밍 (TTS 타임스탬프 기준)
 }
@@ -94,7 +95,7 @@ export interface Project {
 export interface CostEntry {
   id: string;
   projectId?: string;
-  vendor: "anthropic" | "openai" | "fal" | "elevenlabs";
+  vendor: "anthropic" | "openai" | "fal" | "grok" | "elevenlabs";
   model: string;
   costUsd: number;
   createdAt: number;

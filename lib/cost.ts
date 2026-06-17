@@ -83,6 +83,12 @@ export function falVideoCostUsd(endpoint: string): number {
   return FAL_VIDEO_PRICING[endpoint] ?? FAL_VIDEO_DEFAULT_USD;
 }
 
+// Grok(xAI) image-to-video — 대략값(실측 후 조정). 720p 단편 기준.
+export const GROK_VIDEO_USD = 0.5;
+export function grokVideoCostUsd(): number {
+  return GROK_VIDEO_USD;
+}
+
 // ElevenLabs TTS — 문자당 USD (eleven_multilingual_v2 기준 ~$0.30/1000자).
 export const ELEVENLABS_USD_PER_CHAR = 0.0003;
 
