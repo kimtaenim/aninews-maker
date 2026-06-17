@@ -38,8 +38,28 @@ function toEdit(s: Scene): EditScene {
 
 export default function Studio({ project: initial }: { project: Project }) {
   const [project, setProject] = useState<Project>(initial);
-  const [busy, setBusy] = useState<string | null>(null);
+  const [busy, _setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorStep, setErrorStep] = useState<StepKind | null>(null);
+
+  // 진행 중인 액션 → 어느 단계인지 매핑. 에러를 그 단계 패널에 표시하기 위함.
+  function actionToStep(action: string): StepKind | null {
+    const a = action.startsWith("approve-") ? action.slice(8) : action;
+    if (a === "source") return "source";
+    if (a === "script" || a === "save") return "script";
+    if (a === "keyframe") return "keyframe";
+    if (a.startsWith("scene") || a.startsWith("images")) return "images";
+    if (a.startsWith("video")) return "videos";
+    if (a.startsWith("audio") || a === "voiceover") return "voiceover";
+    return null;
+  }
+  // setBusy(action) 가 진행 단계를 errorStep 에 기록한다. setBusy(null)(finally)은
+  // 지우지 않으므로(직전 단계 유지), 에러가 나면 그 단계 패널에 메시지가 남는다.
+  // 성공 시엔 핸들러 시작의 setError(null) 로 error 가 비어 아무것도 안 뜬다.
+  function setBusy(action: string | null) {
+    _setBusy(action);
+    if (action) setErrorStep(actionToStep(action));
+  }
 
   // 편집용 씬 사본 (저장 전까지 로컬 상태)
   const [scenes, setScenes] = useState<EditScene[]>(initial.scenes.map(toEdit));
@@ -472,7 +492,10 @@ export default function Studio({ project: initial }: { project: Project }) {
         })}
       </ol>
 
-      {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
+      {/* 단계와 무관한 에러만 여기(상단). 단계별 에러는 각 단계 패널에 표시된다. */}
+      {error && !errorStep && (
+        <p className="mt-4 text-sm text-red-600">{error}</p>
+      )}
 
       {/* 1단계: 소스 검수 */}
       <section className="mt-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 p-5">
@@ -491,6 +514,9 @@ export default function Studio({ project: initial }: { project: Project }) {
             </button>
           )}
         </div>
+        {errorStep === "source" && error && (
+          <p className="mt-2 text-xs text-red-600">{error}</p>
+        )}
         {material && (
           <div className="mt-3 text-sm">
             <p className="font-medium">{material.title}</p>
@@ -526,6 +552,9 @@ export default function Studio({ project: initial }: { project: Project }) {
         )}
         {scriptStatus === "error" && project.steps.script.error && (
           <p className="mt-2 text-xs text-red-600">{project.steps.script.error}</p>
+        )}
+        {errorStep === "script" && error && (
+          <p className="mt-2 text-xs text-red-600">{error}</p>
         )}
 
         {hasScenes && (
@@ -678,6 +707,9 @@ export default function Studio({ project: initial }: { project: Project }) {
         {keyframeStatus === "error" && project.steps.keyframe.error && (
           <p className="mt-2 text-xs text-red-600">{project.steps.keyframe.error}</p>
         )}
+        {errorStep === "keyframe" && error && (
+          <p className="mt-2 text-xs text-red-600">{error}</p>
+        )}
 
         {busy === "keyframe" && (
           <div className="mt-4 flex w-44 aspect-[9/16] items-center justify-center rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700 text-zinc-400">
@@ -749,6 +781,9 @@ export default function Studio({ project: initial }: { project: Project }) {
         )}
         {imagesStatus === "error" && project.steps.images.error && (
           <p className="mt-2 text-xs text-red-600">{project.steps.images.error}</p>
+        )}
+        {errorStep === "images" && error && (
+          <p className="mt-2 text-xs text-red-600">{error}</p>
         )}
 
         {keyframeApproved && extraScenes.length > 0 && (
@@ -837,6 +872,9 @@ export default function Studio({ project: initial }: { project: Project }) {
         )}
         {videosStatus === "error" && project.steps.videos.error && (
           <p className="mt-2 text-xs text-red-600">{project.steps.videos.error}</p>
+        )}
+        {errorStep === "videos" && error && (
+          <p className="mt-2 text-xs text-red-600">{error}</p>
         )}
 
         {imagesApproved && (
@@ -939,6 +977,9 @@ export default function Studio({ project: initial }: { project: Project }) {
         )}
         {voiceoverStatus === "error" && project.steps.voiceover.error && (
           <p className="mt-2 text-xs text-red-600">{project.steps.voiceover.error}</p>
+        )}
+        {errorStep === "voiceover" && error && (
+          <p className="mt-2 text-xs text-red-600">{error}</p>
         )}
 
         {videosApproved && (
