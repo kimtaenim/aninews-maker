@@ -46,16 +46,25 @@ export function videoEndpoint(): string {
 // jobId = "endpoint::requestId" — poll 이 endpoint 없이 자족하도록 인코딩.
 const JOB_SEP = "::";
 
-// fal 에러를 사람이 읽을 메시지로. 가장 흔한 건 잔액 부족(403 Forbidden).
+// fal 에러를 사람이 읽을 메시지로. detail 이 문자열/객체 어느 쪽이든 처리.
 function falErrorMessage(e: unknown): string {
-  const err = e as { status?: number; message?: string; body?: { detail?: string } };
-  const detail = err?.body?.detail;
-  if (detail && /exhausted|locked|balance/i.test(detail)) {
-    return "fal 잔액이 부족해요. fal.ai/dashboard/billing 에서 충전(결제수단 등록)하면 비디오가 생성됩니다.";
+  const err = e as { status?: number; message?: string; body?: unknown };
+  const rawDetail = (err?.body as { detail?: unknown } | undefined)?.detail;
+  let detail = "";
+  if (typeof rawDetail === "string") detail = rawDetail;
+  else if (rawDetail != null) {
+    try {
+      detail = JSON.stringify(rawDetail);
+    } catch {
+      detail = String(rawDetail);
+    }
   }
-  if (detail) return `fal: ${detail}`;
+  if (detail && /exhausted|locked|balance/i.test(detail)) {
+    return "fal 잔액 부족/계정 잠금이에요. $200를 충전한 계정과 FAL_KEY 의 계정이 같은지 fal.ai/dashboard 에서 확인하세요(팀/개인 구분). 급하면 모델을 Grok으로 바꿔 생성하세요.";
+  }
+  if (detail) return `fal: ${detail.slice(0, 200)}`;
   if (err?.status === 403) {
-    return "fal 접근 거부(403) — 대개 잔액 부족입니다. fal.ai/dashboard/billing 확인.";
+    return "fal 접근 거부(403) — 잔액/계정 확인. 또는 모델을 Grok으로 교차하세요.";
   }
   return err?.message || "fal 요청 실패";
 }
