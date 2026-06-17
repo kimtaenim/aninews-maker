@@ -64,6 +64,13 @@ export default function Studio({ project: initial }: { project: Project }) {
   const allScenesHaveImage =
     extraScenes.length > 0 && extraScenes.every((s) => !!s.imageUrl);
 
+  const videosStatus = project.steps.videos.status;
+  const videosApproved = videosStatus === "approved";
+  const [videoCost, setVideoCost] = useState<Record<number, string>>({});
+  const [activeVideo, setActiveVideo] = useState<number | null>(null);
+  const allScenesHaveVideo =
+    project.scenes.length > 0 && project.scenes.every((s) => !!s.videoUrl);
+
   function patchScene(i: number, patch: Partial<EditScene>) {
     setScenes((prev) => prev.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
     setDirty(true);
@@ -267,6 +274,95 @@ export default function Studio({ project: initial }: { project: Project }) {
       setProject((p) => ({
         ...p,
         steps: { ...p.steps, images: { ...p.steps.images, status: "approved" } },
+      }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "승인 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // ── 5단계: 비디오 (fal image-to-video, 비동기 제출 → 폴링) ────────────────────
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  // 한 씬: 제출 → 완료까지 폴링(최대 ~5분). 완료 시 project.scenes 갱신.
+  async function submitAndPollVideo(sceneIndex: number): Promise<void> {
+    await call("/api/video/scene", { projectId: project.id, sceneIndex });
+    const MAX_TRIES = 60; // 60 × 5s = 5분
+    for (let t = 0; t < MAX_TRIES; t++) {
+      await sleep(5000);
+      const r = await fetch(
+        `/api/video/scene?projectId=${encodeURIComponent(project.id)}&sceneIndex=${sceneIndex}`
+      );
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      if (data.status === "failed") throw new Error(data.error || "비디오 생성 실패");
+      if (data.status === "completed") {
+        setVideoCost((c) => ({ ...c, [sceneIndex]: (data.cost as string) ?? "" }));
+        setProject((p) => ({
+          ...p,
+          scenes: p.scenes.map((s, i) =>
+            i === sceneIndex
+              ? { ...s, videoUrl: data.videoUrl as string, status: "generated" }
+              : s
+          ),
+          steps: {
+            ...p.steps,
+            videos: {
+              ...p.steps.videos,
+              status: (data.allDone ? "generated" : "generating") as
+                | "generated"
+                | "generating",
+            },
+          },
+        }));
+        return;
+      }
+      // pending / running → 계속 폴링
+    }
+    throw new Error("비디오 생성이 시간 내 끝나지 않았어요 (잠시 후 다시 시도)");
+  }
+
+  async function generateVideo(sceneIndex: number) {
+    setError(null);
+    setBusy(`video-${sceneIndex}`);
+    setActiveVideo(sceneIndex);
+    try {
+      await submitAndPollVideo(sceneIndex);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "비디오 생성 실패");
+    } finally {
+      setActiveVideo(null);
+      setBusy(null);
+    }
+  }
+
+  // 비디오 없는 씬들을 순차 생성(병렬 금지 — last-write-wins 방지).
+  async function generateAllVideos() {
+    setError(null);
+    setBusy("videos-all");
+    try {
+      for (let i = 0; i < project.scenes.length; i++) {
+        if (project.scenes[i].videoUrl) continue;
+        setActiveVideo(i);
+        await submitAndPollVideo(i);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "비디오 생성 실패");
+    } finally {
+      setActiveVideo(null);
+      setBusy(null);
+    }
+  }
+
+  async function approveVideos() {
+    setError(null);
+    setBusy("approve-videos");
+    try {
+      await call("/api/step/approve", { projectId: project.id, step: "videos" });
+      setProject((p) => ({
+        ...p,
+        steps: { ...p.steps, videos: { ...p.steps.videos, status: "approved" } },
       }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "승인 실패");
@@ -635,6 +731,102 @@ export default function Studio({ project: initial }: { project: Project }) {
                 className="mt-4 text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-medium px-3 py-1.5"
               >
                 {busy === "approve-images" ? <Busy>승인 중…</Busy> : "이미지 승인 →"}
+              </button>
+            )}
+          </>
+        )}
+      </section>
+
+      {/* 5단계: 씬별 비디오 (image-to-video) */}
+      <section className="mt-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 p-5">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold">
+            5. 비디오 (씬별)
+            {videosApproved && <span className="ml-2 text-xs text-accent">승인됨</span>}
+          </h2>
+          <button
+            type="button"
+            onClick={generateAllVideos}
+            disabled={!imagesApproved || busy !== null || project.scenes.length === 0}
+            className="shrink-0 text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-medium px-3 py-1.5"
+          >
+            {busy === "videos-all" ? (
+              <Busy>생성 중…</Busy>
+            ) : allScenesHaveVideo ? (
+              "빈 씬만 생성"
+            ) : (
+              "전체 생성"
+            )}
+          </button>
+        </div>
+        {!imagesApproved && (
+          <p className="mt-2 text-xs text-zinc-500">이미지를 먼저 승인해주세요.</p>
+        )}
+        {videosStatus === "error" && project.steps.videos.error && (
+          <p className="mt-2 text-xs text-red-600">{project.steps.videos.error}</p>
+        )}
+
+        {imagesApproved && (
+          <>
+            <ol className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {project.scenes.map((sc, i) => {
+                const videoBusy = busy === `video-${i}` || activeVideo === i;
+                return (
+                  <li key={i} className="grid gap-1.5">
+                    <div className="relative flex aspect-[2/3] items-center justify-center overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900">
+                      {sc.videoUrl ? (
+                        <video
+                          src={sc.videoUrl}
+                          className="h-full w-full object-cover"
+                          autoPlay
+                          loop
+                          muted
+                          playsInline
+                        />
+                      ) : sc.imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={sc.imageUrl}
+                          alt={`씬 ${i + 1}`}
+                          className="h-full w-full object-cover opacity-60"
+                        />
+                      ) : (
+                        <span className="text-[11px] text-zinc-400">이미지 없음</span>
+                      )}
+                      {videoBusy && (
+                        <span className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-black/40 text-[11px] text-white">
+                          <Spinner className="size-5" />
+                          생성 중…
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] text-zinc-500">씬 {i + 1}</span>
+                      <button
+                        type="button"
+                        onClick={() => generateVideo(i)}
+                        disabled={busy !== null || !sc.imageUrl}
+                        className="text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
+                      >
+                        {sc.videoUrl ? "리롤" : "비디오 생성"}
+                      </button>
+                    </div>
+                    {videoCost[i] && (
+                      <p className="text-[11px] text-zinc-400">{videoCost[i]}</p>
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+
+            {allScenesHaveVideo && !videosApproved && (
+              <button
+                type="button"
+                onClick={approveVideos}
+                disabled={busy !== null}
+                className="mt-4 text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-medium px-3 py-1.5"
+              >
+                {busy === "approve-videos" ? <Busy>승인 중…</Busy> : "비디오 승인 →"}
               </button>
             )}
           </>

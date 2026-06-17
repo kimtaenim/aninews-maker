@@ -45,6 +45,7 @@ export interface Scene {
   status: StepStatus; // 씬 단위 리롤 시 generated 로 되돌림
   imageUrl?: string;
   videoUrl?: string;
+  videoJobId?: string; // fal 비동기 작업 id ("endpoint::requestId" 인코딩)
   audioUrl?: string; // 씬별 TTS 클립
   ttsTimestamps?: TtsWord[]; // 자막 타이밍 (TTS 타임스탬프 기준)
 }

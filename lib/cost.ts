@@ -71,6 +71,18 @@ export function openaiImageCostUsd(
   return (tier[quality] ?? tier.low ?? 0) * count;
 }
 
+// USD per video (fal image-to-video). endpoint(모델 경로) 기준 대략값.
+export const FAL_VIDEO_PRICING: Record<string, number> = {
+  "fal-ai/minimax/video-01": 0.35,
+  "fal-ai/kling-video/v1/standard/image-to-video": 0.25,
+  "fal-ai/bytedance/seedance/v1/pro/image-to-video": 0.62,
+};
+export const FAL_VIDEO_DEFAULT_USD = 0.35;
+
+export function falVideoCostUsd(endpoint: string): number {
+  return FAL_VIDEO_PRICING[endpoint] ?? FAL_VIDEO_DEFAULT_USD;
+}
+
 const KEY = "cost:entries"; // list (best-effort 기록)
 
 export async function recordCost(

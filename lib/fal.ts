@@ -36,5 +36,64 @@ export function getVideoModel(id?: string): VideoModel {
   return chosen;
 }
 
-// TODO: submitVideoJob(scene, model) → falRequestId  (fal.queue.submit)
-// TODO: pollVideoJob(falRequestId) → { status, videoUrl? }  (fal.queue.status/result)
+// 실제 fal endpoint. FAL_VIDEO_MODEL 로 override, 기본 minimax/video-01.
+export const FAL_DEFAULT_VIDEO_MODEL = "fal-ai/minimax/video-01";
+
+export function videoEndpoint(): string {
+  return process.env.FAL_VIDEO_MODEL || FAL_DEFAULT_VIDEO_MODEL;
+}
+
+// jobId = "endpoint::requestId" — poll 이 endpoint 없이 자족하도록 인코딩.
+const JOB_SEP = "::";
+
+export type VideoPoll =
+  | { status: "pending" | "running" }
+  | { status: "completed"; videoUrl: string }
+  | { status: "failed"; error: string };
+
+// 5단계 — 씬 이미지 → image-to-video 작업 제출. 즉시 jobId 반환(분 단위 비동기).
+export async function generateVideo(opts: {
+  imageUrl: string;
+  prompt?: string;
+  duration?: number;
+}): Promise<{ jobId: string }> {
+  const client = configureFal();
+  const endpoint = videoEndpoint();
+
+  const input: Record<string, unknown> = { image_url: opts.imageUrl };
+  if (opts.prompt) input.prompt = opts.prompt;
+  if (typeof opts.duration === "number") input.duration = opts.duration;
+
+  const { request_id } = await client.queue.submit(endpoint, { input });
+  if (!request_id) throw new Error("fal 작업 제출 실패 — request_id 없음");
+  return { jobId: `${endpoint}${JOB_SEP}${request_id}` };
+}
+
+// fal 결과 payload 에서 비디오 URL 추출 (모델별 스키마 차이 흡수).
+function extractVideoUrl(data: unknown): string | null {
+  const d = data as { video?: { url?: string }; video_url?: string; url?: string } | null;
+  return d?.video?.url ?? d?.video_url ?? d?.url ?? null;
+}
+
+// jobId 로 상태 확인. 완료면 videoUrl(임시 fal URL)까지. 라우트가 Blob 로 옮긴다.
+export async function pollVideo(jobId: string): Promise<VideoPoll> {
+  const sep = jobId.indexOf(JOB_SEP);
+  if (sep === -1) return { status: "failed", error: "잘못된 jobId" };
+  const endpoint = jobId.slice(0, sep);
+  const requestId = jobId.slice(sep + JOB_SEP.length);
+
+  const client = configureFal();
+  try {
+    const st = await client.queue.status(endpoint, { requestId });
+    if (st.status === "COMPLETED") {
+      const res = await client.queue.result(endpoint, { requestId });
+      const videoUrl = extractVideoUrl(res.data);
+      if (!videoUrl) return { status: "failed", error: "결과에 비디오 URL이 없어요" };
+      return { status: "completed", videoUrl };
+    }
+    if (st.status === "IN_QUEUE") return { status: "pending" };
+    return { status: "running" }; // IN_PROGRESS 등
+  } catch (e) {
+    return { status: "failed", error: e instanceof Error ? e.message : "fal 폴링 실패" };
+  }
+}
