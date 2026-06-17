@@ -55,12 +55,14 @@ export async function submitVideo(
 }
 
 export async function pollVideoJob(jobId: string): Promise<VideoPoll> {
-  const i = jobId.indexOf(SEP);
-  if (i === -1) return { status: "failed", error: "잘못된 jobId" };
-  const provider = jobId.slice(0, i);
-  const rest = jobId.slice(i + SEP.length);
-  if (provider === "grok") return pollGrokVideo(rest);
-  return falPoll(rest); // rest = "<endpoint>::<requestId>"
+  if (jobId.startsWith(`grok${SEP}`)) {
+    return pollGrokVideo(jobId.slice(`grok${SEP}`.length));
+  }
+  if (jobId.startsWith(`fal${SEP}`)) {
+    return falPoll(jobId.slice(`fal${SEP}`.length)); // "<endpoint>::<requestId>"
+  }
+  // 프로바이더 프리픽스가 없으면 옛 형식(fal "<endpoint>::<requestId>") — 그대로 fal 폴링.
+  return falPoll(jobId);
 }
 
 export function videoCostUsd(modelId: string): number {
