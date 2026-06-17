@@ -40,6 +40,8 @@ export default function Studio({ project: initial }: { project: Project }) {
   const scriptStatus = project.steps.script.status;
   const scriptApproved = scriptStatus === "approved";
   const hasScenes = scenes.length > 0;
+  const keyframeStatus = project.steps.keyframe.status;
+  const keyframeApproved = keyframeStatus === "approved";
 
   function patchScene(i: number, patch: Partial<EditScene>) {
     setScenes((prev) => prev.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
@@ -140,6 +142,39 @@ export default function Studio({ project: initial }: { project: Project }) {
       setProject((p) => ({
         ...p,
         steps: { ...p.steps, script: { ...p.steps.script, status: "approved" } },
+      }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "승인 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function generateKeyframe() {
+    setError(null);
+    setBusy("keyframe");
+    try {
+      const data = await call("/api/image/keyframe", { projectId: project.id });
+      setProject((p) => ({
+        ...p,
+        keyframeUrl: data.url as string,
+        steps: { ...p.steps, keyframe: { ...p.steps.keyframe, status: "generated" } },
+      }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "키프레임 생성 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function approveKeyframe() {
+    setError(null);
+    setBusy("approve-keyframe");
+    try {
+      await call("/api/step/approve", { projectId: project.id, step: "keyframe" });
+      setProject((p) => ({
+        ...p,
+        steps: { ...p.steps, keyframe: { ...p.steps.keyframe, status: "approved" } },
       }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "승인 실패");
@@ -353,6 +388,59 @@ export default function Studio({ project: initial }: { project: Project }) {
               반영됩니다.
             </p>
           </>
+        )}
+      </section>
+
+      {/* 3단계: 키프레임 (씬0 스타일 확정) */}
+      <section className="mt-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 p-5">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold">
+            3. 키프레임 (씬0 스타일 확정)
+            {keyframeApproved && <span className="ml-2 text-xs text-accent">승인됨</span>}
+          </h2>
+          <button
+            type="button"
+            onClick={generateKeyframe}
+            disabled={!scriptApproved || busy !== null}
+            className="shrink-0 text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-medium px-3 py-1.5"
+          >
+            {busy === "keyframe"
+              ? "생성 중…"
+              : project.keyframeUrl
+                ? "다시 생성"
+                : "키프레임 생성"}
+          </button>
+        </div>
+        {!scriptApproved && (
+          <p className="mt-2 text-xs text-zinc-500">스크립트를 먼저 승인해주세요.</p>
+        )}
+        {keyframeStatus === "error" && project.steps.keyframe.error && (
+          <p className="mt-2 text-xs text-red-600">{project.steps.keyframe.error}</p>
+        )}
+
+        {project.keyframeUrl && (
+          <div className="mt-4">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={project.keyframeUrl}
+              alt="키프레임 (씬0)"
+              className="w-44 rounded-xl border border-zinc-200 dark:border-zinc-800"
+            />
+            <p className="mt-2 text-[11px] text-zinc-400">
+              이 한 장이 이후 모든 씬의 스타일·인물·팔레트 레퍼런스가 됩니다. 마음에
+              들 때까지 다시 생성한 뒤 승인하세요.
+            </p>
+            {!keyframeApproved && (
+              <button
+                type="button"
+                onClick={approveKeyframe}
+                disabled={busy !== null}
+                className="mt-3 text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-medium px-3 py-1.5"
+              >
+                {busy === "approve-keyframe" ? "승인 중…" : "키프레임 승인 →"}
+              </button>
+            )}
+          </div>
         )}
       </section>
     </main>
