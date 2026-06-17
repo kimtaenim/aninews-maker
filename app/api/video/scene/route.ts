@@ -8,6 +8,7 @@ import {
   DEFAULT_VIDEO_MODEL_ID,
 } from "@/lib/videoProvider";
 import { canStart } from "@/lib/stepMachine";
+import { getVideoMotion } from "@/lib/prompts";
 import { uploadAsset } from "@/lib/blob";
 import { formatKrw, recordCost } from "@/lib/cost";
 
@@ -67,13 +68,10 @@ export async function POST(req: NextRequest) {
   const modelId =
     body.videoModelId || project.videoModelId || DEFAULT_VIDEO_MODEL_ID;
   try {
-    // 기본은 잔잔. 씬별로 "크게" 선택하면 더 역동적으로.
+    // 기본은 잔잔(동작 적게 + 스톱모션 느낌). 씬별로 "크게" 선택하면 더 역동적으로.
+    // 가이드 문구는 config/prompts.json 의 video_motion 에서 관리(하드코딩 X).
     const motion = (body.prompt ?? scene.motion ?? "").trim();
-    const SUBTLE =
-      "Keep motion subtle and minimal — small, gentle movements only; no large, fast, or dramatic action; slow steady camera.";
-    const LARGE =
-      "Use larger, more dynamic motion and noticeable camera movement, while keeping it coherent (not chaotic).";
-    const guidance = body.motionScale === "large" ? LARGE : SUBTLE;
+    const guidance = getVideoMotion(body.motionScale === "large" ? "large" : "subtle");
     const prompt = motion ? `${motion}. ${guidance}` : guidance;
     const { jobId } = await submitVideo(modelId, {
       imageUrl: scene.imageUrl,

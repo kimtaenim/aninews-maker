@@ -19,5 +19,10 @@
   },
   "translate": {
     "system": "Translate the narration for subtitles. Preserve meaning and timing-friendly length."
+  },
+  "video_motion": {
+    "_comment": "씬별 image-to-video 모션 지시. 씬 motion 문구 뒤에 덧붙는 가이드. 기본(subtle)=동작 적게 + 스톱모션 느낌.",
+    "subtle": "Keep motion subtle and minimal — small, gentle movements only; slight ambient motion with a slow, steady camera. Give it a stop-motion feel: a handcrafted, slightly stepped quality rather than smooth high-framerate motion. No large, fast, or dramatic action.",
+    "large": "Use larger, more dynamic motion and noticeable camera movement while staying coherent (not chaotic). Keep a tactile stop-motion feel rather than hyper-smooth motion."
   }
 }

@@ -17,6 +17,14 @@ export function getPrompt(step: keyof typeof promptsJson): PromptSection {
   return section;
 }
 
+// 씬별 영상 모션 가이드(config/prompts.json 의 video_motion). 기본 subtle=동작 적게+스톱모션.
+export function getVideoMotion(scale: "subtle" | "large"): string {
+  const vm = (promptsJson as Record<string, unknown>).video_motion as
+    | Record<string, string>
+    | undefined;
+  return (vm && vm[scale]) || "";
+}
+
 export function formatPrompt(
   template: string,
   vars: Record<string, string | number>
