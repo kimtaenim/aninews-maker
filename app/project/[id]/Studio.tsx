@@ -152,29 +152,6 @@ export default function Studio({
     }
   }
 
-  // 영문 자막 생성 (Claude 번역)
-  async function translateSubtitles() {
-    setError(null);
-    setBusy("subtitle-translate");
-    try {
-      const data = await call("/api/subtitle/translate", { projectId: project.id });
-      const map = new Map(
-        (data.scenes as { index: number; narrationEn: string }[]).map((s) => [
-          s.index,
-          s.narrationEn,
-        ])
-      );
-      setProject((p) => ({
-        ...p,
-        scenes: p.scenes.map((s, i) => ({ ...s, narrationEn: map.get(i) ?? s.narrationEn })),
-      }));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "영문 자막 생성 실패");
-    } finally {
-      setBusy(null);
-    }
-  }
-
   // 7단계: 합성 — worker 에 작업 적재 후 완성될 때까지 폴링.
   async function startCompose() {
     setError(null);
@@ -1644,7 +1621,6 @@ export default function Studio({
                 ["position", "위치", [["bottom", "하단"], ["top", "상단"]]],
                 ["align", "정렬", [["center", "가운데"], ["left", "왼쪽"]]],
                 ["box", "배경", [["dark", "검은 박스·흰 글씨"], ["light", "흰 박스·검은 글씨"]]],
-                ["lang", "자막 언어", [["ko", "한국어"], ["en", "영어"], ["both", "한+영"]]],
               ] as const
             ).map(([field, label, opts]) => (
               <label key={field} className="grid gap-1">
@@ -1665,24 +1641,6 @@ export default function Studio({
               </label>
             ))}
           </div>
-
-          {/* 영문 자막: 언어가 영어/한+영일 때 번역 생성 */}
-          {sub.lang !== "ko" && (
-            <button
-              type="button"
-              onClick={translateSubtitles}
-              disabled={busy !== null}
-              className="mt-2 text-xs rounded-lg border border-accent text-accent px-3 py-1.5 hover:bg-accent/10 disabled:opacity-40"
-            >
-              {busy === "subtitle-translate" ? (
-                <Busy>번역 중…</Busy>
-              ) : project.scenes.some((s) => s.narrationEn) ? (
-                "영문 자막 다시 생성"
-              ) : (
-                "영문 자막 생성 (Claude 번역)"
-              )}
-            </button>
-          )}
 
           <ol className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-3">
             {project.scenes.map((sc, i) =>
