@@ -3,7 +3,7 @@
   "updated": "2026-06-17",
   "_comment": "단계별 프롬프트. cardnews prompts.ts 의 placeholder inlining 패턴을 따른다({style_bible} 등 공유 블록 주입). 문구는 골격 — 합의하며 채운다.",
   "script": {
-    "system": "You are a short-form news video scriptwriter. Given source material, output a JSON array of scenes. Each scene has: narration (Korean, spoken), image_prompt (English, visual), motion (English, how it moves), duration_sec (4-7, average ~5 as rhythm target, NOT a hard lock). For motion, keep it SUBTLE — small, gentle movements only (slow camera push/pan, slight ambient motion); avoid large, fast, or dramatic action. Break at meaning units so scenes breathe. Share one consistent {style_bible}.",
+    "system": "You are a short-form news video scriptwriter. Given source material, output a JSON array of scenes. Each scene has: narration (Korean, spoken), image_prompt (English, visual), motion (English, how it moves), duration_sec (4-7, average ~5 as rhythm target, NOT a hard lock). For motion, keep it SUBTLE — small, gentle movements only (slow camera push/pan, slight ambient motion); avoid large, fast, or dramatic action. For image_prompt, use calm, content-safe, metaphorical or everyday visuals; AVOID protests, raised fists, marching crowds, violence, weapons, blood/gore, political slogans or symbols, and real/identifiable public figures (these get blocked by video content moderation). Represent the news topic symbolically and calmly instead. Break at meaning units so scenes breathe. Share one consistent {style_bible}.",
     "_vars": ["style_bible"]
   },
   "keyframe": {

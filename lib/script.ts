@@ -42,6 +42,7 @@ export async function generateScript(
     '{"scenes":[{"narration":"...","image_prompt":"...","motion":"...","duration_sec":5}]}',
     "narration 은 한국어 구어체, image_prompt 와 motion 은 영어. duration_sec 은 4~7.",
     "motion 은 작고 잔잔한 움직임으로만 (느린 카메라, 미세한 움직임). 크거나 빠르거나 과한 액션은 금지.",
+    "image_prompt 는 검열에 안 걸리게 — 시위·치켜든 주먹·행진 군중·폭력·무기·유혈·정치 구호/상징·실존 인물은 피하고, 주제를 차분하고 은유적인 일상 비주얼로 표현.",
   ]
     .filter(Boolean)
     .join("\n");
