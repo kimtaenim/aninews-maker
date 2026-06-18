@@ -43,6 +43,7 @@ export async function POST(req: NextRequest) {
     return {
       index,
       narration: String(s.narration ?? "").trim(),
+      ttsScript: carry?.ttsScript, // 음성 전용 오버라이드는 같은 index 면 보존
       imagePrompt: String(s.imagePrompt ?? "").trim(),
       motion: String(s.motion ?? "").trim(),
       durationSec: clampDur(s.durationSec),

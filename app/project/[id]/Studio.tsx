@@ -523,6 +523,12 @@ export default function Studio({
   const allScenesHaveAudio =
     project.scenes.length > 0 && project.scenes.every((s) => !!s.audioUrl);
 
+  // 음성(TTS) 전용 스크립트 편집 버퍼 — 비우면 자막(narration)이 그대로 음성에 쓰인다.
+  const [ttsScripts, setTtsScripts] = useState<Record<number, string>>(
+    Object.fromEntries(initial.scenes.map((s) => [s.index, s.ttsScript ?? ""]))
+  );
+  const [ttsDirty, setTtsDirty] = useState(false);
+
   function patchScene(i: number, patch: Partial<EditScene>) {
     setScenes((prev) => prev.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
     setDirty(true);
@@ -966,6 +972,32 @@ export default function Studio({
   }
 
   // ── 6단계: 음성 (ElevenLabs TTS, 동기 호출) ──────────────────────────────────
+  // 음성 전용 스크립트(ttsScript) 편집분을 서버에 저장. 음성 합성은 저장된 값을 읽으므로
+  // 합성/재생성 전에 먼저 저장해야 한다(자막용 narration 은 안 건드림).
+  async function saveTtsScripts() {
+    setError(null);
+    setBusy("save-tts");
+    try {
+      const payload = project.scenes.map((s) => ({
+        index: s.index,
+        ttsScript: ttsScripts[s.index] ?? "",
+      }));
+      await call("/api/script/tts", { projectId: project.id, scenes: payload });
+      setProject((p) => ({
+        ...p,
+        scenes: p.scenes.map((s) => ({
+          ...s,
+          ttsScript: (ttsScripts[s.index] ?? "").trim() || undefined,
+        })),
+      }));
+      setTtsDirty(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "음성 스크립트 저장 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function generateOneAudio(sceneIndex: number): Promise<void> {
     const data = await call("/api/audio/scene", { projectId: project.id, sceneIndex });
     setAudioCost((c) => ({ ...c, [sceneIndex]: (data.cost as string) ?? "" }));
@@ -989,6 +1021,8 @@ export default function Studio({
   }
 
   async function generateAudio(sceneIndex: number) {
+    // 저장 안 한 음성 스크립트 편집이 있으면 먼저 저장(합성은 저장된 ttsScript 기준).
+    if (ttsDirty) await saveTtsScripts();
     setError(null);
     setBusy(`audio-${sceneIndex}`);
     try {
@@ -1002,6 +1036,7 @@ export default function Studio({
 
   // 음성 없는 씬들을 순차 생성(병렬 금지 — last-write-wins 방지).
   async function generateAllAudio() {
+    if (ttsDirty) await saveTtsScripts();
     setError(null);
     setBusy("audio-all");
     try {
@@ -1933,6 +1968,28 @@ export default function Studio({
                     ) : (
                       <span className="mt-2 block text-[11px] text-zinc-400">미생성</span>
                     )}
+                    {/* 음성 전용 스크립트(선택). 자막은 위 나레이션 그대로, 음성만 다르게. */}
+                    <textarea
+                      value={ttsScripts[sc.index] ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setTtsScripts((prev) => ({ ...prev, [sc.index]: v }));
+                        setTtsDirty(true);
+                      }}
+                      onBlur={() => {
+                        const buf = (ttsScripts[sc.index] ?? "").trim();
+                        const saved = (sc.ttsScript ?? "").trim();
+                        if (buf !== saved) saveTtsScripts();
+                      }}
+                      rows={2}
+                      placeholder={sc.narration}
+                      className={`${fieldCls} mt-2`}
+                    />
+                    <p className="mt-1 text-[10px] text-zinc-400">
+                      {(ttsScripts[sc.index] ?? "").trim()
+                        ? "이 텍스트로 음성이 생성됩니다 (자막은 위 나레이션 그대로)."
+                        : "비어 있으면 자막 텍스트가 그대로 음성으로 사용됩니다."}
+                    </p>
                   </li>
                 );
               })}

@@ -38,7 +38,8 @@ export type StepStatus =
 // script 단계가 만들고, images/videos/voiceover 단계가 채운다.
 export interface Scene {
   index: number;
-  narration: string; // 보이스오버 대본 + 자막 소스 (한국어)
+  narration: string; // 자막 + (기본)보이스오버 소스 (한국어). 자막 단계는 항상 이걸 쓴다.
+  ttsScript?: string; // 음성(TTS) 전용 오버라이드. 비면 narration 사용. 자막엔 영향 없음.
   narrationEn?: string; // 영문 자막용 번역 (선택)
   imagePrompt: string; // gpt-image-2 프롬프트
   motion: string; // fal image-to-video 모션 지시

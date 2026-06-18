@@ -43,7 +43,10 @@ export async function POST(req: NextRequest) {
   }
   const scene = project.scenes[sceneIndex];
   const lang = body.lang === "en" ? "en" : "ko";
-  const base = lang === "en" ? scene?.narrationEn : scene?.narration;
+  // 한국어 음성은 ttsScript(음성 전용 오버라이드)가 있으면 그걸, 없으면 narration(자막)을 쓴다.
+  // 클라이언트가 text 를 명시하면 항상 그게 우선(기존 동작 유지).
+  const base =
+    lang === "en" ? scene?.narrationEn : scene?.ttsScript?.trim() || scene?.narration;
   const text = (body.text ?? base ?? "").trim();
   if (!text) {
     return NextResponse.json(
