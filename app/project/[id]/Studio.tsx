@@ -143,6 +143,26 @@ export default function Studio({
   const [sub, setSub] = useState<SubtitleSettings>(initial.subtitle ?? DEFAULT_SUBTITLE);
   const [composeLang, setComposeLang] = useState<"ko" | "en">("ko");
 
+  // 워터마크 (최종 출력에 새김) — 텍스트 + 위치(4모서리)
+  const [wmText, setWmText] = useState(initial.watermark?.text ?? "");
+  const [wmPos, setWmPos] = useState<"tl" | "tr" | "bl" | "br">(
+    initial.watermark?.position ?? "br"
+  );
+  async function saveWatermark(text: string, position: "tl" | "tr" | "bl" | "br") {
+    try {
+      await call("/api/project/watermark", {
+        projectId: project.id,
+        watermark: { text, position },
+      });
+      setProject((p) => ({
+        ...p,
+        watermark: text.trim() ? { text: text.trim(), position } : undefined,
+      }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "워터마크 저장 실패");
+    }
+  }
+
   // 합성 진행 여부는 "서버 상태(steps.compose.status)"가 진실. busy(로컬)와 무관하게
   // 페이지를 떠났다 와도(remount), 백그라운드 갔다 와도 이걸로 복원한다.
   const composing = project.steps.compose.status === "generating";
@@ -2036,6 +2056,37 @@ export default function Studio({
           {/* 자막 디자인 — 굽기 직전 여기서 바로 조정 (미리보기와 동일) */}
           <p className="mt-3 text-[11px] font-medium text-zinc-500">자막 디자인</p>
           <div className="mt-1.5">{renderSubtitlePanel()}</div>
+
+          {/* 워터마크 — 최종 영상 모서리에 새김. 비우면 안 들어감. */}
+          <p className="mt-3 text-[11px] font-medium text-zinc-500">워터마크 (선택)</p>
+          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              value={wmText}
+              onChange={(e) => setWmText(e.target.value)}
+              onBlur={() => saveWatermark(wmText, wmPos)}
+              placeholder="예: @내채널 / 출처표기 (비우면 없음)"
+              maxLength={60}
+              className="flex-1 min-w-[160px] rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2.5 py-1.5 text-sm outline-none focus:border-accent"
+            />
+            <select
+              value={wmPos}
+              onChange={(e) => {
+                const p = e.target.value as "tl" | "tr" | "bl" | "br";
+                setWmPos(p);
+                saveWatermark(wmText, p);
+              }}
+              className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1.5 text-xs outline-none focus:border-accent"
+            >
+              <option value="tl">좌상</option>
+              <option value="tr">우상</option>
+              <option value="bl">좌하</option>
+              <option value="br">우하</option>
+            </select>
+          </div>
+          <p className="mt-1 text-[10px] text-zinc-400">
+            입력 후 칸 밖을 누르면 저장됩니다. 영상 모서리에 작은 반투명 글씨로 들어가요.
+          </p>
 
           {errorStep === "compose" && error && (
             <p className="mt-2 text-xs text-red-600">{error}</p>

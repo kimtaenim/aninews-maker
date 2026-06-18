@@ -7,7 +7,7 @@ import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { segmentCaptions } from "./captions.mjs";
-import { renderCaptionPng } from "./subtitle-image.mjs";
+import { renderCaptionPng, renderWatermarkPng } from "./subtitle-image.mjs";
 
 const W = 1080;
 const H = 1920;
@@ -82,6 +82,15 @@ export async function composeProject(projectId, lang) {
   );
   const dir = await mkdtemp(join(tmpdir(), "compose-"));
   try {
+    // 워터마크는 모든 씬에 동일하게 들어가므로 한 번만 렌더(전체프레임 투명 PNG).
+    let wmPath = null;
+    if (project.watermark?.text?.trim()) {
+      const wmPng = await renderWatermarkPng(project.watermark, { W, H });
+      wmPath = join(dir, "watermark.png");
+      await writeFile(wmPath, wmPng);
+      await log(`워터마크 "${project.watermark.text}" (${project.watermark.position})`);
+    }
+
     const sceneFiles = [];
     for (let i = 0; i < scenes.length; i++) {
       const s = scenes[i];
@@ -132,20 +141,23 @@ export async function composeProject(projectId, lang) {
       const base =
         `[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase,` +
         `crop=${W}:${H},setpts=${speed.toFixed(4)}*PTS,fps=${FPS}`;
-      // 자막 PNG들을 시간 구간별로 오버레이(앞 0=video, 1=audio, 2..=png).
+      // 오버레이: 자막(시간 구간 enable) + 워터마크(항상). 입력은 0=video,1=audio,2..=캡션,그 뒤=워터마크.
+      const overlays = capPaths.map((_, j) => ({
+        inIdx: 2 + j,
+        enable: `between(t,${spans[j][0].toFixed(3)},${spans[j][1].toFixed(3)})`,
+      }));
+      if (wmPath) overlays.push({ inIdx: 2 + capPaths.length, enable: null });
+
       let filter;
-      if (capPaths.length === 0) {
+      if (overlays.length === 0) {
         filter = `${base}[v]`;
       } else {
         filter = `${base}[bg]`;
         let prev = "bg";
-        capPaths.forEach((_, j) => {
-          const inIdx = 2 + j;
-          const label = j === capPaths.length - 1 ? "v" : `o${j}`;
-          const [st, en] = spans[j];
-          filter +=
-            `;[${prev}][${inIdx}:v]overlay=0:0:` +
-            `enable='between(t,${st.toFixed(3)},${en.toFixed(3)})'[${label}]`;
+        overlays.forEach((ov, k) => {
+          const label = k === overlays.length - 1 ? "v" : `o${k}`;
+          const en = ov.enable ? `:enable='${ov.enable}'` : "";
+          filter += `;[${prev}][${ov.inIdx}:v]overlay=0:0${en}[${label}]`;
           prev = label;
         });
       }
@@ -157,6 +169,7 @@ export async function composeProject(projectId, lang) {
       // 자막 PNG는 -loop 1 로 연속 스트림화(단일 프레임 입력 + overlay 체인은 데드락).
       // 출력 -t 가 전체 길이를 제한하므로 입력은 무한 루프로 둬도 안전(v6 검증됨).
       for (const cp of capPaths) args.push("-loop", "1", "-framerate", String(FPS), "-i", cp);
+      if (wmPath) args.push("-loop", "1", "-framerate", String(FPS), "-i", wmPath);
       args.push(
         "-filter_complex", filter,
         "-map", "[v]", "-map", "1:a",

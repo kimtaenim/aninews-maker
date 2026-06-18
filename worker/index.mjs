@@ -36,7 +36,7 @@ async function tick() {
 }
 
 // 배포 검증용 버전 표식 — 이 줄이 Render 로그에 보이면 "새 자막(libass) 코드"가 떴다는 뜻.
-console.log("[worker] BUILD = caption-png-v9 (인코딩 v6 검증설정 복원 + 세리프/산세리프 폰트)");
+console.log("[worker] BUILD = caption-png-v10 (워터마크 오버레이 추가)");
 console.log("[worker] 시작 — jobq:compose 폴링 중…");
 for (;;) {
   await tick();

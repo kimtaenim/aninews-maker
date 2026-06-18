@@ -164,3 +164,35 @@ export async function renderCaptionPng(text, sub, opts = {}) {
 
   return canvas.encode("png");
 }
+
+// 워터마크 PNG — 네 모서리 중 한 곳에 작은 반투명 텍스트. 전체 프레임 투명 PNG.
+// position: tl=좌상 tr=우상 bl=좌하 br=우하.
+export async function renderWatermarkPng(wm, opts = {}) {
+  const W = opts.W ?? 1080;
+  const H = opts.H ?? 1920;
+  const canvas = createCanvas(W, H);
+  const ctx = canvas.getContext("2d");
+  if (opts.debugBg) {
+    ctx.fillStyle = "#7a7a7a";
+    ctx.fillRect(0, 0, W, H);
+  }
+  const text = (wm?.text ?? "").trim();
+  if (!text) return canvas.encode("png");
+
+  const size = Math.round(W * 0.033); // ≈36px @1080
+  ctx.font = `600 ${size}px "${SANS_FAMILY}"`;
+  ctx.textBaseline = "top";
+  const tw = ctx.measureText(text).width;
+  const th = Math.round(size * 1.2);
+  const margin = Math.round(W * 0.03);
+
+  const pos = wm.position || "br";
+  const x = pos.includes("l") ? margin : Math.round(W - margin - tw);
+  const y = pos.startsWith("t") ? margin : Math.round(H - margin - th);
+
+  ctx.fillStyle = "rgba(0,0,0,0.45)"; // 가독성용 그림자
+  ctx.fillText(text, x + 2, y + 2);
+  ctx.fillStyle = "rgba(255,255,255,0.85)";
+  ctx.fillText(text, x, y);
+  return canvas.encode("png");
+}

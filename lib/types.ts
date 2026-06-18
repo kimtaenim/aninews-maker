@@ -98,6 +98,12 @@ export const DEFAULT_SUBTITLE: SubtitleSettings = {
   lang: "ko",
 };
 
+// ── 워터마크 (최종 출력에 새김) ──────────────────────────────────────────────
+export interface Watermark {
+  text: string;
+  position: "tl" | "tr" | "bl" | "br"; // 좌상 / 우상 / 좌하 / 우하
+}
+
 // ── 프로젝트 ──────────────────────────────────────────────────────────────────
 export interface Project {
   id: string;
@@ -110,6 +116,7 @@ export interface Project {
   ttsEnabled: boolean;
   videoModelId: string; // config/video-models.json (기본 Seedance)
   subtitle?: SubtitleSettings; // 자막 디자인(일괄). 없으면 DEFAULT_SUBTITLE.
+  watermark?: Watermark; // 최종 영상에 새길 워터마크(텍스트+위치). 없으면 안 새김.
   finalVideoUrl?: string;
   createdAt: number;
   updatedAt: number;
