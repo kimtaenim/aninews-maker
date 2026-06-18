@@ -154,7 +154,9 @@ export async function composeProject(projectId, lang) {
       const args = ["-y", "-i", vPath];
       if (aPath) args.push("-i", aPath);
       else args.push("-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100");
-      for (const cp of capPaths) args.push("-i", cp);
+      // 자막 PNG를 -loop 1 로 연속 스트림으로 넣는다(단일 프레임 입력 + overlay 체인은
+      // 영상 길이에 따라 ffmpeg 버퍼 데드락을 일으킴 — 긴 씬이 멈추던 원인).
+      for (const cp of capPaths) args.push("-loop", "1", "-framerate", String(FPS), "-i", cp);
       args.push(
         "-filter_complex", filter,
         "-map", "[v]", "-map", "1:a",
