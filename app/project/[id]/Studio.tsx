@@ -147,22 +147,32 @@ export default function Studio({
   // 페이지를 떠났다 와도(remount), 백그라운드 갔다 와도 이걸로 복원한다.
   const composing = project.steps.compose.status === "generating";
 
-  // 합성 경과 시간(초) — 시작 시각을 서버 updatedAt 으로 잡아서 재방문해도 정확.
+  // 합성 경과 시간(초) + 진행 줄(씬 N/8) + 멈춤 감지(워커 죽음 대비).
   const [composeElapsed, setComposeElapsed] = useState(0);
+  const [composeProgress, setComposeProgress] = useState("");
+  const [composeStaleSec, setComposeStaleSec] = useState(0);
   const composeStartRef = useRef<number | null>(null);
+  const progAtRef = useRef<number>(0); // 진행 줄이 마지막으로 '바뀐' 시각
   useEffect(() => {
     if (!composing) {
       composeStartRef.current = null;
       setComposeElapsed(0);
+      setComposeProgress("");
+      setComposeStaleSec(0);
+      progAtRef.current = 0;
       return;
     }
     if (composeStartRef.current == null) {
       composeStartRef.current = project.steps.compose.updatedAt || Date.now();
     }
-    const tick = () =>
+    if (progAtRef.current === 0) progAtRef.current = Date.now();
+    const tick = () => {
       setComposeElapsed(
         Math.max(0, Math.floor((Date.now() - (composeStartRef.current as number)) / 1000))
       );
+      // 진행 줄이 마지막으로 바뀐 뒤 얼마나 지났나(앱 기준) → 워커가 죽었는지 감지.
+      setComposeStaleSec(Math.floor((Date.now() - progAtRef.current) / 1000));
+    };
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
@@ -180,6 +190,12 @@ export default function Studio({
         const r = await fetch(`/api/compose?projectId=${encodeURIComponent(project.id)}`);
         const d = await r.json();
         if (d.updatedAt) composeStartRef.current = d.updatedAt as number;
+        if (typeof d.progress === "string") {
+          setComposeProgress((prev) => {
+            if (d.progress !== prev) progAtRef.current = Date.now(); // 진행 = 워커 살아있음
+            return d.progress;
+          });
+        }
         if (d.status === "generated" && d.finalVideoUrl) {
           setProject((p) => ({
             ...p,
@@ -2048,7 +2064,8 @@ export default function Studio({
             const fmt = (sec: number) =>
               `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
             if (composing) {
-              const over = composeElapsed > estMin * 60 * 2; // 예상의 2배 넘으면 의심
+              // 진행 줄이 90초 넘게 안 바뀌면 워커가 죽었거나 멈춘 것(앱이 직접 감지).
+              const stuck = composeStaleSec > 90;
               return (
                 <div className="mt-3">
                   <p className="inline-flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-300">
@@ -2056,17 +2073,26 @@ export default function Studio({
                     <span className="tabular-nums font-medium">{fmt(composeElapsed)}</span>
                     <span className="text-zinc-400">/ 예상 ~{estMin}분</span>
                   </p>
-                  <p className={`mt-1 text-[11px] ${over ? "text-red-600" : "text-zinc-400"}`}>
-                    {over
-                      ? "예상보다 오래 걸립니다 — Render Logs에서 워커 에러를 확인해보세요."
-                      : "이 페이지를 닫거나 다른 앱을 봐도 됩니다 — 워커가 서버에서 처리하고, 돌아오면 자동으로 이어집니다."}
-                  </p>
+                  {composeProgress && (
+                    <p className="mt-1 text-[12px] font-medium text-accent tabular-nums">
+                      {composeProgress.replace(/^\d[\d:.]*\s*/, "")}
+                    </p>
+                  )}
+                  {stuck ? (
+                    <p className="mt-1 text-[11px] text-red-600">
+                      ⚠ {composeStaleSec}초째 진행이 없습니다 — 워커가 멈췄을 수 있어요. 중단하고 다시 시도하세요.
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-[11px] text-zinc-400">
+                      이 페이지를 닫거나 다른 앱을 봐도 됩니다 — 돌아오면 자동으로 이어집니다.
+                    </p>
+                  )}
                   <button
                     type="button"
                     onClick={cancelCompose}
-                    className="mt-2 rounded-lg border border-red-400 text-red-600 px-3 py-1.5 text-xs hover:bg-red-50 dark:hover:bg-red-950/30"
+                    className={`mt-2 rounded-lg border px-3 py-1.5 text-xs ${stuck ? "border-red-500 bg-red-50 dark:bg-red-950/30 text-red-600 font-semibold" : "border-red-400 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"}`}
                   >
-                    ■ 합성 중단
+                    ■ 합성 중단{stuck ? " (멈춤 감지)" : ""}
                   </button>
                 </div>
               );

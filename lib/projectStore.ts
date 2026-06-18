@@ -85,6 +85,16 @@ export async function listRecentProjects(limit = 30): Promise<string[]> {
   return getRedis().zrange<string[]>(INDEX, 0, limit - 1, { rev: true });
 }
 
+// 워커가 Redis(compose:progress:<id>)에 쓴 합성 진행 로그의 마지막 줄. UI 표시용.
+export async function getComposeProgressLine(id: string): Promise<string> {
+  try {
+    const last = await getRedis().lrange<string>(`compose:progress:${id}`, -1, -1);
+    return (last && last[0]) || "";
+  } catch {
+    return "";
+  }
+}
+
 export async function deleteProject(id: string): Promise<void> {
   const redis = getRedis();
   await redis.del(KEY(id));

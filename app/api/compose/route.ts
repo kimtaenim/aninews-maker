@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-import { getProject, saveProject } from "@/lib/projectStore";
+import { getProject, saveProject, getComposeProgressLine } from "@/lib/projectStore";
 import { enqueueJob, type Job } from "@/lib/jobQueue";
 
 export const runtime = "nodejs";
@@ -83,11 +83,13 @@ export async function GET(req: NextRequest) {
   if (!project) {
     return NextResponse.json({ ok: false, error: "프로젝트 없음" }, { status: 404 });
   }
+  const progress = await getComposeProgressLine(projectId);
   return NextResponse.json({
     ok: true,
     status: project.steps.compose.status,
     finalVideoUrl: project.finalVideoUrl,
     error: project.steps.compose.error,
     updatedAt: project.steps.compose.updatedAt, // 합성 시작 시각(경과시간 복원용)
+    progress, // 워커 진행 로그 마지막 줄 (예: "씬 6/8: 인코딩…")
   });
 }
