@@ -155,17 +155,15 @@ export async function composeProject(projectId, lang) {
       if (aPath) args.push("-i", aPath);
       else args.push("-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100");
       // 자막 PNG는 -loop 1 로 연속 스트림화(단일 프레임 입력 + overlay 체인은 데드락).
-      // 단, -t 로 길이를 제한해 '무한' 스트림이 메모리를 터뜨리지(OOM) 않게 한다.
-      for (const cp of capPaths)
-        args.push("-loop", "1", "-framerate", String(FPS), "-t", String(duration), "-i", cp);
+      // 출력 -t 가 전체 길이를 제한하므로 입력은 무한 루프로 둬도 안전(v6 검증됨).
+      for (const cp of capPaths) args.push("-loop", "1", "-framerate", String(FPS), "-i", cp);
       args.push(
         "-filter_complex", filter,
         "-map", "[v]", "-map", "1:a",
         "-t", String(duration),
         "-r", String(FPS),
-        // 저메모리: ultrafast(룩어헤드/B프레임 최소) + 단일 스레드 → 512MB 인스턴스 OOM 회피.
-        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "ultrafast", "-crf", "26",
-        "-threads", "1", "-max_muxing_queue_size", "1024",
+        // v6 검증 설정(8씬 70초 완성). 단일스레드/ultrafast 는 오히려 매달려서 제거.
+        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-crf", "23",
         "-c:a", "aac", "-b:a", "128k",
         out
       );
