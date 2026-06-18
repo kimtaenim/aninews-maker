@@ -49,7 +49,8 @@ export async function POST(req: NextRequest) {
       projectId,
       material,
       styleBible: project.styleBible,
-      userPrompt: body.userPrompt,
+      // 명시 userPrompt 우선, 없으면 소스 단계에서 저장한 프로젝트 의도 사용.
+      userPrompt: body.userPrompt ?? project.userPrompt,
     });
     project.scenes = scenes;
     project.steps.script.status = "generated";

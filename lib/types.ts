@@ -117,6 +117,7 @@ export interface Project {
   videoModelId: string; // config/video-models.json (기본 Seedance)
   subtitle?: SubtitleSettings; // 자막 디자인(일괄). 없으면 DEFAULT_SUBTITLE.
   watermark?: Watermark; // 최종 영상에 새길 워터마크(텍스트+위치). 없으면 안 새김.
+  userPrompt?: string; // 소스 단계에서 입력한 의도("어떤 식으로 만들까요?") — 스크립트 생성에 주입.
   finalVideoUrl?: string;
   createdAt: number;
   updatedAt: number;

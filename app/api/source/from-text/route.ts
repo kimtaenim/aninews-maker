@@ -12,6 +12,7 @@ export const maxDuration = 30;
 export async function POST(req: NextRequest) {
   let body: {
     text?: string;
+    userPrompt?: string;
     styleProfileId?: string;
     videoModelId?: string;
     ttsEnabled?: boolean;
@@ -54,6 +55,7 @@ export async function POST(req: NextRequest) {
       styleProfileId,
       videoModelId,
       ttsEnabled: body.ttsEnabled ?? true,
+      userPrompt: body.userPrompt,
     });
     return NextResponse.json({ ok: true, projectId: project.id });
   } catch (e) {
