@@ -2075,8 +2075,8 @@ export default function Studio({
             const fmt = (sec: number) =>
               `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
             if (composing) {
-              // 진행 줄이 90초 넘게 안 바뀌면 워커가 죽었거나 멈춘 것(앱이 직접 감지).
-              const stuck = composeStaleSec > 90;
+              // 진행 줄이 150초 넘게 안 바뀌면 워커가 죽었거나 멈춘 것(앱이 직접 감지).
+              const stuck = composeStaleSec > 150;
               return (
                 <div className="mt-3">
                   <p className="inline-flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-300">
