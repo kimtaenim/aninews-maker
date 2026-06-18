@@ -58,6 +58,19 @@ export default function Studio({
   const [error, setError] = useState<string | null>(null);
   const [errorStep, setErrorStep] = useState<StepKind | null>(null);
 
+  // ── 동기화 경합 가드 ─────────────────────────────────────────────────────────
+  // 모바일에서 느린 네트워크 + 잦은 visibilitychange 로, 생성 중 발사된 /state GET 이
+  // 생성 완료 '뒤'에 도착해 방금 만든 이미지/비디오를 지우고 status 를 generating 으로
+  // 되돌리던 버그(이미지 안 보임 · "generating → approved 불가")를 막는다.
+  //   - busyRef: 진행 중 액션이 있으면 서버 스냅샷이 더 낡았다고 보고 적용 안 함.
+  //   - mutationSeqRef: 로컬을 갱신할 때마다 증가. /state GET 시작 시점 값을 기억했다가
+  //     응답 도착 시 값이 바뀌었으면(그 사이 로컬이 더 신선해짐) 그 응답을 버린다.
+  const busyRef = useRef<string | null>(null);
+  const mutationSeqRef = useRef(0);
+  function bumpMutation() {
+    mutationSeqRef.current++;
+  }
+
   // 진행 중인 액션 → 어느 단계인지 매핑. 에러를 그 단계 패널에 표시하기 위함.
   function actionToStep(action: string): StepKind | null {
     const a = action.startsWith("approve-") ? action.slice(8) : action;
@@ -74,6 +87,7 @@ export default function Studio({
   // 지우지 않으므로(직전 단계 유지), 에러가 나면 그 단계 패널에 메시지가 남는다.
   // 성공 시엔 핸들러 시작의 setError(null) 로 error 가 비어 아무것도 안 뜬다.
   function setBusy(action: string | null) {
+    busyRef.current = action;
     _setBusy(action);
     if (action) setErrorStep(actionToStep(action));
   }
@@ -176,6 +190,8 @@ export default function Studio({
   useEffect(() => {
     if (!composing) {
       composeStartRef.current = null;
+      // 외부 조건(composing)에 맞춰 타이머 표시 상태를 리셋 — 의도된 동기화.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setComposeElapsed(0);
       setComposeProgress("");
       setComposeStaleSec(0);
@@ -217,6 +233,7 @@ export default function Studio({
           });
         }
         if (d.status === "generated" && d.finalVideoUrl) {
+          bumpMutation(); // 확정된 finalVideoUrl — 낡은 /state 동기화가 못 지우게
           setProject((p) => ({
             ...p,
             finalVideoUrl: d.finalVideoUrl as string,
@@ -263,10 +280,14 @@ export default function Studio({
   async function syncFromServer() {
     if (syncingRef.current) return;
     syncingRef.current = true;
+    const seqAtStart = mutationSeqRef.current;
     try {
       const r = await fetch(`/api/project/state?projectId=${encodeURIComponent(project.id)}`);
       if (!r.ok) return;
       const d = await r.json();
+      // 진행 중 액션이 있거나(busyRef), GET 도중 로컬이 갱신됐으면(mutationSeq 증가) 이
+      // 응답은 낡은 것 — 적용하면 방금 만든 자산/상태를 덮어쓴다. 그대로 버린다.
+      if (busyRef.current || mutationSeqRef.current !== seqAtStart) return;
       if (d?.ok && d.project) setProject(d.project as Project);
     } catch {
       /* 오프라인 등 — 다음 기회에 */
@@ -277,6 +298,9 @@ export default function Studio({
 
   // 진입 / 백그라운드 복귀 / 네트워크 복귀 시 서버에서 한 번 복원.
   useEffect(() => {
+    // syncFromServer 는 비동기(fetch await 뒤 setState) — 동기 캐스케이드가 아니며,
+    // 진입/복귀 시 서버 진실로 복원하는 외부 동기화다.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void syncFromServer();
     const onVisible = () => {
       if (document.visibilityState === "visible") void syncFromServer();
@@ -533,6 +557,7 @@ export default function Studio({
     });
     const data = await r.json();
     if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
+    bumpMutation(); // 로컬이 곧 갱신됨 → 진행 중이던 /state 동기화는 낡은 것으로 무효화
     void refreshCost(); // 생성·리롤 등 모든 액션 후 누적 비용 갱신
     return data;
   }
@@ -841,6 +866,7 @@ export default function Studio({
           return;
         }
         if (data.status === "completed") {
+          bumpMutation(); // 폴링으로 확정된 videoUrl — 낡은 /state 동기화가 못 지우게
           setVideoCost((c) => ({ ...c, [sceneIndex]: (data.cost as string) ?? "" }));
           setProject((p) => ({
             ...p,
