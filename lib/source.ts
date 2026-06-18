@@ -104,10 +104,15 @@ export async function extractFromUrl(url: string): Promise<SourceMaterial> {
     throw new Error("http/https 만 가능");
   }
   const r = await fetch(url, {
-    headers: { "user-agent": USER_AGENT },
+    headers: {
+      "User-Agent": USER_AGENT,
+      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Accept-Language": "ko,en-US;q=0.8,en;q=0.6",
+    },
+    redirect: "follow",
     signal: AbortSignal.timeout(15_000),
   });
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  if (!r.ok) throw new Error(`HTTP ${r.status} (${r.statusText || "요청 거부"})`);
   const html = await r.text();
   const ex = extractFromHtml(html, url);
   if (!ex.title && !ex.body) throw new Error("제목·본문 모두 비어있음");

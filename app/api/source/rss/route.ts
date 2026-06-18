@@ -13,8 +13,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: true, categories: listCategories() });
   }
   try {
-    const articles = await fetchCategoryArticles({ category });
-    return NextResponse.json({ ok: true, articles });
+    const { items, feedsTotal, failures } = await fetchCategoryArticles({ category });
+    return NextResponse.json({
+      ok: true,
+      articles: items,
+      feedsTotal,
+      failedFeeds: failures, // [{feed,error}] — UI에서 "N개 피드 못 읽음" 안내용
+    });
   } catch (e) {
     return NextResponse.json(
       { ok: false, error: e instanceof Error ? e.message : "RSS 수집 실패" },

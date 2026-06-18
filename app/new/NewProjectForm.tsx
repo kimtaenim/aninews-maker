@@ -20,6 +20,7 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
   const [loadingArticles, setLoadingArticles] = useState(false);
   const [selectedLink, setSelectedLink] = useState("");
   const [articleQuery, setArticleQuery] = useState("");
+  const [feedNote, setFeedNote] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,6 +37,7 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
 
   async function loadArticles() {
     setError(null);
+    setFeedNote(null);
     setArticles([]);
     setSelectedLink("");
     setArticleQuery("");
@@ -45,6 +47,13 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
       const data = await r.json();
       if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
       setArticles(data.articles as RssItem[]);
+      const failed = (data.failedFeeds ?? []) as { feed: string; error: string }[];
+      if (failed.length > 0) {
+        const names = failed.slice(0, 4).map((f) => `${f.feed}(${f.error})`).join(", ");
+        setFeedNote(
+          `피드 ${failed.length}/${data.feedsTotal ?? "?"}개를 못 읽었어요: ${names}${failed.length > 4 ? " 외" : ""}`
+        );
+      }
       if ((data.articles as RssItem[]).length === 0) {
         setError("이 카테고리에서 최근 기사를 못 찾았어요. 다른 카테고리를 시도해보세요.");
       }
@@ -156,6 +165,10 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
               )}
             </button>
           </div>
+
+          {feedNote && (
+            <p className="text-[11px] text-amber-600 dark:text-amber-500">⚠ {feedNote}</p>
+          )}
 
           {articles.length > 0 && (
             <input
