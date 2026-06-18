@@ -2135,13 +2135,18 @@ export default function Studio({
                 playsInline
                 className="max-h-[80vh] w-auto max-w-full rounded-xl border border-zinc-200 dark:border-zinc-800"
               />
+              {/* 같은 도메인 프록시(Content-Disposition: attachment) → 폰에서도 '열기'가 아니라 저장.
+                  iOS는 파일 앱(다운로드)에, 안드로이드는 다운로드 폴더에 저장된다. */}
               <a
-                href={project.finalVideoUrl}
+                href={`/api/download?projectId=${encodeURIComponent(project.id)}`}
                 download
                 className="mt-2 inline-block text-xs rounded-lg border border-accent text-accent px-3 py-1.5 hover:bg-accent/10"
               >
                 ⬇ 다운로드
               </a>
+              <p className="mt-1 text-[10px] text-zinc-400">
+                아이폰: 받은 뒤 파일 앱 → 다운로드. 사진 앱에 넣으려면 영상 길게 눌러 “비디오 저장”.
+              </p>
             </div>
           )}
         </section>
