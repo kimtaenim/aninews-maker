@@ -34,7 +34,8 @@ export function canStart(project: Project, step: StepKind): boolean {
 /**
  * 그 단계의 산출물이 실제로 다 나왔는가? (status 와 별개로 "내용물" 기준)
  * 경합·부분 저장으로 status 가 generating 에 갇혀도, 이걸로 승인 가능 여부를 판정한다.
- * 주의: 씬0 이미지는 keyframe 단계 산출물이므로 images 완료 판정에서 제외(씬1 이후만).
+ * 주의: 씬0 은 keyframe 단계 산출물(스타일 앵커)이라 images/videos 완료 판정에서
+ * 제외(씬1 이후만). 최종 합성(worker)도 videoUrl 있는 씬만 골라 굽는다.
  */
 export function stepOutputsComplete(project: Project, step: StepKind): boolean {
   const scenes = project.scenes;
@@ -49,7 +50,7 @@ export function stepOutputsComplete(project: Project, step: StepKind): boolean {
     case "images":
       return hasScenes && scenes.slice(1).every((s) => !!s.imageUrl);
     case "videos":
-      return hasScenes && scenes.every((s) => !!s.videoUrl);
+      return hasScenes && scenes.slice(1).every((s) => !!s.videoUrl);
     case "voiceover":
       return hasScenes && scenes.every((s) => !!s.audioUrl);
     case "compose":

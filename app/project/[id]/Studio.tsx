@@ -514,8 +514,9 @@ export default function Studio({
   const videosApproved = videosStatus === "approved";
   const [videoCost, setVideoCost] = useState<Record<number, string>>({});
   const [activeVideo, setActiveVideo] = useState<number | null>(null);
+  // 씬0=키프레임 앵커라 videos 완료 판정에서 제외(이미지와 동일, 씬1 이후만).
   const allScenesHaveVideo =
-    project.scenes.length > 0 && project.scenes.every((s) => !!s.videoUrl);
+    extraScenes.length > 0 && extraScenes.every((s) => !!s.videoUrl);
 
   const voiceoverStatus = project.steps.voiceover.status;
   const voiceoverApproved = voiceoverStatus === "approved";

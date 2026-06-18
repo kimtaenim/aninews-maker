@@ -124,7 +124,8 @@ export async function GET(req: NextRequest) {
 
   // 이미 완료(Blob 저장 끝) → 그대로 반환(idempotent).
   if (scene.videoUrl) {
-    const allDone = project.scenes.every((s) => !!s.videoUrl);
+    // 씬0 은 keyframe 앵커라 videos 완료 판정에서 제외(이미지 단계와 동일 정책).
+    const allDone = project.scenes.slice(1).every((s) => !!s.videoUrl);
     return NextResponse.json({
       ok: true,
       status: "completed",
@@ -184,7 +185,8 @@ export async function GET(req: NextRequest) {
   const fresh = (await getProject(projectId)) ?? project;
   const freshScene = fresh.scenes[sceneIndex] ?? scene;
   fresh.scenes[sceneIndex] = { ...freshScene, videoUrl, status: "generated" };
-  const allDone = fresh.scenes.every((s) => !!s.videoUrl);
+  // 씬0 은 keyframe 앵커라 videos 완료 판정에서 제외(이미지 단계와 동일 정책).
+  const allDone = fresh.scenes.slice(1).every((s) => !!s.videoUrl);
   fresh.steps.videos.status = allDone ? "generated" : "generating";
   fresh.steps.videos.updatedAt = Date.now();
   fresh.updatedAt = Date.now();
