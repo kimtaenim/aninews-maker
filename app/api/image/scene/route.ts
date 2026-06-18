@@ -72,14 +72,19 @@ export async function POST(req: NextRequest) {
       keyframeUrl: project.keyframeUrl,
       quality: body.quality,
     });
-    project.scenes[sceneIndex] = { ...scene, imageUrl: url, status: "generated" };
 
-    // 씬0(키프레임 포함) 부터 모든 씬에 이미지가 있으면 images 단계 완료.
-    const allDone = project.scenes.every((s) => !!s.imageUrl);
-    project.steps.images.status = allDone ? "generated" : "generating";
-    project.steps.images.updatedAt = Date.now();
-    project.updatedAt = Date.now();
-    await saveProject(project);
+    // 무거운 생성(수십 초) 뒤 — 다른 씬의 동시 저장을 덮어쓰지 않도록 최신 상태 재읽기.
+    const fresh = (await getProject(projectId)) ?? project;
+    const freshScene = fresh.scenes[sceneIndex] ?? scene;
+    fresh.scenes[sceneIndex] = { ...freshScene, imageUrl: url, status: "generated" };
+
+    // 씬0 은 keyframe 단계 산출물 → 이미지 단계 완료는 씬1 이후 기준(클라이언트와 일치).
+    const allDone =
+      fresh.scenes.length > 1 && fresh.scenes.slice(1).every((s) => !!s.imageUrl);
+    fresh.steps.images.status = allDone ? "generated" : "generating";
+    fresh.steps.images.updatedAt = Date.now();
+    fresh.updatedAt = Date.now();
+    await saveProject(fresh);
 
     return NextResponse.json({
       ok: true,

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProject, saveProject } from "@/lib/projectStore";
-import { canTransition } from "@/lib/stepMachine";
+import { canTransition, stepOutputsComplete } from "@/lib/stepMachine";
 import { STEP_ORDER, type StepKind } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -26,6 +26,11 @@ export async function POST(req: NextRequest) {
   }
 
   const cur = project.steps[step];
+  // 자가보정: 산출물은 다 나왔는데 경합/부분 저장으로 status 가 generating 에 갇힌
+  // 경우, generated 로 올려 승인을 막지 않는다. (씬0 이미지는 keyframe 단계 소관)
+  if (cur.status === "generating" && stepOutputsComplete(project, step)) {
+    cur.status = "generated";
+  }
   if (!canTransition(cur.status, "approved")) {
     return NextResponse.json(
       { ok: false, error: `${step}: ${cur.status} → approved 불가` },

@@ -31,6 +31,35 @@ export function canStart(project: Project, step: StepKind): boolean {
   return project.steps[prev]?.status === "approved";
 }
 
+/**
+ * 그 단계의 산출물이 실제로 다 나왔는가? (status 와 별개로 "내용물" 기준)
+ * 경합·부분 저장으로 status 가 generating 에 갇혀도, 이걸로 승인 가능 여부를 판정한다.
+ * 주의: 씬0 이미지는 keyframe 단계 산출물이므로 images 완료 판정에서 제외(씬1 이후만).
+ */
+export function stepOutputsComplete(project: Project, step: StepKind): boolean {
+  const scenes = project.scenes;
+  const hasScenes = scenes.length > 0;
+  switch (step) {
+    case "source":
+      return !!project.steps.source.params?.material;
+    case "script":
+      return hasScenes;
+    case "keyframe":
+      return !!project.keyframeUrl;
+    case "images":
+      return hasScenes && scenes.slice(1).every((s) => !!s.imageUrl);
+    case "videos":
+      return hasScenes && scenes.every((s) => !!s.videoUrl);
+    case "voiceover":
+      return hasScenes && scenes.every((s) => !!s.audioUrl);
+    case "compose":
+    case "subtitle":
+      return !!project.finalVideoUrl;
+    default:
+      return false;
+  }
+}
+
 /** voiceover 처럼 끌 수 있는 선택 단계는 건너뛸 수 있다. */
 export function isOptional(step: StepKind): boolean {
   return step === "voiceover";

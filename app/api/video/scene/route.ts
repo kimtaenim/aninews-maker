@@ -179,12 +179,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: true, status: "failed", error });
   }
 
-  project.scenes[sceneIndex] = { ...scene, videoUrl, status: "generated" };
-  const allDone = project.scenes.every((s) => !!s.videoUrl);
-  project.steps.videos.status = allDone ? "generated" : "generating";
-  project.steps.videos.updatedAt = Date.now();
-  project.updatedAt = Date.now();
-  await saveProject(project);
+  // 다운로드+업로드(수십 초) 뒤 — 다른 씬의 동시 완료를 덮어쓰지 않도록 최신 상태 재읽기.
+  // (자동 폴링이 여러 씬을 동시에 완료시킬 때 last-write-wins 로 videoUrl 이 사라지던 버그.)
+  const fresh = (await getProject(projectId)) ?? project;
+  const freshScene = fresh.scenes[sceneIndex] ?? scene;
+  fresh.scenes[sceneIndex] = { ...freshScene, videoUrl, status: "generated" };
+  const allDone = fresh.scenes.every((s) => !!s.videoUrl);
+  fresh.steps.videos.status = allDone ? "generated" : "generating";
+  fresh.steps.videos.updatedAt = Date.now();
+  fresh.updatedAt = Date.now();
+  await saveProject(fresh);
 
   // 완료 시 1회만 비용 기록(다음 폴링은 위 videoUrl 분기에서 조기 반환).
   await recordCost({
