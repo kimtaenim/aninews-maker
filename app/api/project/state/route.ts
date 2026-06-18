@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getProject } from "@/lib/projectStore";
+import { getProject, deleteProject } from "@/lib/projectStore";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,4 +17,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "프로젝트 없음" }, { status: 404 });
   }
   return NextResponse.json({ ok: true, project });
+}
+
+// 프로젝트 삭제 — 라이브러리에서. DELETE ?projectId
+export async function DELETE(req: NextRequest) {
+  const projectId = (req.nextUrl.searchParams.get("projectId") ?? "").trim();
+  if (!projectId) {
+    return NextResponse.json({ ok: false, error: "projectId 필요" }, { status: 400 });
+  }
+  await deleteProject(projectId);
+  return NextResponse.json({ ok: true });
 }

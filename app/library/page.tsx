@@ -1,4 +1,5 @@
 import Link from "next/link";
+import DeleteButton from "./DeleteButton";
 import { listRecentProjects, getProject } from "@/lib/projectStore";
 import { STEP_ORDER, type Project } from "@/lib/types";
 
@@ -62,7 +63,8 @@ export default async function LibraryPage() {
       ) : (
         <ul className="mt-6 grid grid-cols-2 sm:grid-cols-3 gap-3">
           {projects.map((p) => (
-            <li key={p.id}>
+            <li key={p.id} className="relative">
+              <DeleteButton projectId={p.id} title={p.title} />
               <Link
                 href={`/project/${p.id}`}
                 className="block rounded-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden hover:border-accent transition-colors"
