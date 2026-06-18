@@ -148,7 +148,8 @@ export async function renderCaptionPng(text, sub, opts = {}) {
   const left = sub.align === "left";
   const top = sub.position === "top";
   const boxX = left ? Math.round(W * 0.045) : Math.round((W - boxW) / 2);
-  const boxY = top ? Math.round(H * 0.04) : Math.round(H - H * 0.04 - boxH);
+  // 하단 자막을 더 위로(바닥에서 10%) — 너무 아래면 폰에서 안 읽힘.
+  const boxY = top ? Math.round(H * 0.04) : Math.round(H - H * 0.1 - boxH);
 
   const lightBox = sub.box === "light";
   ctx.fillStyle = lightBox ? "rgba(255,255,255,0.85)" : "rgba(0,0,0,0.6)";

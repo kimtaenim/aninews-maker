@@ -33,7 +33,7 @@ export function resolveSubtitleStyle(s: SubtitleSettings): SubtitleStyle {
         ? "bg-white/85 text-zinc-900"
         : "bg-black/60 text-white",
     alignClass: s.align === "left" ? "text-left" : "text-center",
-    // 하단은 더 아래, 상단은 더 위로 (가장자리 가깝게)
-    containerPosClass: s.position === "top" ? "top-[3%]" : "bottom-[3%]",
+    // 하단 자막은 바닥에서 10% 위로(너무 아래면 안 읽힘). 상단은 가장자리 가깝게.
+    containerPosClass: s.position === "top" ? "top-[3%]" : "bottom-[10%]",
   };
 }
