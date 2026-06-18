@@ -1,14 +1,13 @@
 {
-  "version": "1.3",
-  "updated": "2026-05-17",
+  "version": "1.4",
+  "updated": "2026-06-18",
   "categories": {
     "BOOK": {
       "label": "도서·북리뷰",
       "feeds": [
         { "name": "NYT Book Review", "url": "https://rss.nytimes.com/services/xml/rss/nyt/Books.xml", "lang": "en" },
         { "name": "The Guardian Books", "url": "https://www.theguardian.com/books/rss", "lang": "en" },
-        { "name": "Literary Hub", "url": "https://lithub.com/feed/", "lang": "en" },
-        { "name": "Public Books", "url": "https://www.publicbooks.org/feed/", "lang": "en" }
+        { "name": "Literary Hub", "url": "https://lithub.com/feed/", "lang": "en" }
       ]
     },
     "AI": {
@@ -56,7 +55,6 @@
         { "name": "Phantoms and Monsters", "url": "https://phantomsandmonsters.com/feeds/posts/default", "lang": "en" },
         { "name": "Higgypop", "url": "https://higgypop.com/feed.xml", "lang": "en" },
         { "name": "Mysterium Incognita", "url": "https://mysterium-incognita.com/feed/", "lang": "de" },
-        { "name": "Mystère du Monde", "url": "https://www.mysteredumonde.com/rss", "lang": "fr" },
         { "name": "Grenzwissenschaft-Aktuell", "url": "https://www.grenzwissenschaft-aktuell.de/feed/", "lang": "de" }
       ]
     },
@@ -109,10 +107,7 @@
       "feeds": [
         { "name": "ESPN", "url": "https://www.espn.com/espn/rss/news", "lang": "en" },
         { "name": "The Guardian Sport", "url": "https://www.theguardian.com/sport/rss", "lang": "en" },
-        { "name": "Reuters Sports", "url": "https://feeds.reuters.com/reuters/sportsNews", "lang": "en" },
-        { "name": "Red Bull Sports", "url": "https://www.redbull.com/rss/en_INT/sports", "lang": "en" },
         { "name": "Formula 1", "url": "https://www.formula1.com/content/fom-website/en/latest/all.xml", "lang": "en" },
-        { "name": "Tennis World USA", "url": "https://www.tennisworldusa.org/rss/news.xml", "lang": "en" },
         { "name": "MLB News", "url": "https://www.mlb.com/feeds/news/rss.xml", "lang": "en" },
         { "name": "The Guardian Football", "url": "https://www.theguardian.com/football/rss", "lang": "en" },
         { "name": "NBA News", "url": "https://www.nba.com/news/rss.xml", "lang": "en" }
