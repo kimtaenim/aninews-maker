@@ -1897,36 +1897,42 @@ export default function Studio({
                 return (
                   <li
                     key={i}
-                    className="flex items-center gap-3 rounded-xl bg-zinc-50 dark:bg-zinc-900 p-3"
+                    className="rounded-xl bg-zinc-50 dark:bg-zinc-900 p-3"
                   >
-                    <span className="shrink-0 text-[11px] text-zinc-500 w-10">씬 {i + 1}</span>
-                    <div className="min-w-0 flex-1">
-                      {sc.audioUrl ? (
-                        <audio src={sc.audioUrl} controls className="w-full h-8" />
-                      ) : audioBusy && !sc.audioUrl ? (
-                        <span className="inline-flex items-center gap-1.5 text-[11px] text-zinc-400">
-                          <Spinner className="size-4" /> 생성 중…
-                        </span>
-                      ) : (
-                        <span className="text-[11px] text-zinc-400">미생성</span>
-                      )}
-                      <p className="mt-0.5 truncate text-[11px] text-zinc-500">
+                    <div className="flex items-center gap-3">
+                      <span className="shrink-0 text-[11px] text-zinc-500 w-10">씬 {i + 1}</span>
+                      <p className="min-w-0 flex-1 truncate text-[11px] text-zinc-500">
                         {sc.narration}
                       </p>
+                      <div className="shrink-0 grid justify-items-end gap-0.5">
+                        <button
+                          type="button"
+                          onClick={() => generateAudio(i)}
+                          disabled={busy !== null || !sc.narration}
+                          className="text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
+                        >
+                          {sc.audioUrl ? "리롤" : "음성 생성"}
+                        </button>
+                        {audioCost[i] && (
+                          <span className="text-[11px] text-zinc-400">{audioCost[i]}</span>
+                        )}
+                      </div>
                     </div>
-                    <div className="shrink-0 grid justify-items-end gap-0.5">
-                      <button
-                        type="button"
-                        onClick={() => generateAudio(i)}
-                        disabled={busy !== null || !sc.narration}
-                        className="text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
-                      >
-                        {sc.audioUrl ? "리롤" : "음성 생성"}
-                      </button>
-                      {audioCost[i] && (
-                        <span className="text-[11px] text-zinc-400">{audioCost[i]}</span>
-                      )}
-                    </div>
+                    {/* 오디오 바는 카드 전체 폭을 차지하는 별도 줄 — 좁은 칼럼에서
+                        네이티브 컨트롤 최소폭이 삐져나오던 문제 방지 */}
+                    {sc.audioUrl ? (
+                      <audio
+                        src={sc.audioUrl}
+                        controls
+                        className="mt-2 block w-full max-w-full h-8"
+                      />
+                    ) : audioBusy && !sc.audioUrl ? (
+                      <span className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-zinc-400">
+                        <Spinner className="size-4" /> 생성 중…
+                      </span>
+                    ) : (
+                      <span className="mt-2 block text-[11px] text-zinc-400">미생성</span>
+                    )}
                   </li>
                 );
               })}

@@ -7,6 +7,7 @@
 
 import { randomUUID } from "crypto";
 import { getRedis } from "./redis";
+import { listAssets, deleteAsset } from "./blob";
 import { getStyleProfile } from "./styleProfiles";
 import type { SourceMaterial } from "./source";
 import {
@@ -99,6 +100,18 @@ export async function getComposeProgressLine(id: string): Promise<string> {
 
 export async function deleteProject(id: string): Promise<void> {
   const redis = getRedis();
+  // 1) 관련 Blob 자산(키프레임·씬 이미지/영상/오디오·최종영상) 일괄 정리.
+  //    모든 자산은 `project/<id>/` prefix 아래에 있어 list+del 한 방에 비운다.
+  //    Blob 정리는 베스트에포트 — 실패해도 상태 삭제는 막지 않는다(고아 상태 방지).
+  try {
+    const { blobs } = await listAssets({ prefix: `project/${id}/` });
+    if (blobs.length) {
+      await deleteAsset(blobs.map((b) => b.url));
+    }
+  } catch {
+    /* Blob 토큰 없음/일시 오류 — 무시하고 진행 */
+  }
+  // 2) Redis 상태 + 최근목록 인덱스 제거.
   await redis.del(KEY(id));
   await redis.zrem(INDEX, id);
 }

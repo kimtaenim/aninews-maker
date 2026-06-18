@@ -21,11 +21,14 @@ export default function DeleteButton({
     if (!confirm(`"${title || "이 영상"}" 을(를) 삭제할까요? 되돌릴 수 없어요.`)) return;
     setBusy(true);
     try {
-      await fetch(`/api/project/state?projectId=${encodeURIComponent(projectId)}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(
+        `/api/project/state?projectId=${encodeURIComponent(projectId)}`,
+        { method: "DELETE" }
+      );
+      if (!res.ok) throw new Error(`삭제 실패 (${res.status})`);
       router.refresh();
-    } catch {
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "삭제 중 오류가 발생했어요.");
       setBusy(false);
     }
   }
