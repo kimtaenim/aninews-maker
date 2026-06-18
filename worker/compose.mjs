@@ -13,14 +13,29 @@ const W = 1080;
 const H = 1920;
 const FPS = 30;
 
-function run(cmd, args) {
+function run(cmd, args, timeoutMs = 150000) {
   return new Promise((res, rej) => {
     const p = spawn(cmd, args);
     let err = "";
+    const timer = setTimeout(() => {
+      try {
+        p.kill("SIGKILL");
+      } catch {}
+      rej(
+        new Error(
+          `${cmd} 타임아웃(${Math.round(timeoutMs / 1000)}초) — 매달림. ffmpeg 마지막 출력: ${err.slice(-500)}`
+        )
+      );
+    }, timeoutMs);
     p.stderr.on("data", (d) => (err += d));
-    p.on("close", (c) =>
-      c === 0 ? res() : rej(new Error(`${cmd} exit ${c}: ${err.slice(-700)}`))
-    );
+    p.on("error", (e) => {
+      clearTimeout(timer);
+      rej(e);
+    });
+    p.on("close", (c) => {
+      clearTimeout(timer);
+      c === 0 ? res() : rej(new Error(`${cmd} exit ${c}: ${err.slice(-700)}`));
+    });
   });
 }
 
