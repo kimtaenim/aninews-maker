@@ -43,18 +43,19 @@ async function download(url, dest) {
 }
 
 export async function composeProject(projectId, lang) {
-  // 진행 로그 — stderr(즉시 flush) + Redis(원격에서 lrange 로 추적). 어디서 멈추는지 보이게.
+  // 진행 로그 — stderr + Redis(원격에서 lrange 로 추적). await 로 확실히 기록해서
+  // 프로세스가 죽어도(OOM 등) 어느 단계까지 갔는지 Redis에 남게 한다.
   await resetProgress(projectId);
-  const log = (...a) => {
+  const log = async (...a) => {
     const msg = a.join(" ");
     console.error("[worker]", msg);
-    void logProgress(projectId, msg);
+    await logProgress(projectId, msg);
   };
-  log("composeProject 진입 — getProject 호출…");
+  await log("composeProject 진입 — getProject 호출…");
   const project = await getProject(projectId);
   if (!project) throw new Error("프로젝트를 찾을 수 없어요");
   const scenes = (project.scenes ?? []).filter((s) => s.videoUrl);
-  log(`프로젝트 로드됨 — 비디오 있는 씬 ${scenes.length}개`);
+  await log(`프로젝트 로드됨 — 비디오 있는 씬 ${scenes.length}개`);
   if (scenes.length === 0) throw new Error("비디오가 있는 씬이 없어요");
 
   const sub = project.subtitle ?? {
@@ -70,7 +71,7 @@ export async function composeProject(projectId, lang) {
     for (let i = 0; i < scenes.length; i++) {
       const s = scenes[i];
       const vPath = join(dir, `v${i}.mp4`);
-      log(`씬 ${i + 1}/${scenes.length}: 영상 다운로드…`);
+      await log(`씬 ${i + 1}/${scenes.length}: 영상 다운로드…`);
       await download(s.videoUrl, vPath);
 
       const audioUrl = lang === "en" ? s.audioUrlEn : s.audioUrl;
@@ -87,6 +88,7 @@ export async function composeProject(projectId, lang) {
       const text = (lang === "en" ? s.narrationEn || s.narration : s.narration) ?? "";
       // 긴 나레이션은 캡션 여러 개로 분할(미리보기와 동일 알고리즘) → 씬 안에서 순차 표시.
       const caps = segmentCaptions(text, sub.size);
+      await log(`씬 ${i + 1}: 자막 캡션 ${caps.length}컷 렌더(canvas)…`);
       // 각 캡션을 미리보기와 같은 디자인의 전체프레임 투명 PNG로 렌더.
       const capPaths = [];
       for (let j = 0; j < caps.length; j++) {
@@ -147,14 +149,14 @@ export async function composeProject(projectId, lang) {
         "-c:a", "aac", "-b:a", "128k",
         out
       );
-      log(`씬 ${i + 1}: 인코딩 (캡션 ${capPaths.length}개, ${duration.toFixed(1)}s)…`);
+      await log(`씬 ${i + 1}: 인코딩 (캡션 ${capPaths.length}개, ${duration.toFixed(1)}s)…`);
       await run("ffmpeg", args);
-      log(`씬 ${i + 1}: 완료`);
+      await log(`씬 ${i + 1}: 완료`);
       sceneFiles.push(out);
     }
 
     // 이어붙이기 — 씬들이 동일 코덱/파라미터라 재인코딩 없이 무손실 복사(빠름).
-    log("이어붙이기(무손실 copy)…");
+    await log("이어붙이기(무손실 copy)…");
     const listPath = join(dir, "list.txt");
     await writeFile(listPath, sceneFiles.map((f) => `file '${f}'`).join("\n"), "utf8");
     const finalPath = join(dir, "final.mp4");
@@ -164,7 +166,7 @@ export async function composeProject(projectId, lang) {
       finalPath,
     ]);
 
-    log("Blob 업로드…");
+    await log("Blob 업로드…");
     const bytes = await readFile(finalPath);
     const { url } = await put(
       `project/${projectId}/final-${lang}-${Date.now()}.mp4`,

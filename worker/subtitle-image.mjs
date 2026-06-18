@@ -5,22 +5,48 @@ import { createCanvas, GlobalFonts } from "@napi-rs/canvas";
 import { existsSync } from "node:fs";
 
 const FONT_CANDIDATES = [
-  // 워커(리눅스) — fonts-noto-cjk
+  // 워커(리눅스) — fonts-noto-cjk (배포판별 파일명 차이 대비해 여러 후보)
   "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+  "/usr/share/fonts/opentype/noto/NotoSansCJK-VF.otf",
   "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+  "/usr/share/fonts/opentype/noto-cjk/NotoSansCJK-Regular.ttc",
   "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
   // 로컬(윈도우) 확인용
   "C:/Windows/Fonts/malgunbd.ttf",
   "C:/Windows/Fonts/malgun.ttf",
 ];
 let FONT_FAMILY = "sans-serif";
+let FONT_SOURCE = "none";
+// 1) 명시 경로 우선 등록
 for (const f of FONT_CANDIDATES) {
-  if (existsSync(f)) {
-    GlobalFonts.registerFromPath(f, "SubKR");
-    FONT_FAMILY = "SubKR";
-    break;
-  }
+  try {
+    if (existsSync(f)) {
+      GlobalFonts.registerFromPath(f, "SubKR");
+      FONT_FAMILY = "SubKR";
+      FONT_SOURCE = f;
+      break;
+    }
+  } catch {}
 }
+// 2) 경로로 못 찾으면 시스템 폰트(fontconfig) 로드 후 한글 패밀리를 직접 사용.
+//    이게 핵심 — 폰트가 없으면 canvas가 한글 셰이핑에서 멈춰(이벤트루프 동결) 합성이 영원히 안 끝남.
+if (FONT_FAMILY === "sans-serif") {
+  try {
+    GlobalFonts.loadSystemFonts?.();
+    const fams = (GlobalFonts.families ?? []).map((x) => x.family);
+    const cjk = fams.find((n) => /Noto.*CJK|Noto Sans KR|Malgun|Apple SD|Nanum/i.test(n));
+    if (cjk) {
+      FONT_FAMILY = cjk;
+      FONT_SOURCE = "system:" + cjk;
+    }
+  } catch {}
+}
+// 시작 로그(stdout) — 워커 기동 시 폰트가 잡혔는지 즉시 확인용.
+try {
+  console.log(
+    `[worker] 자막 폰트 = ${FONT_FAMILY} (${FONT_SOURCE}) | 등록 패밀리 ${(GlobalFonts.families ?? []).length}개`
+  );
+} catch {}
 
 // 1080폭 기준 자막 크기 (작게 56 / 보통 68 / 크게 84).
 const fontPx = (size) => (size === "small" ? 56 : size === "large" ? 84 : 68);
@@ -67,7 +93,16 @@ function wrapGreedyNoOrphan(ctx, text, maxW, maxLines = 3) {
 
 // 캡션 한 개 → 전체 프레임(투명) PNG 버퍼. ffmpeg 에서 overlay=0:0 로 얹는다.
 // opts.debugBg=true 면 회색 배경(로컬 확인용).
+// 한글 폰트를 못 찾았는지 외부에서 확인용.
+export const hasKoreanFont = () => FONT_FAMILY !== "sans-serif";
+
 export async function renderCaptionPng(text, sub, opts = {}) {
+  // 한글 폰트가 없으면 canvas 가 한글 셰이핑에서 멈출 수 있으니, 얼지 말고 명확히 실패.
+  if (!opts.allowNoFont && FONT_FAMILY === "sans-serif") {
+    throw new Error(
+      "자막용 한글 폰트를 못 찾았어요 (워커에 fonts-noto-cjk 설치/경로 확인 필요)"
+    );
+  }
   const W = opts.W ?? 1080;
   const H = opts.H ?? 1920;
   const canvas = createCanvas(W, H);
