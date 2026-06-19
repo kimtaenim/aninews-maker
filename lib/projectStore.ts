@@ -74,7 +74,20 @@ export async function createProject(args: CreateProjectArgs): Promise<Project> {
 }
 
 export async function getProject(id: string): Promise<Project | null> {
-  return (await getRedis().get<Project>(KEY(id))) ?? null;
+  const project = (await getRedis().get<Project>(KEY(id))) ?? null;
+  return project ? normalizeScene0(project) : null;
+}
+
+// 씬0 이미지는 곧 키프레임이다(별도 생성 경로 없음 — image/scene 은 씬1+ 만).
+// 편집 저장의 carry 누락·동기화 경합 등으로 scenes[0].imageUrl 만 비고 keyframeUrl 은
+// 남는 경우, 5단계(비디오)에서 씬0 이 "이미지 없음" 으로 보이던 버그를 자가보정한다.
+// keyframeUrl 이 진실의 원천이므로 비어있는 scenes[0].imageUrl 을 그것으로 채운다.
+function normalizeScene0(project: Project): Project {
+  const scene0 = project.scenes[0];
+  if (project.keyframeUrl && scene0 && !scene0.imageUrl) {
+    project.scenes[0] = { ...scene0, imageUrl: project.keyframeUrl };
+  }
+  return project;
 }
 
 export async function saveProject(project: Project): Promise<void> {
