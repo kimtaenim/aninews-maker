@@ -524,9 +524,10 @@ export default function Studio({
   const allScenesHaveAudio =
     project.scenes.length > 0 && project.scenes.every((s) => !!s.audioUrl);
 
-  // 음성(TTS) 전용 스크립트 편집 버퍼 — 비우면 자막(narration)이 그대로 음성에 쓰인다.
+  // 음성(TTS) 전용 스크립트 편집 버퍼 — 자막(narration)으로 미리 채워 바로 편집 가능
+  // (placeholder 만 떠서 회색 글씨를 선택·수정 못 하던 문제 해소). 비우면 자막이 그대로 쓰인다.
   const [ttsScripts, setTtsScripts] = useState<Record<number, string>>(
-    Object.fromEntries(initial.scenes.map((s) => [s.index, s.ttsScript ?? ""]))
+    Object.fromEntries(initial.scenes.map((s) => [s.index, s.ttsScript ?? s.narration ?? ""]))
   );
   const [ttsDirty, setTtsDirty] = useState(false);
 
