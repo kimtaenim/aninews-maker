@@ -8,6 +8,7 @@
 
 import { synthesizeSpeech } from "./elevenlabs";
 import { synthesizeSpeechTypecast } from "./typecast";
+import { TARGET_LANG_CODES } from "./languages";
 
 export type TtsProvider = "elevenlabs" | "typecast";
 
@@ -23,17 +24,26 @@ export function resolveTtsProvider(choice?: string): TtsProvider {
   return choice === "typecast" || choice === "elevenlabs" ? choice : getTtsProvider();
 }
 
-// 클라이언트(6단계 UI)에 내려줄 정보: env 기본값 + 각 엔진 키 설정 여부.
+// 클라이언트(6단계 UI)에 내려줄 정보: env 기본값 + 각 엔진 키 설정 여부 +
+// 타입캐스트 언어별 voice 설정 현황(다국어판 언어 탭을 이에 연동).
 export function ttsProviderInfo(): {
   default: TtsProvider;
   configured: { elevenlabs: boolean; typecast: boolean };
+  typecastVoices: { fallback: boolean; perLang: Record<string, boolean> };
 } {
+  // 언어별 전용 voice(TYPECAST_VOICE_ID_<LANG>) 설정 여부. 공용 voice 가 있으면
+  // 전용이 없어도 그걸로 더빙되므로 fallback 으로 따로 표시.
+  const perLang: Record<string, boolean> = {};
+  for (const code of TARGET_LANG_CODES) {
+    perLang[code] = !!process.env[`TYPECAST_VOICE_ID_${code.toUpperCase()}`];
+  }
   return {
     default: getTtsProvider(),
     configured: {
       elevenlabs: !!process.env.ELEVENLABS_API_KEY,
       typecast: !!process.env.TYPECAST_API_KEY,
     },
+    typecastVoices: { fallback: !!process.env.TYPECAST_VOICE_ID, perLang },
   };
 }
 

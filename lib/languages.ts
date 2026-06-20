@@ -22,6 +22,7 @@ export const TARGET_LANGUAGES: LangDef[] = [
   { code: "en", label: "영어", english: "English", iso3: "eng" },
   { code: "es", label: "스페인어", english: "Spanish", iso3: "spa" },
   { code: "ja", label: "일본어", english: "Japanese", iso3: "jpn" },
+  { code: "vi", label: "베트남어", english: "Vietnamese", iso3: "vie" },
 ];
 
 export const TARGET_LANG_CODES = TARGET_LANGUAGES.map((l) => l.code);

@@ -19,6 +19,16 @@ const SERIF_PATHS = [
   "/usr/share/fonts/opentype/noto-cjk/NotoSerifCJK-Regular.ttc",
   "C:/Windows/Fonts/batang.ttc",
 ];
+// 라틴+성조 부호(베트남어 ề/ữ/ộ … 등) 풀커버 폰트. Noto Sans CJK 의 라틴은 베트남어
+// 합성 부호를 다 못 그려 자막이 □ 로 깨진다 — 이 폰트를 폴백 체인에 받쳐 CJK 가 못
+// 그리는 글자만 여기서 그리게 한다(한·일은 CJK 가 먼저라 영향 없음).
+const LATIN_PATHS = [
+  "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+  "/usr/share/fonts/opentype/noto/NotoSans-Regular.ttf",
+  "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+  "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+  "C:/Windows/Fonts/arial.ttf",
+];
 
 function registerFirst(paths, family) {
   for (const f of paths) {
@@ -34,6 +44,7 @@ function registerFirst(paths, family) {
 
 const sansSrc = registerFirst(SANS_PATHS, "SubSans");
 const serifSrc = registerFirst(SERIF_PATHS, "SubSerif");
+const latinSrc = registerFirst(LATIN_PATHS, "SubLatin");
 
 // 경로로 못 찾은 패밀리는 시스템 폰트(fontconfig)에서 찾는다.
 let _sysLoaded = false;
@@ -54,20 +65,26 @@ const SANS_FAMILY =
   sansSrc ? "SubSans" : sysFamily(/Noto Sans CJK|Noto Sans KR|Malgun|Apple SD|Nanum Gothic/i) || "sans-serif";
 const SERIF_FAMILY =
   serifSrc ? "SubSerif" : sysFamily(/Noto Serif CJK|Noto Serif KR|Batang|Nanum Myeongjo/i) || SANS_FAMILY;
+const LATIN_FAMILY =
+  latinSrc ? "SubLatin" : sysFamily(/Noto Sans(?! CJK)|DejaVu Sans|Liberation Sans|Arial/i) || null;
 
 // 자막 설정의 폰트(serif/sans)에 맞는 패밀리.
 const familyFor = (sub) => (sub?.font === "serif" ? SERIF_FAMILY : SANS_FAMILY);
 
+// 폰트 문자열 끝에 붙이는 라틴 폴백 — CJK 폰트가 못 그리는 베트남어 부호를 받친다.
+// (canvas 는 콤마 구분 패밀리에서 글자별로 폴백한다.)
+const LATIN_FALLBACK = LATIN_FAMILY ? `, "${LATIN_FAMILY}"` : "";
+
 try {
   console.log(
-    `[worker] 자막 폰트 sans=${SANS_FAMILY}(${sansSrc ?? "sys"}) serif=${SERIF_FAMILY}(${serifSrc ?? "sys/fallback"})`
+    `[worker] 자막 폰트 sans=${SANS_FAMILY}(${sansSrc ?? "sys"}) serif=${SERIF_FAMILY}(${serifSrc ?? "sys/fallback"}) latin=${LATIN_FAMILY ?? "없음(베트남어 자막 깨질 수 있음)"}(${latinSrc ?? "sys"})`
   );
 } catch {}
 
 // 1080폭 기준 자막 크기 (작게 56 / 보통 68 / 크게 84).
 const fontPx = (size) => (size === "small" ? 56 : size === "large" ? 84 : 68);
 const fontStr = (sub) =>
-  `${sub.weight === "bold" ? 700 : 500} ${fontPx(sub.size)}px "${familyFor(sub)}"`;
+  `${sub.weight === "bold" ? 700 : 500} ${fontPx(sub.size)}px "${familyFor(sub)}"${LATIN_FALLBACK}`;
 
 // 그리디 줄바꿈 + 고아글자 방지. 첫 줄을 폭까지 채우되, 마지막 줄이 너무 짧으면
 // (한두 글자만 남는 고아) 윗줄 끝 어절을 한 개씩 내려 마지막 두 줄을 보기 좋게.
@@ -128,7 +145,7 @@ export async function renderCaptionPng(text, sub, opts = {}) {
     ctx.fillRect(0, 0, W, H);
   }
   const size = opts.sizePx ?? fontPx(sub.size);
-  ctx.font = `${sub.weight === "bold" ? 700 : 500} ${size}px "${familyFor(sub)}"`;
+  ctx.font = `${sub.weight === "bold" ? 700 : 500} ${size}px "${familyFor(sub)}"${LATIN_FALLBACK}`;
   ctx.textBaseline = "alphabetic";
 
   const padX = Math.round(size * 0.45);
@@ -181,7 +198,7 @@ export async function renderWatermarkPng(wm, opts = {}) {
   if (!text) return canvas.encode("png");
 
   const size = Math.round(W * 0.033); // ≈36px @1080
-  ctx.font = `600 ${size}px "${SANS_FAMILY}"`;
+  ctx.font = `600 ${size}px "${SANS_FAMILY}"${LATIN_FALLBACK}`;
   ctx.textBaseline = "top";
   const tw = ctx.measureText(text).width;
   const th = Math.round(size * 1.2);
