@@ -627,6 +627,11 @@ export default function Studio({
   );
   const [ttsDirty, setTtsDirty] = useState(false);
 
+  // 새 씬 컴포저: 나레이션 입력 + Enter → 프롬프트·모션·길이 자동 생성.
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [newNarration, setNewNarration] = useState("");
+  const [filling, setFilling] = useState(false);
+
   function patchScene(i: number, patch: Partial<EditScene>) {
     setScenes((prev) => prev.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
     setDirty(true);
@@ -637,6 +642,35 @@ export default function Studio({
       { narration: "", imagePrompt: "", motion: "", durationSec: 5 },
     ]);
     setDirty(true);
+  }
+  // 나레이션 → fill-scene API 로 image_prompt·motion·길이 생성 후 씬 추가.
+  async function addSceneFromNarration() {
+    const n = newNarration.trim();
+    if (!n || filling) return;
+    setFilling(true);
+    setError(null);
+    try {
+      const data = await call("/api/script/fill-scene", {
+        projectId: project.id,
+        narration: n,
+      });
+      setScenes((prev) => [
+        ...prev,
+        {
+          narration: n,
+          imagePrompt: data.imagePrompt ?? "",
+          motion: data.motion ?? "",
+          durationSec: data.durationSec ?? 5,
+        },
+      ]);
+      setDirty(true);
+      setNewNarration(""); // 다음 씬을 바로 이어 입력할 수 있게 비움(컴포저는 열린 채).
+    } catch (e) {
+      // 실패해도 입력은 살려둔다(재시도 가능).
+      setError(e instanceof Error ? e.message : "씬 생성 실패");
+    } finally {
+      setFilling(false);
+    }
   }
   function deleteScene(i: number) {
     setScenes((prev) => prev.filter((_, idx) => idx !== i));
@@ -1501,14 +1535,59 @@ export default function Studio({
               ))}
             </ol>
 
+            {/* 새 씬 컴포저 — 나레이션만 입력하면 프롬프트·모션·길이를 AI가 채운다. */}
+            {composerOpen && (
+              <div className="mt-3 rounded-xl border border-dashed border-accent/60 p-3 grid gap-2">
+                <span className="text-[11px] font-medium text-zinc-600 dark:text-zinc-300">
+                  새 씬 — 나레이션 입력 후 Enter (이미지 프롬프트·모션·길이 자동 생성)
+                </span>
+                <textarea
+                  value={newNarration}
+                  onChange={(e) => setNewNarration(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      void addSceneFromNarration();
+                    }
+                  }}
+                  rows={2}
+                  disabled={filling}
+                  autoFocus
+                  placeholder="예: 정부가 새 정책을 발표했다.  (Enter=추가, Shift+Enter=줄바꿈)"
+                  className={fieldCls + " resize-y"}
+                />
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void addSceneFromNarration()}
+                    disabled={filling || !newNarration.trim()}
+                    className="text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-medium px-3 py-1.5"
+                  >
+                    {filling ? <Busy>생성 중…</Busy> : "추가"}
+                  </button>
+                  <span className="text-[10px] text-zinc-400">
+                    AI가 이미지 프롬프트·모션을 만들고 길이를 계산합니다.
+                  </span>
+                </div>
+              </div>
+            )}
+
             <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setComposerOpen((v) => !v)}
+                disabled={busy !== null}
+                className="text-xs rounded-lg border border-accent text-accent px-3 py-1.5 hover:bg-accent/10 disabled:opacity-40"
+              >
+                {composerOpen ? "− 닫기" : "+ 씬 추가"}
+              </button>
               <button
                 type="button"
                 onClick={addScene}
                 disabled={busy !== null}
                 className="text-xs rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
               >
-                + 씬 추가
+                빈 씬
               </button>
               <button
                 type="button"
