@@ -17,6 +17,18 @@ const REF_FETCH_TIMEOUT_MS = 30_000;
 const NO_TEXT =
   "Keep on-image text minimal: avoid signs, banners, paragraphs, or lots of words. A few short words are okay if natural, but no heavy text overlays.";
 
+// 씬 나레이션을 이미지 프롬프트에 "주제 이해용 컨텍스트"로 끼운다. 비주얼 권한은
+// 여전히 scenePrompt(image_prompt) 에 있고, 나레이션은 글자로 그리지 말라고 못박는다.
+function narrationContext(narration?: string): string {
+  const n = narration?.trim();
+  if (!n) return "";
+  return (
+    "Context — what this scene narrates (Korean, for understanding the topic only; " +
+    "do NOT render this text in the image, and keep the visual calm and metaphorical): " +
+    `${n}\n\n`
+  );
+}
+
 // 레퍼런스 URL → OpenAI 업로드용 파일. 실패 시 사용자 친화 메시지.
 async function fetchRefFile(url: string, label: string) {
   let res: Response;
@@ -36,12 +48,20 @@ export async function generateKeyframes(args: {
   projectId: string;
   styleBible: string;
   scenePrompt: string;
+  narration?: string; // 해당 씬 나레이션 — 주제 이해용 컨텍스트(비주얼은 scenePrompt 가 주도)
   quality?: ImageQuality;
   count?: number;
   referenceImageUrl?: string; // 있으면 이 이미지를 레퍼런스로 img2img(인물/구도 살림)
 }): Promise<{ urls: string[]; costUsd: number }> {
-  const { projectId, styleBible, scenePrompt, quality = "low", count = 3, referenceImageUrl } =
-    args;
+  const {
+    projectId,
+    styleBible,
+    scenePrompt,
+    narration,
+    quality = "low",
+    count = 3,
+    referenceImageUrl,
+  } = args;
   const client = getOpenAI();
 
   // 참조 이미지가 있으면 그걸 살려서(인물·구도) 스타일 바이블을 입혀 후보 생성.
@@ -49,7 +69,7 @@ export async function generateKeyframes(args: {
     ? "Use the provided reference image as the basis: preserve its main subject/character and " +
       "composition, but re-render it in the art style and palette described below.\n\n"
     : "";
-  const prompt = `${refClause}${styleBible}\n\nScene: ${scenePrompt}\n\n${NO_TEXT}`;
+  const prompt = `${refClause}${styleBible}\n\n${narrationContext(narration)}Scene: ${scenePrompt}\n\n${NO_TEXT}`;
 
   const result = referenceImageUrl
     ? await client.images.edit({
@@ -103,6 +123,7 @@ export async function generateScene(args: {
   projectId: string;
   styleBible: string;
   scenePrompt: string;
+  narration?: string; // 해당 씬 나레이션 — 주제 이해용 컨텍스트(비주얼은 scenePrompt 가 주도)
   sceneIndex: number;
   keyframeUrl: string;
   quality?: ImageQuality;
@@ -113,6 +134,7 @@ export async function generateScene(args: {
     projectId,
     styleBible,
     scenePrompt,
+    narration,
     sceneIndex,
     keyframeUrl,
     quality = "medium",
@@ -141,7 +163,7 @@ export async function generateScene(args: {
   const prompt =
     `${styleBible}\n\n` +
     `${styleClause}${refClause} Render a NEW scene described below in that same world.\n\n` +
-    `Scene: ${scenePrompt}\n\n${NO_TEXT}`;
+    `${narrationContext(narration)}Scene: ${scenePrompt}\n\n${NO_TEXT}`;
 
   const result = await client.images.edit({
     model: IMAGE_MODEL,

@@ -82,6 +82,7 @@ export async function POST(req: NextRequest) {
       projectId,
       styleBible: project.styleBible,
       scenePrompt: scene.imagePrompt,
+      narration: scene.narration,
       sceneIndex,
       keyframeUrl: project.keyframeUrl,
       quality: body.quality,

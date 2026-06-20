@@ -51,6 +51,7 @@ export async function POST(req: NextRequest) {
       projectId,
       styleBible: project.styleBible,
       scenePrompt: scene0.imagePrompt,
+      narration: scene0.narration,
       quality: body.quality ?? "low",
       count: 3,
       referenceImageUrl: project.keyframeReferenceUrl, // 업로드한 참조본이 있으면 img2img
