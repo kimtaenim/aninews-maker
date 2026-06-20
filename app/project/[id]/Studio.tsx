@@ -79,6 +79,7 @@ export default function Studio({
   tts?: {
     default: "elevenlabs" | "typecast";
     configured: { elevenlabs: boolean; typecast: boolean };
+    typecastVoices?: { fallback: boolean; perLang: Record<string, boolean> };
   };
 }) {
   const [project, setProject] = useState<Project>(initial);
@@ -195,11 +196,25 @@ export default function Studio({
   const [ttsProvider, setTtsProvider] = useState<string>(
     initial.ttsProvider ?? tts?.default ?? "elevenlabs"
   );
+  // 다국어판 언어 가용성 — 선택한 엔진과 voice 설정에 연동.
+  //   타입캐스트: 언어 전용 voice(TYPECAST_VOICE_ID_<LANG>) 또는 공용 voice 가 있어야 함.
+  //   일레븐랩스: 한 voice 가 모든 언어를 말하므로 키만 있으면 전 언어 가능.
+  function dubLangAvailable(code: string, provider: string = ttsProvider): boolean {
+    if (provider === "typecast") {
+      return !!(tts?.typecastVoices?.perLang?.[code] || tts?.typecastVoices?.fallback);
+    }
+    return tts?.configured?.elevenlabs ?? true;
+  }
   async function saveTtsProvider(p: "elevenlabs" | "typecast") {
     if (p === ttsProvider) return;
     const prev = ttsProvider;
     setTtsProvider(p);
     setProject((pr) => ({ ...pr, ttsProvider: p }));
+    // 엔진을 바꿔 현재 선택 언어가 불가해지면 가능한 첫 언어로 옮긴다.
+    if (!dubLangAvailable(dubLang, p)) {
+      const first = TARGET_LANGUAGES.find((L) => dubLangAvailable(L.code, p));
+      if (first) setDubLang(first.code);
+    }
     try {
       await call("/api/project/tts", { projectId: project.id, provider: p });
     } catch (e) {
@@ -380,7 +395,9 @@ export default function Studio({
 
   // ── 다국어판 (영어/스페인어/일본어…) ─────────────────────────────────────────
   // 언어별로 번역 → 로컬 편집 → 저장. 더빙(dub[lang].audioUrl)은 언어 트랙으로 별도 생성.
-  const [dubLang, setDubLang] = useState<string>(TARGET_LANGUAGES[0].code);
+  const [dubLang, setDubLang] = useState<string>(
+    () => TARGET_LANGUAGES.find((L) => dubLangAvailable(L.code))?.code ?? TARGET_LANGUAGES[0].code
+  );
   // 편집 버퍼: { [langCode]: { [sceneIndex]: text } }
   const [dubScripts, setDubScripts] = useState<Record<string, Record<number, string>>>(() =>
     Object.fromEntries(
@@ -1642,6 +1659,60 @@ export default function Studio({
           </div>
         )}
 
+        {/* StepChat — 대화로 스타일 미세조정 (생성 이미지보다 위에 둬서 조정→생성 흐름) */}
+        {scriptApproved && (
+          <div className="mt-4 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
+            <p className="text-xs font-semibold text-zinc-600 dark:text-zinc-300">
+              스타일 미세조정 (대화)
+            </p>
+            <p className="mt-0.5 text-[11px] text-zinc-400">
+              예: “더 따뜻한 색감으로”, “인물을 더 단순하게”. 반영 후{" "}
+              <span className="font-medium">‘다시 생성’</span>을 누르면 적용됩니다.
+            </p>
+            {chat.length > 0 && (
+              <ul className="mt-2 grid gap-1.5 max-h-48 overflow-y-auto">
+                {chat.map((t, i) => (
+                  <li key={i} className={t.role === "user" ? "text-right" : ""}>
+                    <span
+                      className={
+                        "inline-block rounded-lg px-2.5 py-1.5 text-xs " +
+                        (t.role === "user"
+                          ? "bg-accent text-white"
+                          : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200")
+                      }
+                    >
+                      {t.text}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="mt-2 flex gap-2">
+              <input
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    sendKeyframeChat();
+                  }
+                }}
+                placeholder="스타일 수정 요청…"
+                disabled={busy !== null}
+                className="flex-1 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-accent disabled:opacity-50"
+              />
+              <button
+                type="button"
+                onClick={sendKeyframeChat}
+                disabled={busy !== null || !chatInput.trim()}
+                className="shrink-0 rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white text-sm font-medium px-4"
+              >
+                {busy === "keyframe-chat" ? <Busy>…</Busy> : "보내기"}
+              </button>
+            </div>
+          </div>
+        )}
+
         {busy === "keyframe" && (
           <div className="mt-4 grid grid-cols-3 gap-2">
             {[0, 1, 2].map((i) => (
@@ -1718,60 +1789,6 @@ export default function Studio({
               alt="선택된 씬0 키프레임"
               className="w-48 aspect-[9/16] object-cover rounded-xl border-2 border-accent"
             />
-          </div>
-        )}
-
-        {/* StepChat — 대화로 스타일 미세조정 */}
-        {scriptApproved && (
-          <div className="mt-4 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
-            <p className="text-xs font-semibold text-zinc-600 dark:text-zinc-300">
-              스타일 미세조정 (대화)
-            </p>
-            <p className="mt-0.5 text-[11px] text-zinc-400">
-              예: “더 따뜻한 색감으로”, “인물을 더 단순하게”. 반영 후{" "}
-              <span className="font-medium">‘다시 생성’</span>을 누르면 적용됩니다.
-            </p>
-            {chat.length > 0 && (
-              <ul className="mt-2 grid gap-1.5 max-h-48 overflow-y-auto">
-                {chat.map((t, i) => (
-                  <li key={i} className={t.role === "user" ? "text-right" : ""}>
-                    <span
-                      className={
-                        "inline-block rounded-lg px-2.5 py-1.5 text-xs " +
-                        (t.role === "user"
-                          ? "bg-accent text-white"
-                          : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200")
-                      }
-                    >
-                      {t.text}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <div className="mt-2 flex gap-2">
-              <input
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    sendKeyframeChat();
-                  }
-                }}
-                placeholder="스타일 수정 요청…"
-                disabled={busy !== null}
-                className="flex-1 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-accent disabled:opacity-50"
-              />
-              <button
-                type="button"
-                onClick={sendKeyframeChat}
-                disabled={busy !== null || !chatInput.trim()}
-                className="shrink-0 rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white text-sm font-medium px-4"
-              >
-                {busy === "keyframe-chat" ? <Busy>…</Busy> : "보내기"}
-              </button>
-            </div>
           </div>
         )}
 
@@ -2470,23 +2487,38 @@ export default function Studio({
             한국어판/각 언어판 중 하나를 골라 구워요.
           </p>
 
-          {/* 언어 탭 — 더빙 상태 뱃지 포함 */}
+          {/* 언어 탭 — voice 설정된 언어만 활성(선택 엔진에 연동) + 더빙 상태 뱃지 */}
           <div className="mt-3 inline-flex flex-wrap rounded-xl border border-zinc-200 dark:border-zinc-800 p-0.5 text-xs">
             {TARGET_LANGUAGES.map((L) => {
               const dubbed = project.scenes.some((s) => dubAudioUrl(s, L.code));
+              const available = dubLangAvailable(L.code);
               return (
                 <button
                   key={L.code}
                   type="button"
-                  onClick={() => setDubLang(L.code)}
-                  className={`rounded-lg px-3 py-1.5 font-medium transition-colors ${dubLang === L.code ? "bg-accent text-white" : "text-zinc-500"}`}
+                  onClick={() => available && setDubLang(L.code)}
+                  disabled={!available}
+                  title={
+                    available
+                      ? ""
+                      : ttsProvider === "typecast"
+                        ? `타입캐스트에 ${L.label} voice 가 없어요 (.env 에 TYPECAST_VOICE_ID_${L.code.toUpperCase()})`
+                        : "일레븐랩스 API 키가 없어요"
+                  }
+                  className={`rounded-lg px-3 py-1.5 font-medium transition-colors disabled:opacity-40 ${dubLang === L.code ? "bg-accent text-white" : "text-zinc-500"}`}
                 >
                   {L.label}
                   {dubbed && <span className={dubLang === L.code ? "ml-1" : "ml-1 text-accent"}>🔊</span>}
+                  {!available && <span className="ml-1 text-[10px]">·voice 없음</span>}
                 </button>
               );
             })}
           </div>
+          <p className="mt-1 text-[10px] text-zinc-400">
+            {ttsProvider === "typecast"
+              ? "타입캐스트 — voice(TYPECAST_VOICE_ID_*)가 설정된 언어만 켜집니다."
+              : "일레븐랩스 — 한 voice가 전 언어를 처리합니다."}
+          </p>
 
           <div className="mt-3 flex flex-wrap gap-2">
             <button
@@ -2518,7 +2550,8 @@ export default function Studio({
             <button
               type="button"
               onClick={() => generateAllAudioDub(dubLang)}
-              disabled={busy !== null}
+              disabled={busy !== null || !dubLangAvailable(dubLang)}
+              title={dubLangAvailable(dubLang) ? "" : "이 언어 voice 가 없어 더빙할 수 없어요"}
               className="rounded-lg border border-accent text-accent px-3 py-1.5 text-xs font-medium hover:bg-accent/10 disabled:opacity-40"
             >
               {busy === `audio-${dubLang}-all` ? (
