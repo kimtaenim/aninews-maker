@@ -4,8 +4,15 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Spinner from "@/components/Spinner";
 import type { RssItem, RssCategory } from "@/lib/rss";
+import { ACCEPT_ATTR, MAX_FILE_SIZE, MAX_TOTAL_SIZE } from "@/lib/attachments";
 
-type Mode = "rss" | "url" | "text";
+type Mode = "rss" | "url" | "text" | "file";
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
 
 // 첫 화면은 소스 입력만. 스타일·모델·음성·자막은 모두 스튜디오 각 단계에서 지정/변경.
 export default function NewProjectForm({ categories }: { categories: RssCategory[] }) {
@@ -13,6 +20,7 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
   const [mode, setMode] = useState<Mode>("rss");
   const [url, setUrl] = useState("");
   const [text, setText] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
 
   // RSS 상태
   const [category, setCategory] = useState(categories[0]?.key ?? "");
@@ -64,7 +72,53 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
     }
   }
 
+  function addFiles(picked: FileList | null) {
+    if (!picked || picked.length === 0) return;
+    setError(null);
+    setFiles((prev) => {
+      const next = [...prev];
+      for (const f of Array.from(picked)) {
+        if (f.size > MAX_FILE_SIZE) {
+          setError(`${f.name} 이(가) 10MB를 초과해요.`);
+          continue;
+        }
+        if (next.some((p) => p.name === f.name && p.size === f.size)) continue;
+        next.push(f);
+      }
+      if (next.reduce((s, f) => s + f.size, 0) > MAX_TOTAL_SIZE) {
+        setError("전체 첨부가 30MB를 초과해요.");
+        return prev;
+      }
+      return next;
+    });
+  }
+
+  function removeFile(idx: number) {
+    setFiles((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  async function submitFiles() {
+    if (files.length === 0) {
+      setError("파일을 1개 이상 첨부해주세요");
+      return;
+    }
+    setError(null);
+    setLoading(true);
+    try {
+      const fd = new FormData();
+      for (const f of files) fd.append("file", f);
+      const r = await fetch("/api/source/from-files", { method: "POST", body: fd });
+      const data = await r.json();
+      if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      router.push(`/project/${data.projectId}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "생성 실패");
+      setLoading(false);
+    }
+  }
+
   async function submit() {
+    if (mode === "file") return submitFiles();
     setError(null);
     let endpoint = "/api/source/from-url";
     let payload: Record<string, unknown>;
@@ -134,6 +188,7 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
         {tab("rss", "RSS")}
         {tab("url", "URL")}
         {tab("text", "텍스트")}
+        {tab("file", "파일")}
       </div>
 
       {mode === "rss" && (
@@ -241,6 +296,58 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
           rows={8}
           className={inputCls + " resize-y"}
         />
+      )}
+
+      {mode === "file" && (
+        <div className="grid gap-3">
+          <label
+            className="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700 px-4 py-8 text-center cursor-pointer hover:border-accent transition-colors"
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              addFiles(e.dataTransfer.files);
+            }}
+          >
+            <input
+              type="file"
+              multiple
+              accept={ACCEPT_ATTR}
+              className="hidden"
+              onChange={(e) => {
+                addFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
+            <span className="text-sm font-medium">파일 선택 또는 드래그</span>
+            <span className="text-[11px] text-zinc-500">
+              PDF·이미지(OCR)·Word·Excel·PPT · 파일당 10MB · 전체 30MB
+            </span>
+          </label>
+
+          {files.length > 0 && (
+            <ul className="grid gap-1.5">
+              {files.map((f, i) => (
+                <li
+                  key={`${f.name}-${f.size}-${i}`}
+                  className="flex items-center justify-between gap-2 rounded-xl border border-zinc-200 dark:border-zinc-800 px-3 py-2"
+                >
+                  <span className="min-w-0 truncate text-sm">{f.name}</span>
+                  <span className="shrink-0 text-[11px] text-zinc-500">
+                    {formatSize(f.size)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeFile(i)}
+                    className="shrink-0 text-zinc-400 hover:text-red-500 text-sm"
+                    aria-label="첨부 제거"
+                  >
+                    ✕
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
 
       <p className="text-[11px] text-zinc-400">
