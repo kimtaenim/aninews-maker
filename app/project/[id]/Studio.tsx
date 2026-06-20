@@ -145,6 +145,23 @@ export default function Studio({
   );
   // 업로드 진행 표시(키는 "keyframe-ref" | "ref-{i}" | "img-{i}" | "vid-{i}").
   const [uploading, setUploading] = useState<string | null>(null);
+  // 썸네일 클릭 시 전체화면 확대(라이트박스). null 이면 닫힘.
+  const [zoomUrl, setZoomUrl] = useState<string | null>(null);
+  // 드래그앤드롭 강조 중인 업로드 칸 키("img-{i}" | "ref-{i}"). 데스크톱 전용.
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null);
+
+  // 파일 드롭 → 업로드. 이미지 파일만, 진행 중이면 무시.
+  function handleImageDrop(
+    e: React.DragEvent,
+    key: string,
+    upload: (file: File) => void
+  ) {
+    e.preventDefault();
+    setDragOverKey(null);
+    if (busy !== null || uploading !== null) return;
+    const f = Array.from(e.dataTransfer.files).find((x) => x.type.startsWith("image/"));
+    if (f) upload(f);
+  }
 
   // 누적 비용(이 프로젝트, 리롤 포함 전부 합산)
   const [totalKrw, setTotalKrw] = useState<string | null>(null);
@@ -1879,7 +1896,8 @@ export default function Studio({
                 <img
                   src={project.keyframeUrl}
                   alt="씬0 키프레임"
-                  className="w-12 aspect-[9/16] object-cover rounded-lg border border-zinc-200 dark:border-zinc-800"
+                  onClick={() => setZoomUrl(project.keyframeUrl!)}
+                  className="w-12 aspect-[9/16] object-cover rounded-lg border border-zinc-200 dark:border-zinc-800 cursor-zoom-in"
                 />
                 <p className="text-[11px] text-zinc-500">
                   씬0 키프레임 — 모든 씬이 이 스타일·인물·팔레트를 레퍼런스로 따릅니다.
@@ -1912,7 +1930,8 @@ export default function Studio({
                         <img
                           src={sc.imageUrl}
                           alt={`씬 ${i + 1}`}
-                          className="h-full w-full object-cover"
+                          onClick={() => setZoomUrl(sc.imageUrl!)}
+                          className="h-full w-full object-cover cursor-zoom-in"
                         />
                       ) : (
                         <span className="text-[10px] text-zinc-400">
@@ -1974,7 +1993,22 @@ export default function Studio({
 
                       {imgMode === "upload" ? (
                         // 직접 업로드: 가져온 이미지를 그대로 사용
-                        <label className="inline-flex w-fit cursor-pointer items-center gap-1.5 text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2.5 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-900">
+                        <label
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            setDragOverKey(`img-${i}`);
+                          }}
+                          onDragLeave={() => setDragOverKey(null)}
+                          onDrop={(e) =>
+                            handleImageDrop(e, `img-${i}`, (f) => uploadSceneImage(i, f))
+                          }
+                          className={
+                            "inline-flex w-fit cursor-pointer items-center gap-1.5 text-[11px] rounded-md border px-2.5 py-1 transition-colors " +
+                            (dragOverKey === `img-${i}`
+                              ? "border-accent bg-accent/10"
+                              : "border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-900")
+                          }
+                        >
                           {imgUploading ? (
                             <Busy>업로드 중…</Busy>
                           ) : sc.imageUrl ? (
@@ -1982,6 +2016,7 @@ export default function Studio({
                           ) : (
                             "이미지 업로드"
                           )}
+                          <span className="hidden sm:inline text-zinc-400">· 드래그</span>
                           <input
                             type="file"
                             accept="image/*"
@@ -2004,10 +2039,28 @@ export default function Studio({
                                 <img
                                   src={ed.referenceImageUrl}
                                   alt="참조"
-                                  className="w-8 aspect-[9/16] object-cover rounded border border-zinc-200 dark:border-zinc-800"
+                                  onClick={() => setZoomUrl(ed.referenceImageUrl!)}
+                                  className="w-8 aspect-[9/16] object-cover rounded border border-zinc-200 dark:border-zinc-800 cursor-zoom-in"
                                 />
                               )}
-                              <label className="inline-flex w-fit cursor-pointer items-center gap-1.5 text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2.5 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-900">
+                              <label
+                                onDragOver={(e) => {
+                                  e.preventDefault();
+                                  setDragOverKey(`ref-${i}`);
+                                }}
+                                onDragLeave={() => setDragOverKey(null)}
+                                onDrop={(e) =>
+                                  handleImageDrop(e, `ref-${i}`, (f) =>
+                                    uploadSceneReference(i, f)
+                                  )
+                                }
+                                className={
+                                  "inline-flex w-fit cursor-pointer items-center gap-1.5 text-[11px] rounded-md border px-2.5 py-1 transition-colors " +
+                                  (dragOverKey === `ref-${i}`
+                                    ? "border-accent bg-accent/10"
+                                    : "border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-900")
+                                }
+                              >
                                 {uploading === `ref-${i}` ? (
                                   <Busy>업로드 중…</Busy>
                                 ) : ed?.referenceImageUrl ? (
@@ -2015,6 +2068,9 @@ export default function Studio({
                                 ) : (
                                   "참조 업로드"
                                 )}
+                                <span className="hidden sm:inline text-zinc-400">
+                                  · 드래그
+                                </span>
                                 <input
                                   type="file"
                                   accept="image/*"
@@ -2300,7 +2356,7 @@ export default function Studio({
           <button
             type="button"
             onClick={generateAllAudio}
-            disabled={!videosApproved || busy !== null || project.scenes.length === 0}
+            disabled={!keyframeApproved || busy !== null || project.scenes.length === 0}
             className="shrink-0 text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-medium px-3 py-1.5"
           >
             {busy === "audio-all" ? (
@@ -2343,10 +2399,13 @@ export default function Studio({
           )}
         </div>
 
-        {!videosApproved && (
-          <p className="mt-2 text-xs text-zinc-500">비디오를 먼저 승인해주세요.</p>
+        {!keyframeApproved && (
+          <p className="mt-2 text-xs text-zinc-500">
+            키프레임(3단계)을 먼저 승인해주세요. 음성은 영상(5단계)을 기다리지 않고 미리
+            만들 수 있어요.
+          </p>
         )}
-        {videosApproved && !project.ttsEnabled && (
+        {keyframeApproved && !project.ttsEnabled && (
           <p className="mt-2 text-xs text-amber-600">
             이 프로젝트는 보이스오버(TTS)가 꺼진 채로 만들어졌어요. 생성은 가능하지만,
             끄려면 합성 단계에서 음성을 빼면 됩니다.
@@ -2359,7 +2418,7 @@ export default function Studio({
           <p className="mt-2 text-xs text-red-600">{error}</p>
         )}
 
-        {videosApproved && (
+        {keyframeApproved && (
           <>
             <ol className="mt-4 grid gap-2">
               {project.scenes.map((sc, i) => {
@@ -2832,6 +2891,29 @@ export default function Studio({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* 썸네일 확대 라이트박스 — 아무 곳이나 누르면 닫힘. */}
+      {zoomUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 cursor-zoom-out"
+          onClick={() => setZoomUrl(null)}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={zoomUrl}
+            alt="확대 이미지"
+            className="max-h-full max-w-full rounded-lg object-contain shadow-2xl"
+          />
+          <button
+            type="button"
+            onClick={() => setZoomUrl(null)}
+            aria-label="닫기"
+            className="absolute top-4 right-4 flex size-9 items-center justify-center rounded-full bg-white/15 text-white text-lg hover:bg-white/25"
+          >
+            ✕
+          </button>
         </div>
       )}
     </>

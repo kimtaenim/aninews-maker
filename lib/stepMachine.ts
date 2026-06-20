@@ -27,6 +27,11 @@ export function canTransition(from: StepStatus, to: StepStatus): boolean {
 export function canStart(project: Project, step: StepKind): boolean {
   const i = STEP_ORDER.indexOf(step);
   if (i <= 0) return true;
+  // 음성(voiceover)은 영상(videos)과 독립적 — 나레이션 텍스트만 있으면 되므로,
+  // 직전 단계(videos) 대신 키프레임(3단계) 승인만으로 시작할 수 있다(4단계와 동시 진행).
+  if (step === "voiceover") {
+    return project.steps.keyframe?.status === "approved";
+  }
   const prev = STEP_ORDER[i - 1];
   return project.steps[prev]?.status === "approved";
 }
