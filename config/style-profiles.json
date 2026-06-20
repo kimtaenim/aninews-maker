@@ -28,7 +28,17 @@
     {
       "id": "3d-stopmotion",
       "label": "3D 목각인형 스톱모션",
-      "imageBible": "Handcrafted wooden puppet characters, miniature diorama set, tactile felt and wood textures, warm practical lighting, shallow depth of field, 9:16 vertical composition.",
+      "imageBible": "Handcrafted wooden puppet characters, cute and charming, with very small rounded heads and almost no facial expression (minimal, nearly blank features). Miniature diorama set, tactile felt and wood textures, warm practical lighting, shallow depth of field, 9:16 vertical composition.",
+      "motionStyle": "Steppy stop-motion movement, slightly jittery, posed-frame feel — NOT smooth. Hold poses between moves.",
+      "postFx": {
+        "frameSteppingFps": 10,
+        "_note": "compose 단계에서 8~12fps 프레임 스테핑으로 스톱모션 손맛 유지."
+      }
+    },
+    {
+      "id": "3d-business",
+      "label": "3D 목각인형 비즈니스",
+      "imageBible": "Handcrafted 3D wooden stop-motion puppet characters in business attire (tailored suits and ties). Very small, smooth, rounded head with NO facial expression — a blank, featureless face. Female characters have a small round wooden sphere attached to the back of the head to suggest tied-back hair (a bun). Proportions: broad shoulders, long slender arms and legs, with a slightly long neck (elegant, but not exaggerated). Tactile oak wood grain and felt textures, miniature diorama set, warm practical studio lighting, shallow depth of field, 9:16 vertical composition. Keep on-image text minimal.",
       "motionStyle": "Steppy stop-motion movement, slightly jittery, posed-frame feel — NOT smooth. Hold poses between moves.",
       "postFx": {
         "frameSteppingFps": 10,
