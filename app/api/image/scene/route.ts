@@ -51,9 +51,23 @@ export async function POST(req: NextRequest) {
     );
   }
   const scene = project.scenes[sceneIndex];
+  // upload 모드는 사용자가 직접 넣은 이미지를 쓰므로 생성 대상이 아님(클라이언트가 차단하지만 방어).
+  if (scene?.imageSource === "upload") {
+    return NextResponse.json(
+      { ok: false, error: "업로드 모드 씬은 이미지를 생성하지 않아요" },
+      { status: 422 }
+    );
+  }
   if (!scene?.imagePrompt) {
     return NextResponse.json(
       { ok: false, error: `씬${sceneIndex + 1} 이미지 프롬프트가 없어요` },
+      { status: 422 }
+    );
+  }
+  // reference 모드는 참조 이미지가 반드시 있어야 함.
+  if (scene.imageSource === "reference" && !scene.referenceImageUrl) {
+    return NextResponse.json(
+      { ok: false, error: `씬${sceneIndex + 1} 참조 이미지를 먼저 업로드해주세요` },
       { status: 422 }
     );
   }
@@ -71,6 +85,9 @@ export async function POST(req: NextRequest) {
       sceneIndex,
       keyframeUrl: project.keyframeUrl,
       quality: body.quality,
+      referenceImageUrl:
+        scene.imageSource === "reference" ? scene.referenceImageUrl : undefined,
+      paletteHint: scene.paletteHint,
     });
 
     // 무거운 생성(수십 초) 뒤 — 다른 씬의 동시 저장을 덮어쓰지 않도록 최신 상태 재읽기.

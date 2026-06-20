@@ -1,18 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProject, saveProject } from "@/lib/projectStore";
-import { synthesizeSpeech } from "@/lib/elevenlabs";
+import { synthesize } from "@/lib/tts";
 import { canStart } from "@/lib/stepMachine";
 import { uploadAsset } from "@/lib/blob";
 import { formatKrw, recordCost } from "@/lib/cost";
+import { getLang, isTargetLang, dubNarration, dubAudioUrl } from "@/lib/languages";
 
 export const runtime = "nodejs";
 export const maxDuration = 60; // TTS 는 동기·짧음
 
-// 6. voiceover — 씬 나레이션 → ElevenLabs TTS(mp3) → Blob 저장. 동기 호출이라
-// GET 폴링 없음. body: { projectId, sceneIndex, text?, lang? }
-// lang="en" 이면 다국어판 더빙: narrationEn → audioUrlEn 에 저장(한국어 단계 상태는 안 건드림).
+// 6. voiceover — 씬 나레이션 → TTS(mp3) → Blob 저장. 동기 호출이라 GET 폴링 없음.
+// body: { projectId, sceneIndex, text?, lang? }
+// lang="ko"(기본)는 한국어판(단계 상태 이동). 그 외(en/es/ja…)는 다국어판 더빙:
+// dub[lang].narration → dub[lang].audioUrl 에 저장(한국어 단계 상태는 안 건드림).
 export async function POST(req: NextRequest) {
-  let body: { projectId?: string; sceneIndex?: number; text?: string; lang?: "ko" | "en" };
+  let body: { projectId?: string; sceneIndex?: number; text?: string; lang?: string };
   try {
     body = await req.json();
   } catch {
@@ -42,49 +44,55 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "sceneIndex 범위 밖" }, { status: 422 });
   }
   const scene = project.scenes[sceneIndex];
-  const lang = body.lang === "en" ? "en" : "ko";
+  // lang="ko"(또는 미지정) → 한국어판. 그 외 등록 언어 → 다국어판 더빙.
+  const isDub = isTargetLang(body.lang);
+  const lang = isDub ? (body.lang as string) : "ko";
+  const langDef = isDub ? getLang(lang) : undefined;
   // 한국어 음성은 ttsScript(음성 전용 오버라이드)가 있으면 그걸, 없으면 narration(자막)을 쓴다.
+  // 다국어판은 해당 언어 번역(dub[lang].narration)을 쓴다.
   // 클라이언트가 text 를 명시하면 항상 그게 우선(기존 동작 유지).
-  const base =
-    lang === "en" ? scene?.narrationEn : scene?.ttsScript?.trim() || scene?.narration;
+  const base = isDub
+    ? dubNarration(scene, lang)
+    : scene?.ttsScript?.trim() || scene?.narration;
   const text = (body.text ?? base ?? "").trim();
   if (!text) {
     return NextResponse.json(
       {
         ok: false,
-        error:
-          lang === "en"
-            ? `씬${sceneIndex + 1} 영문 스크립트가 없어요 (번역 먼저)`
-            : `씬${sceneIndex + 1} 나레이션이 없어요`,
+        error: isDub
+          ? `씬${sceneIndex + 1} ${langDef?.label ?? lang} 스크립트가 없어요 (번역 먼저)`
+          : `씬${sceneIndex + 1} 나레이션이 없어요`,
       },
       { status: 422 }
     );
   }
 
-  // 한국어판만 voiceover 단계 상태를 움직인다. 영어판(다국어)은 별도 트랙.
-  if (lang === "ko") {
+  // 한국어판만 voiceover 단계 상태를 움직인다. 다국어판은 별도 트랙.
+  if (!isDub) {
     project.steps.voiceover.status = "generating";
     project.steps.voiceover.updatedAt = Date.now();
     await saveProject(project);
   }
 
   try {
-    const { audioBuffer, costUsd } = await synthesizeSpeech({ text });
+    const { audioBuffer, costUsd, vendor, model } = await synthesize({
+      text,
+      lang,
+      provider: project.ttsProvider,
+    });
     const { url } = await uploadAsset(
       `project/${projectId}/scene-${sceneIndex}-audio-${lang}-${Date.now()}.mp3`,
       Buffer.from(audioBuffer),
       "audio/mpeg"
     );
-    project.scenes[sceneIndex] =
-      lang === "en"
-        ? { ...scene, audioUrlEn: url }
-        : { ...scene, audioUrl: url, status: "generated" };
+    project.scenes[sceneIndex] = isDub
+      ? { ...scene, dub: { ...scene.dub, [lang]: { ...scene.dub?.[lang], audioUrl: url } } }
+      : { ...scene, audioUrl: url, status: "generated" };
 
-    const allDone =
-      lang === "en"
-        ? project.scenes.every((s) => !!s.audioUrlEn)
-        : project.scenes.every((s) => !!s.audioUrl);
-    if (lang === "ko") {
+    const allDone = isDub
+      ? project.scenes.every((s) => !!dubAudioUrl(s, lang))
+      : project.scenes.every((s) => !!s.audioUrl);
+    if (!isDub) {
       project.steps.voiceover.status = allDone ? "generated" : "generating";
       project.steps.voiceover.updatedAt = Date.now();
     }
@@ -93,8 +101,8 @@ export async function POST(req: NextRequest) {
 
     await recordCost({
       projectId,
-      vendor: "elevenlabs",
-      model: "eleven_multilingual_v2",
+      vendor,
+      model,
       costUsd,
       meta: { kind: "voiceover", sceneIndex, chars: text.length, lang },
     });
@@ -106,8 +114,8 @@ export async function POST(req: NextRequest) {
     project.steps.voiceover.error = error;
     project.steps.voiceover.updatedAt = Date.now();
     await saveProject(project);
-    const hint = /ELEVENLABS_API_KEY|401|unauthor/i.test(error)
-      ? " (ELEVENLABS_API_KEY 가 .env.local 에 있는지 확인해주세요)"
+    const hint = /API_KEY|401|unauthor/i.test(error)
+      ? " (TTS_PROVIDER 에 맞는 API 키가 .env.local 에 있는지 확인해주세요)"
       : "";
     return NextResponse.json({ ok: false, error: error + hint }, { status: 500 });
   }

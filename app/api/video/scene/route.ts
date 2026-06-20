@@ -58,6 +58,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "sceneIndex 범위 밖" }, { status: 422 });
   }
   const scene = project.scenes[sceneIndex];
+  if (scene?.videoSource === "upload") {
+    return NextResponse.json(
+      { ok: false, error: "업로드 모드 씬은 영상을 생성하지 않아요" },
+      { status: 422 }
+    );
+  }
   if (!scene?.imageUrl) {
     return NextResponse.json(
       { ok: false, error: `씬${sceneIndex + 1} 이미지가 없어요` },

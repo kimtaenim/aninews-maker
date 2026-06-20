@@ -53,6 +53,7 @@ export async function POST(req: NextRequest) {
       scenePrompt: scene0.imagePrompt,
       quality: body.quality ?? "low",
       count: 3,
+      referenceImageUrl: project.keyframeReferenceUrl, // 업로드한 참조본이 있으면 img2img
     });
     project.steps.keyframe.params = {
       ...project.steps.keyframe.params,

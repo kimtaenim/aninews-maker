@@ -96,6 +96,15 @@ export function elevenLabsCostUsd(chars: number): number {
   return Math.max(0, chars) * ELEVENLABS_USD_PER_CHAR;
 }
 
+// Typecast TTS — 크레딧 기반이라 정확 단가는 플랜마다 다름. 추정치로 적재하고
+// 실제 청구와 맞춰 TYPECAST_USD_PER_CHAR 로 보정한다(미지정 시 ElevenLabs 수준).
+export const TYPECAST_USD_PER_CHAR =
+  Number(process.env.TYPECAST_USD_PER_CHAR) || 0.0003;
+
+export function typecastCostUsd(chars: number): number {
+  return Math.max(0, chars) * TYPECAST_USD_PER_CHAR;
+}
+
 const KEY = "cost:entries"; // list (best-effort 기록)
 
 export async function recordCost(

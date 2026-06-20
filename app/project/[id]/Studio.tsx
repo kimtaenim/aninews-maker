@@ -8,8 +8,17 @@ import {
   type Scene,
   type StepKind,
   type SubtitleSettings,
+  type ImageSourceMode,
+  type VideoSourceMode,
 } from "@/lib/types";
+import { upload } from "@vercel/blob/client";
 import type { SourceMaterial } from "@/lib/source";
+import {
+  TARGET_LANGUAGES,
+  getLang,
+  dubNarration,
+  dubAudioUrl,
+} from "@/lib/languages";
 import Spinner from "@/components/Spinner";
 import ScenePreview from "./ScenePreview";
 
@@ -33,7 +42,17 @@ const STEP_LABELS: Record<StepKind, string> = {
   subtitle: "자막",
 };
 
-type EditScene = Pick<Scene, "narration" | "imagePrompt" | "motion" | "durationSec">;
+type EditScene = Pick<
+  Scene,
+  | "narration"
+  | "imagePrompt"
+  | "motion"
+  | "durationSec"
+  | "imageSource"
+  | "referenceImageUrl"
+  | "paletteHint"
+  | "videoSource"
+>;
 
 function toEdit(s: Scene): EditScene {
   return {
@@ -41,6 +60,10 @@ function toEdit(s: Scene): EditScene {
     imagePrompt: s.imagePrompt,
     motion: s.motion,
     durationSec: s.durationSec,
+    imageSource: s.imageSource ?? "generate",
+    referenceImageUrl: s.referenceImageUrl,
+    paletteHint: s.paletteHint,
+    videoSource: s.videoSource ?? "generate",
   };
 }
 
@@ -48,10 +71,15 @@ export default function Studio({
   project: initial,
   styleProfiles,
   videoModels,
+  tts,
 }: {
   project: Project;
   styleProfiles: { id: string; label: string }[];
   videoModels: { id: string; label: string }[];
+  tts?: {
+    default: "elevenlabs" | "typecast";
+    configured: { elevenlabs: boolean; typecast: boolean };
+  };
 }) {
   const [project, setProject] = useState<Project>(initial);
   const [busy, _setBusy] = useState<string | null>(null);
@@ -110,6 +138,12 @@ export default function Studio({
   const [candidates, setCandidates] = useState<string[]>(
     (initial.steps.keyframe.params.candidates as string[]) ?? []
   );
+  // 키프레임 생성용 참조 이미지(업로드). 있으면 그걸 살려서 후보를 만든다.
+  const [keyframeRefUrl, setKeyframeRefUrl] = useState<string | undefined>(
+    initial.keyframeReferenceUrl
+  );
+  // 업로드 진행 표시(키는 "keyframe-ref" | "ref-{i}" | "img-{i}" | "vid-{i}").
+  const [uploading, setUploading] = useState<string | null>(null);
 
   // 누적 비용(이 프로젝트, 리롤 포함 전부 합산)
   const [totalKrw, setTotalKrw] = useState<string | null>(null);
@@ -155,7 +189,24 @@ export default function Studio({
 
   // 자막 설정 (프로젝트 일괄)
   const [sub, setSub] = useState<SubtitleSettings>(initial.subtitle ?? DEFAULT_SUBTITLE);
-  const [composeLang, setComposeLang] = useState<"ko" | "en">("ko");
+  const [composeLang, setComposeLang] = useState<string>("ko");
+
+  // ── 보이스오버 엔진(프로젝트별) — env 기본값을 덮어쓴다 ───────────────────────
+  const [ttsProvider, setTtsProvider] = useState<string>(
+    initial.ttsProvider ?? tts?.default ?? "elevenlabs"
+  );
+  async function saveTtsProvider(p: "elevenlabs" | "typecast") {
+    if (p === ttsProvider) return;
+    const prev = ttsProvider;
+    setTtsProvider(p);
+    setProject((pr) => ({ ...pr, ttsProvider: p }));
+    try {
+      await call("/api/project/tts", { projectId: project.id, provider: p });
+    } catch (e) {
+      setTtsProvider(prev); // 실패 시 롤백
+      setError(e instanceof Error ? e.message : "엔진 저장 실패");
+    }
+  }
 
   // 워터마크 (최종 출력에 새김) — 텍스트 + 위치(4모서리)
   const [wmText, setWmText] = useState(initial.watermark?.text ?? "");
@@ -275,7 +326,7 @@ export default function Studio({
   // ── 서버 상태 복원(rehydrate) — 지하철/백그라운드/네트워크 끊김에도 robust ────────
   // 모든 작업의 진실은 서버(Redis)다. 페이지를 떠났다 와도, 화면을 잠갔다 켜도,
   // 신호가 끊겼다 붙어도 — 돌아오는 순간 서버에서 최신 상태를 다시 읽어 반영한다.
-  // (편집 버퍼 scenes/enScripts/sub 는 별도 state 라 덮어쓰지 않는다.)
+  // (편집 버퍼 scenes/dubScripts/sub 는 별도 state 라 덮어쓰지 않는다.)
   const syncingRef = useRef(false);
   async function syncFromServer() {
     if (syncingRef.current) return;
@@ -327,80 +378,91 @@ export default function Studio({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project.scenes]);
 
-  // ── 다국어판(영어) ──────────────────────────────────────────────────────────
-  // 영문 스크립트는 로컬에서 편집 → 저장. 더빙(audioUrlEn)은 영어 트랙으로 별도 생성.
-  const [enScripts, setEnScripts] = useState<Record<number, string>>(
-    Object.fromEntries(initial.scenes.map((s) => [s.index, s.narrationEn ?? ""]))
+  // ── 다국어판 (영어/스페인어/일본어…) ─────────────────────────────────────────
+  // 언어별로 번역 → 로컬 편집 → 저장. 더빙(dub[lang].audioUrl)은 언어 트랙으로 별도 생성.
+  const [dubLang, setDubLang] = useState<string>(TARGET_LANGUAGES[0].code);
+  // 편집 버퍼: { [langCode]: { [sceneIndex]: text } }
+  const [dubScripts, setDubScripts] = useState<Record<string, Record<number, string>>>(() =>
+    Object.fromEntries(
+      TARGET_LANGUAGES.map((L) => [
+        L.code,
+        Object.fromEntries(initial.scenes.map((s) => [s.index, dubNarration(s, L.code)])),
+      ])
+    )
   );
-  const [enDirty, setEnDirty] = useState(false);
+  const [dubDirty, setDubDirty] = useState<Record<string, boolean>>({});
 
-  async function translateEn() {
+  async function translateDub(lang: string) {
     setError(null);
-    setBusy("translate-en");
+    setBusy(`translate-${lang}`);
     try {
-      const data = await call("/api/subtitle/translate", { projectId: project.id });
-      const rows = (data.scenes as Array<{ index: number; narrationEn?: string }>) ?? [];
-      const map = Object.fromEntries(rows.map((r) => [r.index, r.narrationEn ?? ""]));
-      setEnScripts((prev) => ({ ...prev, ...map }));
+      const data = await call("/api/subtitle/translate", { projectId: project.id, lang });
+      const rows = (data.scenes as Array<{ index: number; narration?: string }>) ?? [];
+      const map = Object.fromEntries(rows.map((r) => [r.index, r.narration ?? ""]));
+      setDubScripts((prev) => ({ ...prev, [lang]: { ...prev[lang], ...map } }));
       setProject((p) => ({
         ...p,
-        scenes: p.scenes.map((s) => ({ ...s, narrationEn: map[s.index] ?? s.narrationEn })),
+        scenes: p.scenes.map((s) => ({
+          ...s,
+          dub: { ...s.dub, [lang]: { ...s.dub?.[lang], narration: map[s.index] ?? dubNarration(s, lang) } },
+        })),
       }));
-      setEnDirty(false);
+      setDubDirty((d) => ({ ...d, [lang]: false }));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "영문 번역 실패");
+      setError(e instanceof Error ? e.message : "번역 실패");
     } finally {
       setBusy(null);
     }
   }
 
-  async function saveEnScripts() {
+  async function saveDubScripts(lang: string) {
     setError(null);
-    setBusy("save-en");
+    setBusy(`save-${lang}`);
     try {
       const payload = project.scenes.map((s) => ({
         index: s.index,
-        narrationEn: enScripts[s.index] ?? "",
+        narration: dubScripts[lang]?.[s.index] ?? "",
       }));
-      await call("/api/i18n/script", { projectId: project.id, scenes: payload });
+      await call("/api/i18n/script", { projectId: project.id, lang, scenes: payload });
       setProject((p) => ({
         ...p,
-        scenes: p.scenes.map((s) => ({ ...s, narrationEn: enScripts[s.index] ?? "" })),
+        scenes: p.scenes.map((s) => ({
+          ...s,
+          dub: { ...s.dub, [lang]: { ...s.dub?.[lang], narration: dubScripts[lang]?.[s.index] ?? "" } },
+        })),
       }));
-      setEnDirty(false);
+      setDubDirty((d) => ({ ...d, [lang]: false }));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "영문 스크립트 저장 실패");
+      setError(e instanceof Error ? e.message : "스크립트 저장 실패");
     } finally {
       setBusy(null);
     }
   }
 
-  async function generateOneAudioEn(sceneIndex: number): Promise<void> {
-    const data = await call("/api/audio/scene", {
-      projectId: project.id,
-      sceneIndex,
-      lang: "en",
-    });
+  async function generateOneAudioDub(lang: string, sceneIndex: number): Promise<void> {
+    const data = await call("/api/audio/scene", { projectId: project.id, sceneIndex, lang });
     setProject((p) => ({
       ...p,
       scenes: p.scenes.map((s, i) =>
-        i === sceneIndex ? { ...s, audioUrlEn: data.url as string } : s
+        i === sceneIndex
+          ? { ...s, dub: { ...s.dub, [lang]: { ...s.dub?.[lang], audioUrl: data.url as string } } }
+          : s
       ),
     }));
   }
 
-  async function generateAllAudioEn() {
-    // 저장 안 한 편집이 있으면 먼저 저장(더빙은 저장된 영문 기준).
-    if (enDirty) await saveEnScripts();
+  async function generateAllAudioDub(lang: string) {
+    // 저장 안 한 편집이 있으면 먼저 저장(더빙은 저장된 번역 기준).
+    if (dubDirty[lang]) await saveDubScripts(lang);
     setError(null);
-    setBusy("audio-en-all");
+    setBusy(`audio-${lang}-all`);
     try {
       for (let i = 0; i < project.scenes.length; i++) {
-        if (!(enScripts[project.scenes[i].index] ?? "").trim()) continue;
-        await generateOneAudioEn(i);
+        if (!(dubScripts[lang]?.[project.scenes[i].index] ?? "").trim()) continue;
+        await generateOneAudioDub(lang, i);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "영어 더빙 실패");
+      setError(e instanceof Error ? e.message : "더빙 실패");
     } finally {
       setBusy(null);
     }
@@ -568,6 +630,127 @@ export default function Studio({
     bumpMutation(); // 로컬이 곧 갱신됨 → 진행 중이던 /state 동기화는 낡은 것으로 무효화
     void refreshCost(); // 생성·리롤 등 모든 액션 후 누적 비용 갱신
     return data;
+  }
+
+  // ── 업로드(참조 이미지 / 직접 이미지 / 직접 영상) ──────────────────────────────
+  // Blob 클라이언트 업로드 — 브라우저가 파일을 Blob 에 직접 올린다(영상이 커도 OK).
+  async function uploadFile(file: File, key: string): Promise<string> {
+    setUploading(key);
+    try {
+      const safe = file.name.replace(/[^\w.\-]+/g, "_").slice(-60);
+      const blob = await upload(`project/${project.id}/upload-${key}-${safe}`, file, {
+        access: "public",
+        handleUploadUrl: "/api/upload",
+      });
+      void refreshCost();
+      return blob.url;
+    } finally {
+      setUploading(null);
+    }
+  }
+
+  // 씬 소스 패치 저장(서버) → 로컬 project.scenes + 편집 버퍼 동기화.
+  async function patchSceneSource(
+    sceneIndex: number,
+    patch: {
+      imageSource?: ImageSourceMode;
+      referenceImageUrl?: string | null;
+      paletteHint?: string | null;
+      imageUrl?: string | null;
+      videoSource?: VideoSourceMode;
+      videoUrl?: string | null;
+    }
+  ) {
+    const data = await call("/api/scene/source", {
+      projectId: project.id,
+      sceneIndex,
+      ...patch,
+    });
+    const saved = data.scene as Scene;
+    setProject((p) => ({
+      ...p,
+      scenes: p.scenes.map((s, i) => (i === sceneIndex ? saved : s)),
+    }));
+    setScenes((prev) =>
+      prev.map((s, i) =>
+        i === sceneIndex
+          ? {
+              ...s,
+              imageSource: saved.imageSource ?? "generate",
+              referenceImageUrl: saved.referenceImageUrl,
+              paletteHint: saved.paletteHint,
+              videoSource: saved.videoSource ?? "generate",
+            }
+          : s
+      )
+    );
+  }
+
+  async function setImageMode(i: number, mode: ImageSourceMode) {
+    setError(null);
+    try {
+      await patchSceneSource(i, { imageSource: mode });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "모드 변경 실패");
+    }
+  }
+  async function uploadSceneReference(i: number, file: File) {
+    setError(null);
+    try {
+      const url = await uploadFile(file, `ref-${i}`);
+      await patchSceneSource(i, { referenceImageUrl: url, imageSource: "reference" });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "참조 이미지 업로드 실패");
+    }
+  }
+  async function uploadSceneImage(i: number, file: File) {
+    setError(null);
+    try {
+      const url = await uploadFile(file, `img-${i}`);
+      await patchSceneSource(i, { imageUrl: url, imageSource: "upload" });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "이미지 업로드 실패");
+    }
+  }
+  async function setVideoMode(i: number, mode: VideoSourceMode) {
+    setError(null);
+    try {
+      await patchSceneSource(i, { videoSource: mode });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "모드 변경 실패");
+    }
+  }
+  async function uploadSceneVideo(i: number, file: File) {
+    setError(null);
+    try {
+      const url = await uploadFile(file, `vid-${i}`);
+      await patchSceneSource(i, { videoUrl: url, videoSource: "upload" });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "영상 업로드 실패");
+    }
+  }
+
+  // 키프레임 생성용 참조 이미지(프로젝트 레벨).
+  async function uploadKeyframeRef(file: File) {
+    setError(null);
+    try {
+      const url = await uploadFile(file, "keyframe-ref");
+      await call("/api/scene/source", { projectId: project.id, keyframeReferenceUrl: url });
+      setKeyframeRefUrl(url);
+      setProject((p) => ({ ...p, keyframeReferenceUrl: url }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "참조 이미지 업로드 실패");
+    }
+  }
+  async function clearKeyframeRef() {
+    setError(null);
+    try {
+      await call("/api/scene/source", { projectId: project.id, keyframeReferenceUrl: "" });
+      setKeyframeRefUrl(undefined);
+      setProject((p) => ({ ...p, keyframeReferenceUrl: undefined }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "참조 이미지 제거 실패");
+    }
   }
 
   async function approveSource() {
@@ -817,13 +1000,19 @@ export default function Studio({
     }
   }
 
+  // 배치 생성 대상이 아닌 씬: 업로드 모드(직접 넣음) / 참조본 없는 reference 모드(생성 불가).
+  function skipInBatch(i: number): boolean {
+    const s = project.scenes[i];
+    return s.imageSource === "upload" || (s.imageSource === "reference" && !s.referenceImageUrl);
+  }
+
   // 씬1 이후 이미지 없는 씬들을 순차 생성(병렬 금지 — last-write-wins 방지).
   async function generateAllScenes() {
     setError(null);
     setBusy("images-all");
     try {
       for (let i = 1; i < project.scenes.length; i++) {
-        if (project.scenes[i].imageUrl) continue;
+        if (project.scenes[i].imageUrl || skipInBatch(i)) continue;
         await generateOneScene(i);
       }
     } catch (e) {
@@ -841,6 +1030,7 @@ export default function Studio({
     try {
       for (const i of [...selectedScenes].sort((a, b) => a - b)) {
         if (i < 1 || i >= project.scenes.length) continue;
+        if (skipInBatch(i)) continue;
         await generateOneScene(i);
       }
     } catch (e) {
@@ -967,6 +1157,7 @@ export default function Studio({
     try {
       for (let i = 0; i < project.scenes.length; i++) {
         if (project.scenes[i].videoUrl) continue;
+        if (project.scenes[i].videoSource === "upload") continue; // 직접 업로드 대기 중
         setActiveVideo(i);
         await submitAndPollVideo(i);
       }
@@ -1378,6 +1569,46 @@ export default function Studio({
               </div>
             </div>
 
+            {/* 키프레임 참조 이미지(선택) — 있으면 이 인물/구도를 살려서 후보 생성 */}
+            <div className="grid gap-1.5">
+              <span className="text-[11px] font-medium text-zinc-500">
+                참조 이미지 (선택) — 이 인물·구도를 살려서 키프레임을 만듭니다
+              </span>
+              {keyframeRefUrl ? (
+                <div className="flex items-center gap-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={keyframeRefUrl}
+                    alt="키프레임 참조"
+                    className="w-12 aspect-[9/16] object-cover rounded-lg border border-zinc-200 dark:border-zinc-800"
+                  />
+                  <button
+                    type="button"
+                    onClick={clearKeyframeRef}
+                    disabled={busy !== null || uploading !== null}
+                    className="text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
+                  >
+                    참조 제거
+                  </button>
+                </div>
+              ) : (
+                <label className="inline-flex w-fit cursor-pointer items-center gap-1.5 text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2.5 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-900">
+                  {uploading === "keyframe-ref" ? <Busy>업로드 중…</Busy> : "이미지 업로드"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={busy !== null || uploading !== null}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) uploadKeyframeRef(f);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+              )}
+            </div>
+
             <label className="grid gap-1">
               <span className="text-[11px] font-medium text-zinc-500">
                 스타일·팔레트·프롬프트 (직접 편집 — 영문)
@@ -1643,11 +1874,14 @@ export default function Studio({
             <ol className="mt-3 grid gap-3">
               {project.scenes.map((sc, i) => {
                 if (i === 0) return null; // 씬0 = 키프레임
-                const sceneBusy =
-                  busy === `scene-${i}` ||
-                  (busy === "images-all" && !sc.imageUrl) ||
-                  (busy === "images-selected" && selectedScenes.has(i));
                 const ed = scenes[i];
+                const imgMode = ed?.imageSource ?? "generate";
+                const imgUploading = uploading === `img-${i}`;
+                const sceneBusy =
+                  imgUploading ||
+                  busy === `scene-${i}` ||
+                  (busy === "images-all" && !sc.imageUrl && !skipInBatch(i)) ||
+                  (busy === "images-selected" && selectedScenes.has(i) && !skipInBatch(i));
                 return (
                   <li
                     key={i}
@@ -1664,7 +1898,9 @@ export default function Studio({
                           className="h-full w-full object-cover"
                         />
                       ) : (
-                        <span className="text-[10px] text-zinc-400">미생성</span>
+                        <span className="text-[10px] text-zinc-400">
+                          {imgMode === "upload" ? "업로드 대기" : "미생성"}
+                        </span>
                       )}
                     </div>
                     <div className="grid gap-1.5 min-w-0">
@@ -1679,15 +1915,37 @@ export default function Studio({
                           />
                           씬 {i + 1} · {sc.durationSec}s
                         </label>
-                        <button
-                          type="button"
-                          onClick={() => generateScene(i)}
-                          disabled={busy !== null}
-                          className="shrink-0 text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
-                        >
-                          {sc.imageUrl ? "리롤" : "생성"}
-                        </button>
+                        {imgMode !== "upload" && (
+                          <button
+                            type="button"
+                            onClick={() => generateScene(i)}
+                            disabled={
+                              busy !== null ||
+                              uploading !== null ||
+                              (imgMode === "reference" && !ed?.referenceImageUrl)
+                            }
+                            className="shrink-0 text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
+                          >
+                            {sc.imageUrl ? "리롤" : "생성"}
+                          </button>
+                        )}
                       </div>
+
+                      {/* 소스 모드: 프롬프트 생성 / 참조+프롬프트 / 직접 업로드 */}
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-zinc-400">소스</span>
+                        <select
+                          value={imgMode}
+                          onChange={(e) => setImageMode(i, e.target.value as ImageSourceMode)}
+                          disabled={busy !== null || uploading !== null}
+                          className="rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-1.5 py-0.5 text-[10px] outline-none focus:border-accent disabled:opacity-50"
+                        >
+                          <option value="generate">프롬프트 생성</option>
+                          <option value="reference">참조+프롬프트</option>
+                          <option value="upload">직접 업로드</option>
+                        </select>
+                      </div>
+
                       <span className="text-[10px] text-zinc-400">나레이션 (영상 대사)</span>
                       <textarea
                         value={ed?.narration ?? ""}
@@ -1696,14 +1954,80 @@ export default function Studio({
                         placeholder="나레이션"
                         className="w-full rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1 text-xs outline-none focus:border-accent resize-y"
                       />
-                      <span className="text-[10px] text-zinc-400">이미지 프롬프트 (영문)</span>
-                      <textarea
-                        value={ed?.imagePrompt ?? ""}
-                        onChange={(e) => patchScene(i, { imagePrompt: e.target.value })}
-                        rows={2}
-                        placeholder="이미지 프롬프트 (영문)"
-                        className="w-full rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1 font-mono text-[11px] outline-none focus:border-accent resize-y"
-                      />
+
+                      {imgMode === "upload" ? (
+                        // 직접 업로드: 가져온 이미지를 그대로 사용
+                        <label className="inline-flex w-fit cursor-pointer items-center gap-1.5 text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2.5 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-900">
+                          {imgUploading ? (
+                            <Busy>업로드 중…</Busy>
+                          ) : sc.imageUrl ? (
+                            "이미지 교체"
+                          ) : (
+                            "이미지 업로드"
+                          )}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            disabled={busy !== null || uploading !== null}
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) uploadSceneImage(i, f);
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                      ) : (
+                        <>
+                          {imgMode === "reference" && (
+                            // 참조 이미지: 키프레임과 함께 레퍼런스로 넣어 인물을 살림
+                            <div className="flex items-center gap-2">
+                              {ed?.referenceImageUrl && (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={ed.referenceImageUrl}
+                                  alt="참조"
+                                  className="w-8 aspect-[9/16] object-cover rounded border border-zinc-200 dark:border-zinc-800"
+                                />
+                              )}
+                              <label className="inline-flex w-fit cursor-pointer items-center gap-1.5 text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2.5 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-900">
+                                {uploading === `ref-${i}` ? (
+                                  <Busy>업로드 중…</Busy>
+                                ) : ed?.referenceImageUrl ? (
+                                  "참조 교체"
+                                ) : (
+                                  "참조 업로드"
+                                )}
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  disabled={busy !== null || uploading !== null}
+                                  onChange={(e) => {
+                                    const f = e.target.files?.[0];
+                                    if (f) uploadSceneReference(i, f);
+                                    e.target.value = "";
+                                  }}
+                                />
+                              </label>
+                            </div>
+                          )}
+                          <span className="text-[10px] text-zinc-400">이미지 프롬프트 (영문)</span>
+                          <textarea
+                            value={ed?.imagePrompt ?? ""}
+                            onChange={(e) => patchScene(i, { imagePrompt: e.target.value })}
+                            rows={2}
+                            placeholder="이미지 프롬프트 (영문)"
+                            className="w-full rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1 font-mono text-[11px] outline-none focus:border-accent resize-y"
+                          />
+                          <input
+                            value={ed?.paletteHint ?? ""}
+                            onChange={(e) => patchScene(i, { paletteHint: e.target.value })}
+                            placeholder="팔레트 변주 (선택): warm sunset, cool night…"
+                            className="w-full rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1 text-[11px] outline-none focus:border-accent"
+                          />
+                        </>
+                      )}
                       {sceneCost[i] && (
                         <p className="text-[11px] text-zinc-400">{sceneCost[i]}</p>
                       )}
@@ -1802,7 +2126,9 @@ export default function Studio({
           <>
             <ol className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
               {project.scenes.map((sc, i) => {
-                const videoBusy = busy === `video-${i}` || activeVideo === i;
+                const vidMode = scenes[i]?.videoSource ?? "generate";
+                const vidUploading = uploading === `vid-${i}`;
+                const videoBusy = vidUploading || busy === `video-${i}` || activeVideo === i;
                 return (
                   <li key={i} className="grid gap-1.5">
                     <div className="relative flex aspect-[9/16] items-center justify-center overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900">
@@ -1823,51 +2149,89 @@ export default function Studio({
                           className="h-full w-full object-cover opacity-60"
                         />
                       ) : (
-                        <span className="text-[11px] text-zinc-400">이미지 없음</span>
+                        <span className="text-[11px] text-zinc-400">
+                          {vidMode === "upload" ? "영상 업로드 대기" : "이미지 없음"}
+                        </span>
                       )}
                       {videoBusy && (
                         <span className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-black/40 text-[11px] text-white">
                           <Spinner className="size-5" />
-                          생성 중…
+                          {vidUploading ? "업로드 중…" : "생성 중…"}
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-1.5">
                       <span className="text-[11px] text-zinc-500">씬 {i + 1}</span>
-                      <button
-                        type="button"
-                        onClick={() => generateVideo(i)}
-                        disabled={busy !== null || !sc.imageUrl}
-                        className="text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
-                      >
-                        {sc.videoUrl ? "리롤" : "비디오 생성"}
-                      </button>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] text-zinc-400">움직임 크기</span>
                       <select
-                        value={motionScale[i] ?? "subtle"}
-                        onChange={(e) =>
-                          setMotionScale((m) => ({
-                            ...m,
-                            [i]: e.target.value as "subtle" | "large",
-                          }))
-                        }
-                        disabled={busy !== null}
+                        value={vidMode}
+                        onChange={(e) => setVideoMode(i, e.target.value as VideoSourceMode)}
+                        disabled={busy !== null || uploading !== null}
                         className="rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-1.5 py-0.5 text-[10px] outline-none focus:border-accent disabled:opacity-50"
                       >
-                        <option value="subtle">잔잔 (기본)</option>
-                        <option value="large">크게</option>
+                        <option value="generate">생성</option>
+                        <option value="upload">직접 업로드</option>
                       </select>
                     </div>
-                    <span className="text-[10px] text-zinc-400">비디오 모션 프롬프트 (영문)</span>
-                    <textarea
-                      value={scenes[i]?.motion ?? ""}
-                      onChange={(e) => patchScene(i, { motion: e.target.value })}
-                      rows={2}
-                      placeholder="예: slow camera push-in, gentle wind"
-                      className="w-full rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1 font-mono text-[11px] outline-none focus:border-accent resize-y"
-                    />
+
+                    {vidMode === "upload" ? (
+                      // 직접 업로드: 찍어온 영상을 그대로 사용
+                      <label className="inline-flex w-fit cursor-pointer items-center gap-1.5 text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2.5 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-900">
+                        {vidUploading ? (
+                          <Busy>업로드 중…</Busy>
+                        ) : sc.videoUrl ? (
+                          "영상 교체"
+                        ) : (
+                          "영상 업로드"
+                        )}
+                        <input
+                          type="file"
+                          accept="video/*"
+                          className="hidden"
+                          disabled={busy !== null || uploading !== null}
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) uploadSceneVideo(i, f);
+                            e.target.value = "";
+                          }}
+                        />
+                      </label>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => generateVideo(i)}
+                          disabled={busy !== null || uploading !== null || !sc.imageUrl}
+                          className="text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
+                        >
+                          {sc.videoUrl ? "리롤" : "비디오 생성"}
+                        </button>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] text-zinc-400">움직임 크기</span>
+                          <select
+                            value={motionScale[i] ?? "subtle"}
+                            onChange={(e) =>
+                              setMotionScale((m) => ({
+                                ...m,
+                                [i]: e.target.value as "subtle" | "large",
+                              }))
+                            }
+                            disabled={busy !== null}
+                            className="rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-1.5 py-0.5 text-[10px] outline-none focus:border-accent disabled:opacity-50"
+                          >
+                            <option value="subtle">잔잔 (기본)</option>
+                            <option value="large">크게</option>
+                          </select>
+                        </div>
+                        <span className="text-[10px] text-zinc-400">비디오 모션 프롬프트 (영문)</span>
+                        <textarea
+                          value={scenes[i]?.motion ?? ""}
+                          onChange={(e) => patchScene(i, { motion: e.target.value })}
+                          rows={2}
+                          placeholder="예: slow camera push-in, gentle wind"
+                          className="w-full rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1 font-mono text-[11px] outline-none focus:border-accent resize-y"
+                        />
+                      </>
+                    )}
                     {videoCost[i] && (
                       <p className="text-[11px] text-zinc-400">{videoCost[i]}</p>
                     )}
@@ -1909,7 +2273,7 @@ export default function Studio({
         )}
       </section>
 
-      {/* 6단계: 씬별 음성 (ElevenLabs TTS) */}
+      {/* 6단계: 씬별 음성 (TTS 엔진은 아래 셀렉터로 프로젝트별 선택) */}
       <section className="mt-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 p-5">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold">
@@ -1931,6 +2295,37 @@ export default function Studio({
             )}
           </button>
         </div>
+
+        {/* TTS 엔진 선택(프로젝트별) — 한국어판·다국어 더빙 모두 이 엔진으로 나간다. */}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <span className="text-[11px] text-zinc-500">엔진</span>
+          <div className="inline-flex rounded-xl border border-zinc-200 dark:border-zinc-800 p-0.5 text-xs">
+            {([
+              { id: "elevenlabs", label: "일레븐랩스" },
+              { id: "typecast", label: "타입캐스트" },
+            ] as const).map((opt) => {
+              const configured = tts?.configured?.[opt.id] ?? true;
+              const active = ttsProvider === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => configured && saveTtsProvider(opt.id)}
+                  disabled={!configured || busy !== null}
+                  title={configured ? "" : `${opt.label} API 키가 .env 에 없어요`}
+                  className={`rounded-lg px-3 py-1.5 font-medium transition-colors disabled:opacity-40 ${active ? "bg-accent text-white" : "text-zinc-500"}`}
+                >
+                  {opt.label}
+                  {!configured && <span className="ml-1 text-[10px]">(키 없음)</span>}
+                </button>
+              );
+            })}
+          </div>
+          {!initial.ttsProvider && tts?.default && (
+            <span className="text-[10px] text-zinc-400">기본값(env): {tts.default === "typecast" ? "타입캐스트" : "일레븐랩스"}</span>
+          )}
+        </div>
+
         {!videosApproved && (
           <p className="mt-2 text-xs text-zinc-500">비디오를 먼저 승인해주세요.</p>
         )}
@@ -2066,72 +2461,109 @@ export default function Studio({
         </section>
       )}
 
-      {/* 다국어판 (영어) — 미리보기와 합성 사이. 영문 자막 + 영어 더빙 별도 트랙. */}
+      {/* 다국어판 — 미리보기와 합성 사이. 언어를 골라 자막 번역 + 더빙을 별도 트랙으로. */}
       {project.scenes.some((s) => s.videoUrl) && (
         <section className="mt-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 p-5">
-          <h2 className="text-sm font-semibold">🌐 다국어판 (영어)</h2>
+          <h2 className="text-sm font-semibold">🌐 다국어판</h2>
           <p className="mt-1 text-[11px] text-zinc-400">
-            한국어 영상은 그대로 두고, 영문 자막 + 영어 더빙을 따로 만듭니다. 합성 때
-            한국어판/영어판 중 하나를 골라 구워요. (스페인어·일본어 등은 추후 추가)
+            한국어 영상은 그대로 두고, 언어별 자막 번역 + 더빙을 따로 만듭니다. 합성 때
+            한국어판/각 언어판 중 하나를 골라 구워요.
           </p>
+
+          {/* 언어 탭 — 더빙 상태 뱃지 포함 */}
+          <div className="mt-3 inline-flex flex-wrap rounded-xl border border-zinc-200 dark:border-zinc-800 p-0.5 text-xs">
+            {TARGET_LANGUAGES.map((L) => {
+              const dubbed = project.scenes.some((s) => dubAudioUrl(s, L.code));
+              return (
+                <button
+                  key={L.code}
+                  type="button"
+                  onClick={() => setDubLang(L.code)}
+                  className={`rounded-lg px-3 py-1.5 font-medium transition-colors ${dubLang === L.code ? "bg-accent text-white" : "text-zinc-500"}`}
+                >
+                  {L.label}
+                  {dubbed && <span className={dubLang === L.code ? "ml-1" : "ml-1 text-accent"}>🔊</span>}
+                </button>
+              );
+            })}
+          </div>
 
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={translateEn}
+              onClick={() => translateDub(dubLang)}
               disabled={busy !== null}
               className="rounded-lg border border-accent text-accent px-3 py-1.5 text-xs font-medium hover:bg-accent/10 disabled:opacity-40"
             >
-              {busy === "translate-en" ? <Busy>번역 중…</Busy> : "① Claude 영문 번역 생성"}
+              {busy === `translate-${dubLang}` ? (
+                <Busy>번역 중…</Busy>
+              ) : (
+                `① Claude ${getLang(dubLang)?.label ?? ""} 번역 생성`
+              )}
             </button>
             <button
               type="button"
-              onClick={saveEnScripts}
-              disabled={busy !== null || !enDirty}
+              onClick={() => saveDubScripts(dubLang)}
+              disabled={busy !== null || !dubDirty[dubLang]}
               className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-1.5 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
             >
-              {busy === "save-en" ? <Busy>저장 중…</Busy> : enDirty ? "영문 저장" : "저장됨"}
+              {busy === `save-${dubLang}` ? (
+                <Busy>저장 중…</Busy>
+              ) : dubDirty[dubLang] ? (
+                "번역 저장"
+              ) : (
+                "저장됨"
+              )}
             </button>
             <button
               type="button"
-              onClick={generateAllAudioEn}
+              onClick={() => generateAllAudioDub(dubLang)}
               disabled={busy !== null}
               className="rounded-lg border border-accent text-accent px-3 py-1.5 text-xs font-medium hover:bg-accent/10 disabled:opacity-40"
             >
-              {busy === "audio-en-all" ? <Busy>더빙 중…</Busy> : "② 영어 더빙 생성 (전체)"}
+              {busy === `audio-${dubLang}-all` ? (
+                <Busy>더빙 중…</Busy>
+              ) : (
+                `② ${getLang(dubLang)?.label ?? ""} 더빙 생성 (전체)`
+              )}
             </button>
           </div>
 
-          {/* 영문 스크립트 편집 */}
+          {/* 번역 스크립트 편집 (선택 언어) */}
           <div className="mt-3 grid gap-2">
             {project.scenes.map((sc, i) => (
               <label key={i} className="grid gap-1">
                 <span className="text-[10px] text-zinc-500">
                   씬 {i + 1}
                   <span className="ml-1 text-zinc-400">· {sc.narration}</span>
-                  <span className={`ml-2 ${sc.audioUrlEn ? "text-accent" : "text-zinc-400"}`}>
-                    {sc.audioUrlEn ? "🔊 더빙됨" : "더빙 없음"}
+                  <span className={`ml-2 ${dubAudioUrl(sc, dubLang) ? "text-accent" : "text-zinc-400"}`}>
+                    {dubAudioUrl(sc, dubLang) ? "🔊 더빙됨" : "더빙 없음"}
                   </span>
                 </span>
                 <textarea
-                  value={enScripts[sc.index] ?? ""}
+                  value={dubScripts[dubLang]?.[sc.index] ?? ""}
                   onChange={(e) => {
                     const v = e.target.value;
-                    setEnScripts((prev) => ({ ...prev, [sc.index]: v }));
-                    setEnDirty(true);
+                    setDubScripts((prev) => ({
+                      ...prev,
+                      [dubLang]: { ...prev[dubLang], [sc.index]: v },
+                    }));
+                    setDubDirty((d) => ({ ...d, [dubLang]: true }));
                   }}
                   rows={2}
-                  placeholder="English narration… (①로 자동 번역 후 다듬기)"
+                  placeholder={`${getLang(dubLang)?.english ?? ""} narration… (①로 자동 번역 후 다듬기)`}
                   className={fieldCls}
                 />
               </label>
             ))}
           </div>
 
-          {/* 다국어 미리보기 — 영어 자막 + 영어 더빙 */}
-          {project.scenes.some((s) => s.audioUrlEn || s.narrationEn) && (
+          {/* 다국어 미리보기 — 선택 언어 자막 + 더빙 */}
+          {project.scenes.some((s) => dubAudioUrl(s, dubLang) || dubNarration(s, dubLang)) && (
             <>
-              <h3 className="mt-4 text-xs font-semibold text-zinc-500">다국어 미리보기</h3>
+              <h3 className="mt-4 text-xs font-semibold text-zinc-500">
+                다국어 미리보기 ({getLang(dubLang)?.label})
+              </h3>
               <ol className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {project.scenes.map((sc, i) =>
                   sc.videoUrl ? (
@@ -2139,9 +2571,9 @@ export default function Studio({
                       key={i}
                       index={i}
                       videoUrl={sc.videoUrl}
-                      audioUrl={sc.audioUrlEn}
+                      audioUrl={dubAudioUrl(sc, dubLang)}
                       subtitle={sc.narration}
-                      subtitleEn={enScripts[sc.index] || sc.narrationEn}
+                      subtitleEn={dubScripts[dubLang]?.[sc.index] || dubNarration(sc, dubLang)}
                       sub={{ ...sub, lang: "en" }}
                     />
                   ) : null
@@ -2207,30 +2639,31 @@ export default function Studio({
             <p className="mt-2 text-xs text-red-600">{project.steps.compose.error}</p>
           )}
 
-          {/* 언어 선택 — 한국어판 / 영어판(다국어). 영어판은 영어 더빙이 있어야 함. */}
-          {(() => {
-            const enReady = project.scenes.some((s) => s.audioUrlEn);
-            return (
-              <div className="mt-3 inline-flex rounded-xl border border-zinc-200 dark:border-zinc-800 p-0.5 text-xs">
+          {/* 언어 선택 — 한국어판 / 각 언어판. 언어판은 그 언어 더빙이 있어야 활성화. */}
+          <div className="mt-3 inline-flex flex-wrap rounded-xl border border-zinc-200 dark:border-zinc-800 p-0.5 text-xs">
+            <button
+              type="button"
+              onClick={() => setComposeLang("ko")}
+              className={`rounded-lg px-3 py-1.5 font-medium transition-colors ${composeLang === "ko" ? "bg-accent text-white" : "text-zinc-500"}`}
+            >
+              한국어판
+            </button>
+            {TARGET_LANGUAGES.map((L) => {
+              const ready = project.scenes.some((s) => dubAudioUrl(s, L.code));
+              return (
                 <button
+                  key={L.code}
                   type="button"
-                  onClick={() => setComposeLang("ko")}
-                  className={`rounded-lg px-3 py-1.5 font-medium transition-colors ${composeLang === "ko" ? "bg-accent text-white" : "text-zinc-500"}`}
+                  onClick={() => ready && setComposeLang(L.code)}
+                  disabled={!ready}
+                  title={ready ? "" : `위 다국어판에서 ${L.label} 더빙을 먼저 생성하세요`}
+                  className={`rounded-lg px-3 py-1.5 font-medium transition-colors disabled:opacity-40 ${composeLang === L.code ? "bg-accent text-white" : "text-zinc-500"}`}
                 >
-                  한국어판
+                  {L.label}판
                 </button>
-                <button
-                  type="button"
-                  onClick={() => enReady && setComposeLang("en")}
-                  disabled={!enReady}
-                  title={enReady ? "" : "위 다국어판에서 영어 더빙을 먼저 생성하세요"}
-                  className={`rounded-lg px-3 py-1.5 font-medium transition-colors disabled:opacity-40 ${composeLang === "en" ? "bg-accent text-white" : "text-zinc-500"}`}
-                >
-                  영어판
-                </button>
-              </div>
-            );
-          })()}
+              );
+            })}
+          </div>
 
           {(() => {
             const n = project.scenes.filter((s) => s.videoUrl).length;
@@ -2243,7 +2676,7 @@ export default function Studio({
               return (
                 <div className="mt-3">
                   <p className="inline-flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-300">
-                    <Spinner /> 합성 중… {composeLang === "en" ? "영어판" : "한국어판"} ·{" "}
+                    <Spinner /> 합성 중… {composeLang === "ko" ? "한국어판" : `${getLang(composeLang)?.label ?? composeLang}판`} ·{" "}
                     <span className="tabular-nums font-medium">{fmt(composeElapsed)}</span>
                     <span className="text-zinc-400">/ 예상 ~{estMin}분</span>
                   </p>
@@ -2284,7 +2717,7 @@ export default function Studio({
                   className="mt-2 w-full rounded-xl bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-semibold py-3 transition-colors"
                 >
                   {project.finalVideoUrl ? "🎬 다시 합성" : "🎬 최종 합성하기"} (
-                  {composeLang === "en" ? "영어판" : "한국어판"})
+                  {composeLang === "ko" ? "한국어판" : `${getLang(composeLang)?.label ?? composeLang}판`})
                 </button>
               </>
             );

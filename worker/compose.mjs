@@ -1,5 +1,6 @@
 // 최종 합성 — 씬별로 (영상 길이를 음성에 맞춰 슬로모션/트림) + 음성 + 자막 번인 →
-// 이어붙이기 → mp4 → Blob. lang="ko"|"en" 으로 어느 판을 구울지 결정.
+// 이어붙이기 → mp4 → Blob. lang="ko" 또는 더빙 언어(en/es/ja…)로 어느 판을 구울지 결정.
+// 다국어판 트랙은 scene.dub[lang] 에 있고, 기존 영어판은 narrationEn/audioUrlEn 에 폴백.
 import { getProject, saveProject, logProgress, resetProgress } from "./store.mjs";
 import { put } from "@vercel/blob";
 import { spawn } from "node:child_process";
@@ -98,7 +99,10 @@ export async function composeProject(projectId, lang) {
       await log(`씬 ${i + 1}/${scenes.length}: 영상 다운로드…`);
       await download(s.videoUrl, vPath);
 
-      const audioUrl = lang === "en" ? s.audioUrlEn : s.audioUrl;
+      const audioUrl =
+        lang === "ko"
+          ? s.audioUrl
+          : s.dub?.[lang]?.audioUrl ?? (lang === "en" ? s.audioUrlEn : undefined);
       let aPath = null;
       if (audioUrl) {
         aPath = join(dir, `a${i}.mp3`);
@@ -109,7 +113,9 @@ export async function composeProject(projectId, lang) {
       const ad = aPath ? await probeDuration(aPath) : 0;
       const audioLen = ad > 0 ? ad : s.durationSec || vd || 5;
 
-      const text = (lang === "en" ? s.narrationEn || s.narration : s.narration) ?? "";
+      const dubText =
+        lang === "ko" ? "" : s.dub?.[lang]?.narration ?? (lang === "en" ? s.narrationEn : "");
+      const text = (lang === "ko" ? s.narration : dubText || s.narration) ?? "";
       // 긴 나레이션은 캡션 여러 개로 분할(미리보기와 동일 알고리즘) → 씬 안에서 순차 표시.
       const caps = segmentCaptions(text, sub.size);
       await log(`씬 ${i + 1}: 자막 캡션 ${caps.length}컷 렌더(canvas)…`);

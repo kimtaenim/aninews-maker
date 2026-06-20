@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { getProject, saveProject, getComposeProgressLine } from "@/lib/projectStore";
 import { enqueueJob, type Job } from "@/lib/jobQueue";
+import { isTargetLang } from "@/lib/languages";
 
 export const runtime = "nodejs";
 
 // 7. compose — 최종 합성 작업을 worker 에 위임(Redis 큐). ffmpeg 는 Vercel 에서
-// 못 돌리므로 별도 worker 가 처리. 언어(ko/en) 하나를 골라 그 판을 굽는다.
+// 못 돌리므로 별도 worker 가 처리. 언어(ko 또는 더빙 언어 en/es/ja…) 하나를 골라 굽는다.
 //   POST { projectId, lang? }  → 큐 적재 → { jobId }
 //   GET  ?projectId            → { status, finalVideoUrl?, error? }
 export async function POST(req: NextRequest) {
@@ -20,7 +21,7 @@ export async function POST(req: NextRequest) {
   if (!projectId) {
     return NextResponse.json({ ok: false, error: "projectId 필요" }, { status: 400 });
   }
-  const lang = body.lang === "en" ? "en" : "ko";
+  const lang = isTargetLang(body.lang) ? (body.lang as string) : "ko";
 
   const project = await getProject(projectId);
   if (!project) {

@@ -1,8 +1,8 @@
 // ============================================================================
-// 자막 번역 (8단계, 선택) — 한국어 나레이션 → 영어 자막
+// 다국어 번역 (다국어판) — 한국어 나레이션 → 목표 언어
 // ----------------------------------------------------------------------------
-// 씬 나레이션들을 한 번의 Claude 호출로 일괄 번역(비용 절약). 자막용이라 짧고
-// 자연스럽게.
+// 씬 나레이션들을 한 번의 Claude 호출로 일괄 번역(비용 절약). 더빙/자막용이라
+// 짧고 자연스럽게. 목표 언어는 lib/languages.ts 의 english 이름으로 지정.
 // ============================================================================
 
 import { getAnthropic, MODELS } from "./anthropic";
@@ -22,13 +22,14 @@ function parseLines(raw: string): string[] | null {
 
 export async function translateNarrations(
   projectId: string,
-  narrations: string[]
+  narrations: string[],
+  targetLanguage = "English"
 ): Promise<{ translations: string[]; costUsd: number }> {
   const client = getAnthropic();
   const system =
-    "Translate each Korean subtitle line into natural, concise English suitable for " +
-    "on-screen video captions (short, punchy). Keep the same order and the same number " +
-    'of lines. Return ONLY JSON: {"lines":["...", "..."]}';
+    `Translate each Korean subtitle line into natural, concise ${targetLanguage} suitable for ` +
+    "on-screen video captions and voiceover (short, punchy). Keep the same order and the same " +
+    'number of lines. Return ONLY JSON: {"lines":["...", "..."]}';
   const userMsg = JSON.stringify({ lines: narrations });
 
   const r = await client.messages.create({

@@ -1,0 +1,63 @@
+// ============================================================================
+// TTS 프로바이더 디스패처 — 보이스오버 엔진을 env 로 전환
+// ----------------------------------------------------------------------------
+// TTS_PROVIDER = "elevenlabs"(기본) | "typecast".
+// 호출부(app/api/audio/scene)는 synthesize() 하나만 쓰고, 어떤 엔진을 썼는지는
+// 반환값 vendor/model 로 받아 비용 적재에 그대로 넘긴다.
+// ============================================================================
+
+import { synthesizeSpeech } from "./elevenlabs";
+import { synthesizeSpeechTypecast } from "./typecast";
+
+export type TtsProvider = "elevenlabs" | "typecast";
+
+// env 기본값. 프로젝트가 ttsProvider 를 지정하면 그게 우선(resolveTtsProvider).
+export function getTtsProvider(): TtsProvider {
+  return (process.env.TTS_PROVIDER || "").toLowerCase() === "typecast"
+    ? "typecast"
+    : "elevenlabs";
+}
+
+// 프로젝트 선택 > env 기본값. 프로젝트가 안 골랐으면 env 로 폴백.
+export function resolveTtsProvider(choice?: string): TtsProvider {
+  return choice === "typecast" || choice === "elevenlabs" ? choice : getTtsProvider();
+}
+
+// 클라이언트(6단계 UI)에 내려줄 정보: env 기본값 + 각 엔진 키 설정 여부.
+export function ttsProviderInfo(): {
+  default: TtsProvider;
+  configured: { elevenlabs: boolean; typecast: boolean };
+} {
+  return {
+    default: getTtsProvider(),
+    configured: {
+      elevenlabs: !!process.env.ELEVENLABS_API_KEY,
+      typecast: !!process.env.TYPECAST_API_KEY,
+    },
+  };
+}
+
+export interface TtsResult {
+  audioBuffer: ArrayBuffer;
+  costUsd: number;
+  costKrw: number;
+  charsUsed: number;
+  vendor: TtsProvider;
+  model: string;
+}
+
+// lang: "ko"(원본) 또는 다국어 코드(en/es/ja…). ElevenLabs 는 텍스트로 언어를
+// 자동 감지하므로 lang 을 쓰지 않고, Typecast 만 언어별 코드·voice 에 반영한다.
+// provider: 프로젝트가 고른 엔진(없으면 env 기본값으로 폴백).
+export async function synthesize(opts: {
+  text: string;
+  lang?: string;
+  provider?: string;
+}): Promise<TtsResult> {
+  if (resolveTtsProvider(opts.provider) === "typecast") {
+    const out = await synthesizeSpeechTypecast({ text: opts.text, lang: opts.lang });
+    return { ...out, vendor: "typecast", model: out.model };
+  }
+  const out = await synthesizeSpeech({ text: opts.text });
+  return { ...out, vendor: "elevenlabs", model: "eleven_multilingual_v2" };
+}

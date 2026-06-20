@@ -17,6 +17,19 @@ const REF_FETCH_TIMEOUT_MS = 30_000;
 const NO_TEXT =
   "Keep on-image text minimal: avoid signs, banners, paragraphs, or lots of words. A few short words are okay if natural, but no heavy text overlays.";
 
+// 레퍼런스 URL → OpenAI 업로드용 파일. 실패 시 사용자 친화 메시지.
+async function fetchRefFile(url: string, label: string) {
+  let res: Response;
+  try {
+    res = await fetch(url, { signal: AbortSignal.timeout(REF_FETCH_TIMEOUT_MS) });
+  } catch {
+    throw new Error(`${label} 이미지를 불러오지 못했어요 (네트워크/타임아웃)`);
+  }
+  if (!res.ok) throw new Error(`${label} 이미지를 불러오지 못했어요 (HTTP ${res.status})`);
+  const bytes = Buffer.from(await res.arrayBuffer());
+  return toFile(bytes, `${label}.png`, { type: "image/png" });
+}
+
 // 3단계 — 키프레임 후보 N장(기본 3장) 생성. 사용자가 그중 하나를 고른다.
 // 품질은 빠름·저렴(low) 고정(호출부에서 지정).
 export async function generateKeyframes(args: {
@@ -25,18 +38,35 @@ export async function generateKeyframes(args: {
   scenePrompt: string;
   quality?: ImageQuality;
   count?: number;
+  referenceImageUrl?: string; // 있으면 이 이미지를 레퍼런스로 img2img(인물/구도 살림)
 }): Promise<{ urls: string[]; costUsd: number }> {
-  const { projectId, styleBible, scenePrompt, quality = "low", count = 3 } = args;
+  const { projectId, styleBible, scenePrompt, quality = "low", count = 3, referenceImageUrl } =
+    args;
   const client = getOpenAI();
 
-  const prompt = `${styleBible}\n\nScene: ${scenePrompt}\n\n${NO_TEXT}`;
-  const result = await client.images.generate({
-    model: IMAGE_MODEL,
-    prompt,
-    size: IMAGE_SIZE,
-    quality,
-    n: count,
-  });
+  // 참조 이미지가 있으면 그걸 살려서(인물·구도) 스타일 바이블을 입혀 후보 생성.
+  const refClause = referenceImageUrl
+    ? "Use the provided reference image as the basis: preserve its main subject/character and " +
+      "composition, but re-render it in the art style and palette described below.\n\n"
+    : "";
+  const prompt = `${refClause}${styleBible}\n\nScene: ${scenePrompt}\n\n${NO_TEXT}`;
+
+  const result = referenceImageUrl
+    ? await client.images.edit({
+        model: IMAGE_MODEL,
+        image: await fetchRefFile(referenceImageUrl, "참조"),
+        prompt,
+        size: IMAGE_SIZE,
+        quality,
+        n: count,
+      })
+    : await client.images.generate({
+        model: IMAGE_MODEL,
+        prompt,
+        size: IMAGE_SIZE,
+        quality,
+        n: count,
+      });
 
   const items = result.data ?? [];
   if (items.length === 0) throw new Error("이미지 생성 실패 — 응답에 이미지가 없어요");
@@ -76,35 +106,46 @@ export async function generateScene(args: {
   sceneIndex: number;
   keyframeUrl: string;
   quality?: ImageQuality;
+  referenceImageUrl?: string; // reference 모드: 키프레임과 함께 넣는 추가 참조(인물 보존)
+  paletteHint?: string; // 비면 키프레임 팔레트 그대로, 있으면 색감/조명만 그쪽으로 변주
 }): Promise<{ url: string; costUsd: number }> {
-  const { projectId, styleBible, scenePrompt, sceneIndex, keyframeUrl, quality = "medium" } =
-    args;
+  const {
+    projectId,
+    styleBible,
+    scenePrompt,
+    sceneIndex,
+    keyframeUrl,
+    quality = "medium",
+    referenceImageUrl,
+    paletteHint,
+  } = args;
   const client = getOpenAI();
 
-  // 키프레임을 레퍼런스로 가져온다 (일관성 유지의 핵심).
-  let refRes: Response;
-  try {
-    refRes = await fetch(keyframeUrl, {
-      signal: AbortSignal.timeout(REF_FETCH_TIMEOUT_MS),
-    });
-  } catch {
-    throw new Error("키프레임 이미지를 불러오지 못했어요 (네트워크/타임아웃)");
-  }
-  if (!refRes.ok) {
-    throw new Error(`키프레임 이미지를 불러오지 못했어요 (HTTP ${refRes.status})`);
-  }
-  const refBytes = Buffer.from(await refRes.arrayBuffer());
-  const refFile = await toFile(refBytes, "keyframe.png", { type: "image/png" });
+  // 키프레임은 항상 레퍼런스(일관성 유지의 핵심). reference 모드면 참조본을 추가로 함께 넣는다.
+  const keyframeFile = await fetchRefFile(keyframeUrl, "키프레임");
+  const refFiles = referenceImageUrl
+    ? [keyframeFile, await fetchRefFile(referenceImageUrl, "참조")]
+    : keyframeFile;
+
+  // 팔레트 변주: 있으면 "색감만 시프트, 인물·화풍은 유지"로 약화. 없으면 팔레트까지 일치.
+  const styleClause = paletteHint?.trim()
+    ? "Keep the art style, character design and overall look consistent with the first reference " +
+      `image, but shift the COLOR PALETTE, lighting and mood toward: ${paletteHint.trim()}.`
+    : "Match the art style, character design, color palette and overall look of the " +
+      "reference image exactly.";
+  const refClause = referenceImageUrl
+    ? " A second reference image is also provided — preserve the specific character(s)/subject " +
+      "from it (their design and identity) while keeping the first image's art style."
+    : "";
 
   const prompt =
     `${styleBible}\n\n` +
-    "Match the art style, character design, color palette and overall look of the " +
-    "reference image exactly. Render a NEW scene described below in that same world.\n\n" +
+    `${styleClause}${refClause} Render a NEW scene described below in that same world.\n\n` +
     `Scene: ${scenePrompt}\n\n${NO_TEXT}`;
 
   const result = await client.images.edit({
     model: IMAGE_MODEL,
-    image: refFile,
+    image: refFiles,
     prompt,
     size: IMAGE_SIZE,
     quality,

@@ -34,23 +34,39 @@ export type StepStatus =
   | "approved" // 사용자 승인, 다음 단계 진입 가능
   | "error";
 
+// ── 씬 소스 모드 ─────────────────────────────────────────────────────────────
+// 정지 이미지(4단계)·영상(5단계)을 "어디서 가져올지"의 분기. 미설정 시 "generate".
+//   image:  generate  프롬프트만으로 생성(내부적으로 키프레임 레퍼런스로 일관성 유지)
+//           reference 업로드한 참조 이미지 + 키프레임을 함께 레퍼런스로 img2img("이 캐릭터 살려서")
+//           upload    가져온 이미지를 그대로 사용(생성 안 함)
+//   video:  generate  씬 이미지 → image-to-video(현재)
+//           upload    찍어온 영상을 그대로 사용(생성 안 함)
+export type ImageSourceMode = "generate" | "reference" | "upload";
+export type VideoSourceMode = "generate" | "upload";
+
 // ── 씬 ──────────────────────────────────────────────────────────────────────
 // script 단계가 만들고, images/videos/voiceover 단계가 채운다.
 export interface Scene {
   index: number;
   narration: string; // 자막 + (기본)보이스오버 소스 (한국어). 자막 단계는 항상 이걸 쓴다.
   ttsScript?: string; // 음성(TTS) 전용 오버라이드. 비면 narration 사용. 자막엔 영향 없음.
-  narrationEn?: string; // 영문 자막용 번역 (선택)
+  narrationEn?: string; // [레거시] 영문 번역 — 신규는 dub.en.narration 사용(읽기 폴백용 유지)
+  // 다국어 더빙 트랙. 언어코드(en/es/ja…) → { 번역문, 더빙 오디오 }. lib/languages.ts 참고.
+  dub?: Record<string, { narration?: string; audioUrl?: string }>;
   imagePrompt: string; // gpt-image-2 프롬프트
   motion: string; // fal image-to-video 모션 지시
   durationSec: number; // 4~7, 평균 5 목표 (하드락 아님)
   status: StepStatus; // 씬 단위 리롤 시 generated 로 되돌림
+  imageSource?: ImageSourceMode; // 정지 이미지 소스(기본 generate). lib/types ImageSourceMode 참고.
+  referenceImageUrl?: string; // reference 모드: 업로드한 참조 이미지(키프레임과 함께 레퍼런스로)
+  paletteHint?: string; // 씬별 팔레트 변주("warm sunset", "cool night"…). 비면 키프레임 팔레트 그대로.
+  videoSource?: VideoSourceMode; // 영상 소스(기본 generate). upload면 videoUrl 직접 대입.
   imageUrl?: string;
   videoUrl?: string;
   videoJobId?: string; // 비동기 작업 id ("provider::..." 인코딩)
   videoModelId?: string; // 이 씬 비디오를 만든 모델 (fal/grok 등) — 비용 계산용
   audioUrl?: string; // 씬별 TTS 클립 (한국어)
-  audioUrlEn?: string; // 영어 더빙 클립 (다국어판)
+  audioUrlEn?: string; // [레거시] 영어 더빙 클립 — 신규는 dub.en.audioUrl(읽기 폴백용 유지)
   ttsTimestamps?: TtsWord[]; // 자막 타이밍 (TTS 타임스탬프 기준)
 }
 
@@ -112,9 +128,11 @@ export interface Project {
   styleProfileId: string; // config/style-profiles.json 의 id
   styleBible: string; // 키프레임에서 확정 → 전 씬 공유되는 스타일 규약
   keyframeUrl?: string;
+  keyframeReferenceUrl?: string; // 키프레임 생성 시 참조할 업로드 이미지(있으면 img2img로 후보 생성)
   scenes: Scene[];
   steps: Record<StepKind, StepState>;
   ttsEnabled: boolean;
+  ttsProvider?: "elevenlabs" | "typecast"; // 보이스오버 엔진(프로젝트별). 없으면 env TTS_PROVIDER.
   videoModelId: string; // config/video-models.json (기본 Seedance)
   subtitle?: SubtitleSettings; // 자막 디자인(일괄). 없으면 DEFAULT_SUBTITLE.
   watermark?: Watermark; // 최종 영상에 새길 워터마크(텍스트+위치). 없으면 안 새김.
@@ -128,7 +146,7 @@ export interface Project {
 export interface CostEntry {
   id: string;
   projectId?: string;
-  vendor: "anthropic" | "openai" | "fal" | "grok" | "elevenlabs";
+  vendor: "anthropic" | "openai" | "fal" | "grok" | "elevenlabs" | "typecast";
   model: string;
   costUsd: number;
   createdAt: number;

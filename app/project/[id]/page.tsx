@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getProject } from "@/lib/projectStore";
 import { listStyleProfiles } from "@/lib/styleProfiles";
 import { listVideoModels } from "@/lib/videoProvider";
+import { ttsProviderInfo } from "@/lib/tts";
 import Studio from "./Studio";
 
 // 단계별 스튜디오. 스타일 프로필(2D/3D 모드·모션·postFx)을 같이 넘겨 키프레임
@@ -23,6 +24,7 @@ export default async function ProjectStudioPage({
       project={project}
       styleProfiles={styleProfiles}
       videoModels={videoModels}
+      tts={ttsProviderInfo()}
     />
   );
 }
