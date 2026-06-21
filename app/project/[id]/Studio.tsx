@@ -1657,6 +1657,12 @@ export default function Studio({
             </button>
           </div>
         </div>
+        {(scenes[0]?.narration ?? "").trim() && (
+          <p className="mt-2 text-sm font-bold leading-snug">
+            <span className="text-zinc-400 font-medium">씬 1 · </span>
+            {scenes[0]?.narration}
+          </p>
+        )}
         {!scriptApproved && (
           <p className="mt-2 text-xs text-zinc-500">스크립트를 먼저 승인해주세요.</p>
         )}
