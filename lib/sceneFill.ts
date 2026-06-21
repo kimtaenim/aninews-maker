@@ -1,64 +1,45 @@
 // ============================================================================
-// 새 씬 자동 채우기 (2단계 보강) — 나레이션 한 줄 → image_prompt · motion · 길이
+// 씬 프롬프트 생성 — 이미지 프롬프트(한글, 3·4단계) / 모션(영문, 5단계)
 // ----------------------------------------------------------------------------
-// 사용자가 스크립트 단계에서 씬을 추가하고 나레이션만 입력하면, Claude 가 그 씬의
-// 이미지 프롬프트와 모션을 styleBible 에 맞춰 생성하고, 길이는 텍스트 분량으로 추정.
-// 검열 안전·차분/은유 규칙은 generateScript 와 동일하게 적용한다.
+// 2단계는 나레이션만 만든다. 모드(styleBible)·품질을 정한 뒤 3·4단계에서 한글
+// 이미지 프롬프트를, 5단계에서 영문 모션을 생성한다. 한 번의 Claude 호출로 여러
+// 씬을 묶어 처리(순서 유지). 검열 안전·차분/은유 규칙은 generateScript 와 동일.
 // ============================================================================
 
 import { getAnthropic, MODELS } from "./anthropic";
 import { anthropicCostUsd, recordCost } from "./cost";
-import { DURATION_MIN, DURATION_MAX } from "./scenes";
 
-// 한국어 TTS 평균 ≈ 4.5자/초 (approve 라우트와 동일 기준).
-const CHARS_PER_SEC = 4.5;
-
-// 나레이션 분량으로 길이(초) 추정 — 4~7초 범위로 클램프(긴 텍스트는 승인 단계에서 보정).
-export function estimateDuration(text: string): number {
-  const len = (text ?? "").trim().length;
-  if (!len) return DURATION_MIN;
-  const d = Math.ceil(len / CHARS_PER_SEC);
-  return Math.max(DURATION_MIN, Math.min(DURATION_MAX, d));
+export interface SceneInput {
+  index: number;
+  narration: string;
 }
 
-export async function fillSceneFromNarration(args: {
-  projectId: string;
-  narration: string;
-  styleBible: string;
-}): Promise<{ imagePrompt: string; motion: string; durationSec: number; costUsd: number }> {
-  const narration = (args.narration ?? "").trim();
-  if (!narration) throw new Error("나레이션을 입력해주세요");
-
-  const client = getAnthropic();
-  const system =
-    "You generate ONE short-form video scene's visual direction from a single Korean narration line, " +
-    "consistent with the given style bible. " +
-    'Output ONLY JSON: {"image_prompt":"...","motion":"..."}. ' +
-    "image_prompt: English. A calm, censorship-safe, metaphorical everyday visual that conveys the narration — " +
-    "avoid protests, raised fists, marching crowds, violence, weapons, blood, political slogans/symbols, real public figures. " +
-    "Keep on-image text minimal. " +
-    "motion: English. Small and gentle only (slow camera, subtle movement). No big, fast, or violent action.";
-  const userMsg = [
-    `Style bible:\n${args.styleBible}`,
-    "",
-    `Narration (Korean): ${narration}`,
-    "",
-    'JSON only: {"image_prompt":"...","motion":"..."}',
-  ].join("\n");
-
-  const r = await client.messages.create({
-    model: MODELS.sonnet,
-    max_tokens: 700,
-    system,
-    messages: [{ role: "user", content: userMsg }],
-  });
-  const raw = (
-    r.content.filter((b) => b.type === "text") as Array<{ type: "text"; text: string }>
-  )
+function textOf(content: Array<{ type: string; text?: string }>): string {
+  return (content.filter((b) => b.type === "text") as Array<{ text: string }>)
     .map((b) => b.text)
     .join("")
     .trim();
+}
 
+function parseItems(raw: string, key: string): Map<number, string> {
+  const out = new Map<number, string>();
+  try {
+    const m = raw.match(/\{[\s\S]*\}/);
+    const parsed = (m ? JSON.parse(m[0]) : {}) as {
+      items?: Array<{ index?: number; [k: string]: unknown }>;
+    };
+    for (const it of parsed.items ?? []) {
+      if (typeof it.index === "number" && typeof it[key] === "string") {
+        out.set(it.index, (it[key] as string).trim());
+      }
+    }
+  } catch {
+    /* 파싱 실패 시 빈 맵 */
+  }
+  return out;
+}
+
+async function recordCostBestEffort(projectId: string, r: { usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number | null; cache_creation_input_tokens?: number | null } }, kind: string): Promise<number> {
   const costUsd = anthropicCostUsd({
     inputTokens: r.usage.input_tokens,
     outputTokens: r.usage.output_tokens,
@@ -67,29 +48,91 @@ export async function fillSceneFromNarration(args: {
     model: MODELS.sonnet,
   });
   try {
-    await recordCost({
-      projectId: args.projectId,
-      vendor: "anthropic",
-      model: MODELS.sonnet,
-      costUsd,
-      meta: { kind: "scene-fill" },
-    });
+    await recordCost({ projectId, vendor: "anthropic", model: MODELS.sonnet, costUsd, meta: { kind } });
   } catch {
-    /* 비용 기록 실패는 무시 */
+    /* 무시 */
   }
+  return costUsd;
+}
 
-  let parsed: { image_prompt?: string; motion?: string } = {};
-  try {
-    const m = raw.match(/\{[\s\S]*\}/);
-    parsed = JSON.parse(m ? m[0] : raw);
-  } catch {
-    /* 파싱 실패 시 빈 값 폴백 */
-  }
+// 3·4단계 — 씬별 한글 이미지 프롬프트(장면 내용). 아트 스타일은 styleBible 이 따로
+// 입혀지므로 여기선 "무엇이 보이는지"만 한국어로 묘사한다.
+export async function generateImagePrompts(args: {
+  projectId: string;
+  scenes: SceneInput[];
+  styleBible: string;
+}): Promise<{ prompts: Map<number, string>; costUsd: number }> {
+  const scenes = (args.scenes ?? []).filter((s) => s?.narration?.trim());
+  if (scenes.length === 0) return { prompts: new Map(), costUsd: 0 };
 
-  return {
-    imagePrompt: (parsed.image_prompt || "").trim(),
-    motion: (parsed.motion || "").trim(),
-    durationSec: estimateDuration(narration),
-    costUsd,
-  };
+  const client = getAnthropic();
+  const system =
+    "You write Korean image-generation prompts for short-form video scenes. " +
+    "The art style is applied separately (style bible below) — so describe ONLY the scene CONTENT in Korean: " +
+    "what is visible, the subject, setting, composition. Calm, censorship-safe, metaphorical everyday visuals — " +
+    "avoid protests, raised fists, marching crowds, violence, weapons, blood, political slogans/symbols, real public figures. " +
+    "Keep on-image text minimal. One scene = one concise Korean prompt. " +
+    'Output ONLY JSON: {"items":[{"index":0,"prompt":"..."}]} with the SAME indices, one per scene.';
+  // 모델이 임의 인덱스를 0-based 로 다시 매기는 일이 있어, 입력은 0..N-1 위치로 주고
+  // 결과를 위치→원래 index 로 되매핑한다.
+  const userMsg = [
+    `Style bible (art style, for context only):\n${args.styleBible}`,
+    "",
+    "씬별 나레이션 (번호는 그대로 유지해서 응답):",
+    ...scenes.map((s, pos) => `[${pos}] ${s.narration}`),
+    "",
+    'JSON 만: {"items":[{"index":0,"prompt":"한국어 이미지 프롬프트"}]} — index 는 위 [번호] 그대로.',
+  ].join("\n");
+
+  const r = await client.messages.create({
+    model: MODELS.sonnet,
+    max_tokens: 2000,
+    system,
+    messages: [{ role: "user", content: userMsg }],
+  });
+  const costUsd = await recordCostBestEffort(args.projectId, r, "image-prompt");
+  const byPos = parseItems(textOf(r.content), "prompt");
+  const prompts = new Map<number, string>();
+  scenes.forEach((s, pos) => {
+    const v = byPos.get(pos);
+    if (v) prompts.set(s.index, v);
+  });
+  return { prompts, costUsd };
+}
+
+// 5단계 — 씬별 영문 모션 프롬프트. 작고 잔잔한 움직임만.
+export async function generateMotions(args: {
+  projectId: string;
+  scenes: SceneInput[];
+}): Promise<{ motions: Map<number, string>; costUsd: number }> {
+  const scenes = (args.scenes ?? []).filter((s) => s?.narration?.trim());
+  if (scenes.length === 0) return { motions: new Map(), costUsd: 0 };
+
+  const client = getAnthropic();
+  const system =
+    "You write short English motion prompts for short-form video scenes. " +
+    "Small and gentle only: slow camera, subtle movement, hold poses. No big, fast, or violent action. " +
+    "One scene = one short English motion line. " +
+    'Output ONLY JSON: {"items":[{"index":0,"motion":"..."}]} with the SAME indices, one per scene.';
+  const userMsg = [
+    "씬별 나레이션 (번호는 그대로 유지해서 응답):",
+    ...scenes.map((s, pos) => `[${pos}] ${s.narration}`),
+    "",
+    'JSON only: {"items":[{"index":0,"motion":"english motion"}]} — keep the [number] as index.',
+  ].join("\n");
+
+  const r = await client.messages.create({
+    model: MODELS.sonnet,
+    max_tokens: 1500,
+    system,
+    messages: [{ role: "user", content: userMsg }],
+  });
+  const costUsd = await recordCostBestEffort(args.projectId, r, "motion");
+  const byPos = parseItems(textOf(r.content), "motion");
+  const motions = new Map<number, string>();
+  scenes.forEach((s, pos) => {
+    const v = byPos.get(pos);
+    if (v) motions.set(s.index, v);
+  });
+  return { motions, costUsd };
 }

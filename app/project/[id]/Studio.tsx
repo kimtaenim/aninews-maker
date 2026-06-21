@@ -12,6 +12,7 @@ import {
   type VideoSourceMode,
 } from "@/lib/types";
 import { upload } from "@vercel/blob/client";
+import { estimateDuration } from "@/lib/scenes";
 import type { SourceMaterial } from "@/lib/source";
 import {
   TARGET_LANGUAGES,
@@ -630,7 +631,6 @@ export default function Studio({
   // 새 씬 컴포저: 나레이션 입력 + Enter → 프롬프트·모션·길이 자동 생성.
   const [composerOpen, setComposerOpen] = useState(false);
   const [newNarration, setNewNarration] = useState("");
-  const [filling, setFilling] = useState(false);
 
   function patchScene(i: number, patch: Partial<EditScene>) {
     setScenes((prev) => prev.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
@@ -643,34 +643,16 @@ export default function Studio({
     ]);
     setDirty(true);
   }
-  // 나레이션 → fill-scene API 로 image_prompt·motion·길이 생성 후 씬 추가.
-  async function addSceneFromNarration() {
+  // 나레이션만으로 새 씬 추가 — 길이는 글자수로 자동, 프롬프트·모션은 3~5단계에서.
+  function addSceneFromNarration() {
     const n = newNarration.trim();
-    if (!n || filling) return;
-    setFilling(true);
-    setError(null);
-    try {
-      const data = await call("/api/script/fill-scene", {
-        projectId: project.id,
-        narration: n,
-      });
-      setScenes((prev) => [
-        ...prev,
-        {
-          narration: n,
-          imagePrompt: data.imagePrompt ?? "",
-          motion: data.motion ?? "",
-          durationSec: data.durationSec ?? 5,
-        },
-      ]);
-      setDirty(true);
-      setNewNarration(""); // 다음 씬을 바로 이어 입력할 수 있게 비움(컴포저는 열린 채).
-    } catch (e) {
-      // 실패해도 입력은 살려둔다(재시도 가능).
-      setError(e instanceof Error ? e.message : "씬 생성 실패");
-    } finally {
-      setFilling(false);
-    }
+    if (!n) return;
+    setScenes((prev) => [
+      ...prev,
+      { narration: n, imagePrompt: "", motion: "", durationSec: estimateDuration(n) },
+    ]);
+    setDirty(true);
+    setNewNarration(""); // 다음 씬을 바로 이어 입력할 수 있게 비움(컴포저는 열린 채).
   }
   function deleteScene(i: number) {
     setScenes((prev) => prev.filter((_, idx) => idx !== i));
@@ -874,6 +856,74 @@ export default function Studio({
     }
   }
 
+  // 편집 버퍼 + 생성한 값(prompt/motion)을 합쳐 서버에 저장하고 project·버퍼 동기화.
+  async function saveMerged(merged: EditScene[]) {
+    const data = await call("/api/script/scenes", { projectId: project.id, scenes: merged });
+    const saved = data.scenes as Scene[];
+    setProject((p) => ({ ...p, scenes: saved }));
+    setScenes(saved.map(toEdit));
+    setDirty(false);
+  }
+
+  // 3·4단계: 씬별 한글 이미지 프롬프트 생성 → 버퍼에 채우고 곧바로 저장
+  // (이미지 생성이 저장본을 읽으므로). indices 로 대상 씬 지정(키프레임=[0]).
+  async function genImagePrompts(indices: number[], action: string) {
+    const targets = indices
+      .map((i) => ({ index: i, narration: (scenes[i]?.narration ?? "").trim() }))
+      .filter((s) => s.narration);
+    if (targets.length === 0) {
+      setError("나레이션이 먼저 필요해요 (스크립트를 만들어주세요).");
+      return;
+    }
+    setError(null);
+    setBusy(action);
+    try {
+      const data = await call("/api/script/image-prompts", {
+        projectId: project.id,
+        scenes: targets,
+      });
+      const map = new Map<number, string>(
+        (data.prompts as { index: number; prompt: string }[]).map((p) => [p.index, p.prompt])
+      );
+      await saveMerged(
+        scenes.map((s, i) => (map.has(i) ? { ...s, imagePrompt: map.get(i)! } : s))
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "프롬프트 생성 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // 5단계: 씬별 영문 모션 생성 → 버퍼에 채우고 저장.
+  async function genMotions(indices: number[], action: string) {
+    const targets = indices
+      .map((i) => ({ index: i, narration: (scenes[i]?.narration ?? "").trim() }))
+      .filter((s) => s.narration);
+    if (targets.length === 0) {
+      setError("나레이션이 먼저 필요해요.");
+      return;
+    }
+    setError(null);
+    setBusy(action);
+    try {
+      const data = await call("/api/script/motions", {
+        projectId: project.id,
+        scenes: targets,
+      });
+      const map = new Map<number, string>(
+        (data.motions as { index: number; motion: string }[]).map((m) => [m.index, m.motion])
+      );
+      await saveMerged(
+        scenes.map((s, i) => (map.has(i) ? { ...s, motion: map.get(i)! } : s))
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "모션 생성 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   // 텍스트 대비 짧은 씬 길이 자동 조정 — 승인 게이트에서 확인받을 목록.
   const [durationAdjustments, setDurationAdjustments] = useState<
     { index: number; from: number; to: number }[] | null
@@ -1068,10 +1118,15 @@ export default function Studio({
     }
   }
 
-  // 배치 생성 대상이 아닌 씬: 업로드 모드(직접 넣음) / 참조본 없는 reference 모드(생성 불가).
+  // 배치 생성 대상이 아닌 씬: 업로드 모드(직접 넣음) / 참조본 없는 reference 모드(생성
+  // 불가) / 이미지 프롬프트가 아직 없는 씬(프롬프트 생성 먼저).
   function skipInBatch(i: number): boolean {
     const s = project.scenes[i];
-    return s.imageSource === "upload" || (s.imageSource === "reference" && !s.referenceImageUrl);
+    return (
+      s.imageSource === "upload" ||
+      (s.imageSource === "reference" && !s.referenceImageUrl) ||
+      !(s.imagePrompt ?? "").trim()
+    );
   }
 
   // 씬1 이후 이미지 없는 씬들을 순차 생성(병렬 금지 — last-write-wins 방지).
@@ -1497,40 +1552,10 @@ export default function Studio({
                       className={fieldCls + " resize-y"}
                     />
                   </label>
-
-                  <label className="grid gap-1">
-                    <span className="text-[11px] text-zinc-500">이미지 프롬프트 (영문)</span>
-                    <textarea
-                      value={sc.imagePrompt}
-                      onChange={(e) => patchScene(i, { imagePrompt: e.target.value })}
-                      rows={2}
-                      className={fieldCls + " resize-y font-mono text-xs"}
-                    />
-                  </label>
-
-                  <div className="flex gap-2">
-                    <label className="grid gap-1 flex-1">
-                      <span className="text-[11px] text-zinc-500">모션 (영문)</span>
-                      <input
-                        value={sc.motion}
-                        onChange={(e) => patchScene(i, { motion: e.target.value })}
-                        className={fieldCls + " font-mono text-xs"}
-                      />
-                    </label>
-                    <label className="grid gap-1 w-20">
-                      <span className="text-[11px] text-zinc-500">길이(초)</span>
-                      <input
-                        type="number"
-                        min={4}
-                        max={7}
-                        value={sc.durationSec}
-                        onChange={(e) =>
-                          patchScene(i, { durationSec: Number(e.target.value) })
-                        }
-                        className={fieldCls}
-                      />
-                    </label>
-                  </div>
+                  <p className="text-[10px] text-zinc-400">
+                    길이 ~{estimateDuration(sc.narration)}초 (글자수 기준 자동). 이미지
+                    프롬프트·모션은 3~5단계에서 생성합니다.
+                  </p>
                 </li>
               ))}
             </ol>
@@ -1539,7 +1564,7 @@ export default function Studio({
             {composerOpen && (
               <div className="mt-3 rounded-xl border border-dashed border-accent/60 p-3 grid gap-2">
                 <span className="text-[11px] font-medium text-zinc-600 dark:text-zinc-300">
-                  새 씬 — 나레이션 입력 후 Enter (이미지 프롬프트·모션·길이 자동 생성)
+                  새 씬 — 나레이션 입력 후 Enter (길이는 자동, 프롬프트·모션은 3~5단계에서)
                 </span>
                 <textarea
                   value={newNarration}
@@ -1547,11 +1572,10 @@ export default function Studio({
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
-                      void addSceneFromNarration();
+                      addSceneFromNarration();
                     }
                   }}
                   rows={2}
-                  disabled={filling}
                   autoFocus
                   placeholder="예: 정부가 새 정책을 발표했다.  (Enter=추가, Shift+Enter=줄바꿈)"
                   className={fieldCls + " resize-y"}
@@ -1559,14 +1583,14 @@ export default function Studio({
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => void addSceneFromNarration()}
-                    disabled={filling || !newNarration.trim()}
+                    onClick={addSceneFromNarration}
+                    disabled={!newNarration.trim()}
                     className="text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-medium px-3 py-1.5"
                   >
-                    {filling ? <Busy>생성 중…</Busy> : "추가"}
+                    추가
                   </button>
                   <span className="text-[10px] text-zinc-400">
-                    AI가 이미지 프롬프트·모션을 만들고 길이를 계산합니다.
+                    나레이션만 다듬으세요. 프롬프트·모션은 다음 단계에서 생성합니다.
                   </span>
                 </div>
               </div>
@@ -1632,21 +1656,51 @@ export default function Studio({
             3. 키프레임 (씬0 스타일 확정)
             {keyframeApproved && <span className="ml-2 text-xs text-accent">승인됨</span>}
           </h2>
-          <button
-            type="button"
-            onClick={generateKeyframe}
-            disabled={!scriptApproved || busy !== null}
-            className="shrink-0 text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-medium px-3 py-1.5"
-          >
-            {busy === "keyframe"
-              ? <Busy>생성 중…</Busy>
-              : project.keyframeUrl
-                ? "다시 생성"
-                : "키프레임 생성"}
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => genImagePrompts([0], "keyframe-prompt")}
+              disabled={!scriptApproved || busy !== null || !(scenes[0]?.narration ?? "").trim()}
+              className="shrink-0 text-xs rounded-lg border border-accent text-accent px-3 py-1.5 hover:bg-accent/10 disabled:opacity-40"
+            >
+              {busy === "keyframe-prompt" ? <Busy>생성 중…</Busy> : "프롬프트 생성"}
+            </button>
+            <button
+              type="button"
+              onClick={generateKeyframe}
+              disabled={!scriptApproved || busy !== null || !(scenes[0]?.imagePrompt ?? "").trim()}
+              className="shrink-0 text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-medium px-3 py-1.5"
+            >
+              {busy === "keyframe"
+                ? <Busy>생성 중…</Busy>
+                : project.keyframeUrl
+                  ? "다시 생성"
+                  : "키프레임 생성"}
+            </button>
+          </div>
         </div>
         {!scriptApproved && (
           <p className="mt-2 text-xs text-zinc-500">스크립트를 먼저 승인해주세요.</p>
+        )}
+        {scriptApproved && !(scenes[0]?.imagePrompt ?? "").trim() && (
+          <p className="mt-2 text-xs text-amber-600">
+            모드를 정한 뒤 <span className="font-medium">"프롬프트 생성"</span>을 먼저 눌러
+            씬0 이미지 프롬프트(한글)를 만들어주세요.
+          </p>
+        )}
+        {scriptApproved && (scenes[0]?.imagePrompt ?? "").trim() && (
+          <label className="mt-3 grid gap-1">
+            <span className="text-[11px] text-zinc-500">씬0 이미지 프롬프트 (한글)</span>
+            <textarea
+              value={scenes[0]?.imagePrompt ?? ""}
+              onChange={(e) => patchScene(0, { imagePrompt: e.target.value })}
+              onBlur={() => {
+                if (dirty) void saveScenes();
+              }}
+              rows={2}
+              className={fieldCls + " resize-y"}
+            />
+          </label>
         )}
         {keyframeStatus === "error" && project.steps.keyframe.error && (
           <p className="mt-2 text-xs text-red-600">{project.steps.keyframe.error}</p>
@@ -1922,6 +1976,19 @@ export default function Studio({
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <button
               type="button"
+              onClick={() =>
+                genImagePrompts(
+                  scenes.map((_, i) => i).filter((i) => i >= 1),
+                  "scene-prompts"
+                )
+              }
+              disabled={busy !== null}
+              className="text-xs rounded-lg border border-accent text-accent px-3 py-1.5 hover:bg-accent/10 disabled:opacity-40"
+            >
+              {busy === "scene-prompts" ? <Busy>생성 중…</Busy> : "전체 프롬프트 생성"}
+            </button>
+            <button
+              type="button"
               onClick={generateSelectedScenes}
               disabled={busy !== null || selectedScenes.size === 0}
               className="text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-medium px-3 py-1.5"
@@ -2037,7 +2104,13 @@ export default function Studio({
                             disabled={
                               busy !== null ||
                               uploading !== null ||
-                              (imgMode === "reference" && !ed?.referenceImageUrl)
+                              (imgMode === "reference" && !ed?.referenceImageUrl) ||
+                              !(ed?.imagePrompt ?? "").trim()
+                            }
+                            title={
+                              !(ed?.imagePrompt ?? "").trim()
+                                ? "이미지 프롬프트가 없어요 — '전체 프롬프트 생성'을 먼저 누르세요"
+                                : ""
                             }
                             className="shrink-0 text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
                           >
@@ -2164,13 +2237,13 @@ export default function Studio({
                               </label>
                             </div>
                           )}
-                          <span className="text-[10px] text-zinc-400">이미지 프롬프트 (영문)</span>
+                          <span className="text-[10px] text-zinc-400">이미지 프롬프트 (한글)</span>
                           <textarea
                             value={ed?.imagePrompt ?? ""}
                             onChange={(e) => patchScene(i, { imagePrompt: e.target.value })}
                             rows={2}
-                            placeholder="이미지 프롬프트 (영문)"
-                            className="w-full rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1 font-mono text-[11px] outline-none focus:border-accent resize-y"
+                            placeholder="'전체 프롬프트 생성'으로 만들거나 직접 입력 (한글)"
+                            className="w-full rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1 text-[11px] outline-none focus:border-accent resize-y"
                           />
                           <input
                             value={ed?.paletteHint ?? ""}
@@ -2229,20 +2302,32 @@ export default function Studio({
             5. 비디오 (씬별)
             {videosApproved && <span className="ml-2 text-xs text-accent">승인됨</span>}
           </h2>
-          <button
-            type="button"
-            onClick={generateAllVideos}
-            disabled={!imagesApproved || busy !== null || project.scenes.length === 0}
-            className="shrink-0 text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-medium px-3 py-1.5"
-          >
-            {busy === "videos-all" ? (
-              <Busy>생성 중…</Busy>
-            ) : allScenesHaveVideo ? (
-              "빈 씬만 생성"
-            ) : (
-              "전체 생성"
-            )}
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() =>
+                genMotions(scenes.map((_, i) => i), "video-motion")
+              }
+              disabled={!imagesApproved || busy !== null || project.scenes.length === 0}
+              className="shrink-0 text-xs rounded-lg border border-accent text-accent px-3 py-1.5 hover:bg-accent/10 disabled:opacity-40"
+            >
+              {busy === "video-motion" ? <Busy>생성 중…</Busy> : "모션 생성"}
+            </button>
+            <button
+              type="button"
+              onClick={generateAllVideos}
+              disabled={!imagesApproved || busy !== null || project.scenes.length === 0}
+              className="shrink-0 text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-medium px-3 py-1.5"
+            >
+              {busy === "videos-all" ? (
+                <Busy>생성 중…</Busy>
+              ) : allScenesHaveVideo ? (
+                "빈 씬만 생성"
+              ) : (
+                "전체 생성"
+              )}
+            </button>
+          </div>
         </div>
         {imagesApproved && (
           <label className="mt-2 flex flex-wrap items-center gap-2 text-xs text-zinc-500">

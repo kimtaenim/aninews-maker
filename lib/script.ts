@@ -38,11 +38,10 @@ export async function generateScript(
     "본문:",
     material.body,
     "",
-    '위 뉴스를 숏폼 영상용 "씬 배열"로 만들어줘. 반드시 다음 JSON 만 출력:',
-    '{"scenes":[{"narration":"...","image_prompt":"...","motion":"...","duration_sec":5}]}',
-    "narration 은 한국어 구어체, image_prompt 와 motion 은 영어. duration_sec 은 4~7.",
-    "motion 은 작고 잔잔한 움직임으로만 (느린 카메라, 미세한 움직임). 크거나 빠르거나 과한 액션은 금지.",
-    "image_prompt 는 검열에 안 걸리게 — 시위·치켜든 주먹·행진 군중·폭력·무기·유혈·정치 구호/상징·실존 인물은 피하고, 주제를 차분하고 은유적인 일상 비주얼로 표현.",
+    '위 뉴스를 숏폼 영상용 "씬 배열"로 만들어줘. 각 씬은 나레이션만 만든다',
+    "(이미지 프롬프트·모션은 다음 단계에서 따로 생성하므로 여기선 만들지 마). 반드시 다음 JSON 만 출력:",
+    '{"scenes":[{"narration":"..."}]}',
+    "narration 은 한국어 구어체, 한 씬에 한두 문장. 씬은 5~8개 정도로 자연스럽게 나눠.",
   ]
     .filter(Boolean)
     .join("\n");
