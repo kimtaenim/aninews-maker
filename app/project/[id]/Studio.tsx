@@ -831,6 +831,22 @@ export default function Studio({
     }
   }
 
+  // 5단계 진입(이미지 승인) 시, 모션이 빈 씬을 한 번 자동 생성한다. 사용자가 "모션
+  // 생성" 버튼을 안 눌러도 채워지게. 이미 모션이 있으면 건드리지 않는다(리롤은 수동).
+  const autoMotionRef = useRef(false);
+  useEffect(() => {
+    if (!imagesApproved || autoMotionRef.current || busyRef.current) return;
+    const need = project.scenes
+      .map((s, i) => ({ i, s }))
+      .filter(({ s }) => (s.narration ?? "").trim() && !(s.motion ?? "").trim())
+      .map(({ i }) => i);
+    if (need.length === 0) return;
+    autoMotionRef.current = true;
+    void genMotions(need, "video-motion");
+    // genMotions 는 매 렌더 재생성되므로 deps 에서 제외(autoMotionRef 가 1회 보장).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imagesApproved, project.scenes]);
+
   // 텍스트 대비 짧은 씬 길이 자동 조정 — 승인 게이트에서 확인받을 목록.
   const [durationAdjustments, setDurationAdjustments] = useState<
     { index: number; from: number; to: number }[] | null
