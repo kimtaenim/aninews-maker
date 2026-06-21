@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { materialFromText, SOURCE_MAX_INPUT_CHARS } from "@/lib/source";
 import { createProject } from "@/lib/projectStore";
+import { getSessionEmail } from "@/lib/auth";
 import { getStyleProfile, DEFAULT_STYLE_PROFILE_ID } from "@/lib/styleProfiles";
 import videoModels from "@/config/video-models.json";
 
@@ -52,6 +53,7 @@ export async function POST(req: NextRequest) {
     const material = materialFromText(text);
     const project = await createProject({
       material,
+      ownerEmail: (await getSessionEmail()) ?? undefined,
       styleProfileId,
       videoModelId,
       ttsEnabled: body.ttsEnabled ?? true,

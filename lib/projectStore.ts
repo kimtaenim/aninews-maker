@@ -37,13 +37,14 @@ export interface CreateProjectArgs {
   videoModelId: string;
   ttsEnabled: boolean;
   userPrompt?: string; // "어떤 식으로 만들까요?" — 스크립트 생성에 주입
+  ownerEmail?: string; // 만든 사람(로그인 이메일)
 }
 
 // 1단계 소스 캡처 = 프로젝트 생성. 소스 재료는 steps.source.params 에 담고
 // source 단계를 "generated"(검수 대기)로 둔다. styleBible 은 프로필 image_bible
 // 에서 시작해 keyframe 단계에서 확정·갱신된다.
 export async function createProject(args: CreateProjectArgs): Promise<Project> {
-  const { material, styleProfileId, videoModelId, ttsEnabled, userPrompt } = args;
+  const { material, styleProfileId, videoModelId, ttsEnabled, userPrompt, ownerEmail } = args;
   const profile = getStyleProfile(styleProfileId);
   const now = Date.now();
   const steps = emptySteps();
@@ -66,6 +67,7 @@ export async function createProject(args: CreateProjectArgs): Promise<Project> {
     videoModelId,
     subtitle: DEFAULT_SUBTITLE,
     userPrompt: userPrompt?.trim() || undefined,
+    ownerEmail: ownerEmail?.trim() || undefined,
     createdAt: now,
     updatedAt: now,
   };

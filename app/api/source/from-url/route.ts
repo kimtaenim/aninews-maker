@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { extractFromUrl, type SourceMaterial } from "@/lib/source";
 import { mergeSources } from "@/lib/mergeSources";
 import { createProject } from "@/lib/projectStore";
+import { getSessionEmail } from "@/lib/auth";
 import { getStyleProfile, DEFAULT_STYLE_PROFILE_ID } from "@/lib/styleProfiles";
 import videoModels from "@/config/video-models.json";
 
@@ -72,6 +73,7 @@ export async function POST(req: NextRequest) {
     const material = await mergeSources({ materials, userPrompt: body.userPrompt });
     const project = await createProject({
       material,
+      ownerEmail: (await getSessionEmail()) ?? undefined,
       styleProfileId,
       videoModelId,
       ttsEnabled: body.ttsEnabled ?? true,

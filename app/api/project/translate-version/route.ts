@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProject, createProject, saveProject } from "@/lib/projectStore";
+import { getSessionEmail } from "@/lib/auth";
 import { translateNarrations } from "@/lib/translate";
 import { getLang } from "@/lib/languages";
 import { estimateDuration } from "@/lib/scenes";
@@ -61,6 +62,7 @@ export async function POST(req: NextRequest) {
       };
     const project = await createProject({
       material,
+      ownerEmail: (await getSessionEmail()) ?? undefined,
       styleProfileId: source.styleProfileId,
       videoModelId: source.videoModelId,
       ttsEnabled: source.ttsEnabled,

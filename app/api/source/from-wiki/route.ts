@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { extractFromWikipedia } from "@/lib/wikipedia";
 import { createProject } from "@/lib/projectStore";
+import { getSessionEmail } from "@/lib/auth";
 import { getStyleProfile, DEFAULT_STYLE_PROFILE_ID } from "@/lib/styleProfiles";
 import videoModels from "@/config/video-models.json";
 
@@ -46,6 +47,7 @@ export async function POST(req: NextRequest) {
     const material = await extractFromWikipedia(input);
     const project = await createProject({
       material,
+      ownerEmail: (await getSessionEmail()) ?? undefined,
       styleProfileId,
       videoModelId,
       ttsEnabled: body.ttsEnabled ?? true,

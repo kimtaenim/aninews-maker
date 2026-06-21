@@ -3,6 +3,7 @@ import DeleteButton from "./DeleteButton";
 import { listRecentProjects, getProject } from "@/lib/projectStore";
 import { STEP_ORDER, type Project } from "@/lib/types";
 import { getLang } from "@/lib/languages";
+import { ADMIN_EMAIL } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic"; // 항상 최신 목록(Redis)
@@ -147,6 +148,9 @@ export default async function LibraryPage({
                       </span>
                     )}
                     <span className="text-accent">{progressLabel(p)}</span>
+                  </p>
+                  <p className="mt-0.5 text-[10px] text-zinc-400 truncate">
+                    🧑 {p.ownerEmail ?? ADMIN_EMAIL}
                   </p>
                 </div>
               </Link>

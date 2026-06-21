@@ -8,6 +8,7 @@ import {
 } from "@/lib/attachments";
 import { ocrImage } from "@/lib/imageOcr";
 import { createProject } from "@/lib/projectStore";
+import { getSessionEmail } from "@/lib/auth";
 import { type SourceMaterial, SOURCE_MAX_INPUT_CHARS } from "@/lib/source";
 import { getStyleProfile, DEFAULT_STYLE_PROFILE_ID } from "@/lib/styleProfiles";
 import videoModels from "@/config/video-models.json";
@@ -151,6 +152,7 @@ export async function POST(req: NextRequest) {
   try {
     const project = await createProject({
       material,
+      ownerEmail: (await getSessionEmail()) ?? undefined,
       styleProfileId,
       videoModelId,
       ttsEnabled,
