@@ -1256,6 +1256,33 @@ export default function Studio({
     }
   }
 
+  // 선택한 씬들의 비디오만 병렬 리롤: 전부 제출 → 동시 폴링. (이미 있는 것도 재생성)
+  async function generateSelectedVideos() {
+    const targets = [...selectedScenes]
+      .filter((i) => i >= 0 && i < project.scenes.length && project.scenes[i].videoSource !== "upload")
+      .sort((a, b) => a - b);
+    if (targets.length === 0 || busy !== null) return;
+    setError(null);
+    setBusy("videos-selected");
+    try {
+      const submitted: number[] = [];
+      for (const i of targets) {
+        try {
+          await submitVideoOnly(i);
+          submitted.push(i);
+        } catch (e) {
+          setError(e instanceof Error ? e.message : `씬${i + 1} 제출 실패`);
+        }
+      }
+      await Promise.all(submitted.map((i) => pollVideoUntilDone(i)));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "비디오 생성 실패");
+    } finally {
+      setActiveVideo(null);
+      setBusy(null);
+    }
+  }
+
   async function approveVideos() {
     setError(null);
     setBusy("approve-videos");
@@ -2279,6 +2306,18 @@ export default function Studio({
             </button>
             <button
               type="button"
+              onClick={generateSelectedVideos}
+              disabled={!imagesApproved || busy !== null || selectedScenes.size === 0}
+              className="shrink-0 text-xs rounded-lg border border-accent text-accent px-3 py-1.5 hover:bg-accent/10 disabled:opacity-40"
+            >
+              {busy === "videos-selected" ? (
+                <Busy>생성 중…</Busy>
+              ) : (
+                `선택 리롤${selectedScenes.size ? ` (${selectedScenes.size})` : ""}`
+              )}
+            </button>
+            <button
+              type="button"
               onClick={generateAllVideos}
               disabled={!imagesApproved || busy !== null || project.scenes.length === 0}
               className="shrink-0 text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-medium px-3 py-1.5"
@@ -2329,7 +2368,11 @@ export default function Studio({
               {project.scenes.map((sc, i) => {
                 const vidMode = scenes[i]?.videoSource ?? "generate";
                 const vidUploading = uploading === `vid-${i}`;
-                const videoBusy = vidUploading || busy === `video-${i}` || activeVideo === i;
+                const videoBusy =
+                  vidUploading ||
+                  busy === `video-${i}` ||
+                  activeVideo === i ||
+                  (sc.status === "generating" && !sc.videoUrl); // 병렬(전체/선택) 생성 중
                 return (
                   <li key={i} className="grid gap-1.5">
                     <div className="relative flex aspect-[9/16] items-center justify-center overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900">
@@ -2362,7 +2405,16 @@ export default function Studio({
                       )}
                     </div>
                     <div className="flex items-center justify-between gap-1.5">
-                      <span className="text-[11px] text-zinc-500">씬 {i + 1}</span>
+                      <label className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+                        <input
+                          type="checkbox"
+                          checked={selectedScenes.has(i)}
+                          onChange={() => toggleScene(i)}
+                          disabled={busy !== null}
+                          className="size-3.5 accent-[var(--color-accent)]"
+                        />
+                        씬 {i + 1}
+                      </label>
                       <select
                         value={vidMode}
                         onChange={(e) => setVideoMode(i, e.target.value as VideoSourceMode)}
