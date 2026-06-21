@@ -72,20 +72,12 @@ export async function POST(req: NextRequest) {
     };
   });
 
-  // 나레이션은 항상 필수. 이미지 프롬프트·모션은 생성 모드일 때만 필수
-  // (upload 모드는 사용자가 직접 넣으므로 프롬프트가 비어도 됨).
-  const invalid = scenes.find(
-    (s) =>
-      !s.narration ||
-      (s.imageSource !== "upload" && !s.imagePrompt) ||
-      (s.videoSource !== "upload" && !s.motion)
-  );
+  // 나레이션만 필수. 이미지 프롬프트(3·4단계)·모션(5단계)은 이후 단계에서 생성하므로
+  // 2단계 저장 시점엔 비어 있는 게 정상이다(생성 버튼이 비었을 때 막아준다).
+  const invalid = scenes.find((s) => !s.narration);
   if (invalid) {
     return NextResponse.json(
-      {
-        ok: false,
-        error: `씬${invalid.index + 1}: 나레이션과 (생성 모드 씬의) 이미지 프롬프트·모션은 비울 수 없어요`,
-      },
+      { ok: false, error: `씬${invalid.index + 1}: 나레이션은 비울 수 없어요` },
       { status: 422 }
     );
   }
