@@ -1052,14 +1052,42 @@ export default function Studio({
     );
   }
 
-  // 씬1 이후 이미지 없는 씬들을 순차 생성(병렬 금지 — last-write-wins 방지).
-  async function generateAllScenes() {
+  // 여러 씬을 배치 엔드포인트로 병렬 생성(서버가 한 번만 저장 → 경합 없이 빠름).
+  async function runImageBatch(targets: number[], action: string) {
+    if (targets.length === 0 || busy !== null) return;
     setError(null);
-    setBusy("images-all");
+    setBusy(action);
+    setProject((p) => ({
+      ...p,
+      scenes: p.scenes.map((s, i) => (targets.includes(i) ? { ...s, status: "generating" } : s)),
+    }));
     try {
-      for (let i = 1; i < project.scenes.length; i++) {
-        if (project.scenes[i].imageUrl || skipInBatch(i)) continue;
-        await generateOneScene(i);
+      const data = await call("/api/image/scenes-batch", {
+        projectId: project.id,
+        sceneIndexes: targets,
+      });
+      const results = (data.results as { sceneIndex: number; url?: string; error?: string }[]) ?? [];
+      const urlMap = new Map(results.filter((r) => r.url).map((r) => [r.sceneIndex, r.url as string]));
+      setProject((p) => ({
+        ...p,
+        scenes: p.scenes.map((s, i) =>
+          urlMap.has(i)
+            ? { ...s, imageUrl: urlMap.get(i)!, status: "generated" }
+            : targets.includes(i)
+              ? { ...s, status: "error" }
+              : s
+        ),
+        steps: {
+          ...p.steps,
+          images: {
+            ...p.steps.images,
+            status: (data.allDone ? "generated" : "generating") as "generated" | "generating",
+          },
+        },
+      }));
+      const failed = results.filter((r) => r.error);
+      if (failed.length) {
+        setError(`일부 씬 생성 실패: ${failed.map((f) => `씬${f.sceneIndex + 1}`).join(", ")}`);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "이미지 생성 실패");
@@ -1068,22 +1096,20 @@ export default function Studio({
     }
   }
 
-  // 선택한 씬들만 순차 생성/리롤. (병렬은 프로젝트 통째 저장이라 last-write-wins 위험)
+  // 씬1 이후 이미지 없는 씬들을 병렬 생성.
+  async function generateAllScenes() {
+    const targets = project.scenes
+      .map((_, i) => i)
+      .filter((i) => i >= 1 && !project.scenes[i].imageUrl && !skipInBatch(i));
+    await runImageBatch(targets, "images-all");
+  }
+
+  // 선택한 씬들만 병렬 생성/리롤.
   async function generateSelectedScenes() {
-    if (selectedScenes.size === 0 || busy !== null) return;
-    setError(null);
-    setBusy("images-selected");
-    try {
-      for (const i of [...selectedScenes].sort((a, b) => a - b)) {
-        if (i < 1 || i >= project.scenes.length) continue;
-        if (skipInBatch(i)) continue;
-        await generateOneScene(i);
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "이미지 생성 실패");
-    } finally {
-      setBusy(null);
-    }
+    const targets = [...selectedScenes]
+      .filter((i) => i >= 1 && i < project.scenes.length && !skipInBatch(i))
+      .sort((a, b) => a - b);
+    await runImageBatch(targets, "images-selected");
   }
 
   async function approveImages() {
@@ -1162,8 +1188,8 @@ export default function Studio({
     }
   }
 
-  // 한 씬: 제출 → 완료까지 폴링. 제출 직후 로컬 상태를 generating 으로 표시.
-  async function submitAndPollVideo(sceneIndex: number): Promise<void> {
+  // 한 씬 제출만(빠름). 제출 직후 로컬을 generating 으로 표시.
+  async function submitVideoOnly(sceneIndex: number): Promise<void> {
     const data = await call("/api/video/scene", {
       projectId: project.id,
       sceneIndex,
@@ -1179,6 +1205,11 @@ export default function Studio({
       ),
       steps: { ...p.steps, videos: { ...p.steps.videos, status: "generating" } },
     }));
+  }
+
+  // 한 씬: 제출 → 완료까지 폴링.
+  async function submitAndPollVideo(sceneIndex: number): Promise<void> {
+    await submitVideoOnly(sceneIndex);
     await pollVideoUntilDone(sceneIndex);
   }
 
@@ -1196,17 +1227,27 @@ export default function Studio({
     }
   }
 
-  // 비디오 없는 씬들을 순차 생성(병렬 금지 — last-write-wins 방지).
+  // 비디오 없는 씬들을 병렬 생성: 전부 제출(빠름) → fal 이 병렬 처리 → 동시 폴링.
+  // (폴링 완료 저장은 서버가 재읽기-병합이라 동시 완료에 안전.)
   async function generateAllVideos() {
     setError(null);
     setBusy("videos-all");
     try {
-      for (let i = 0; i < project.scenes.length; i++) {
-        if (project.scenes[i].videoUrl) continue;
-        if (project.scenes[i].videoSource === "upload") continue; // 직접 업로드 대기 중
-        setActiveVideo(i);
-        await submitAndPollVideo(i);
+      const targets = project.scenes
+        .map((_, i) => i)
+        .filter((i) => !project.scenes[i].videoUrl && project.scenes[i].videoSource !== "upload");
+      // 1) 전부 제출(순차·빠름). 한 씬 제출이 실패해도 나머지는 계속.
+      const submitted: number[] = [];
+      for (const i of targets) {
+        try {
+          await submitVideoOnly(i);
+          submitted.push(i);
+        } catch (e) {
+          setError(e instanceof Error ? e.message : `씬${i + 1} 제출 실패`);
+        }
       }
+      // 2) 제출된 씬들을 동시 폴링.
+      await Promise.all(submitted.map((i) => pollVideoUntilDone(i)));
     } catch (e) {
       setError(e instanceof Error ? e.message : "비디오 생성 실패");
     } finally {
