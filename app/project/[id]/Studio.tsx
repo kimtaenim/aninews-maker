@@ -775,16 +775,15 @@ export default function Studio({
   }
 
   // 편집 버퍼 + 생성한 값(prompt/motion)을 합쳐 서버에 저장하고 project·버퍼 동기화.
-  async function saveMerged(merged: EditScene[]) {
-    const data = await call("/api/script/scenes", { projectId: project.id, scenes: merged });
-    const saved = data.scenes as Scene[];
+  // 라우트가 저장한 씬을 project·편집 버퍼에 반영(단계 상태는 라우트가 보존).
+  function applySavedScenes(saved: Scene[]) {
     setProject((p) => ({ ...p, scenes: saved }));
     setScenes(saved.map(toEdit));
     setDirty(false);
   }
 
-  // 3·4단계: 씬별 한글 이미지 프롬프트 생성 → 버퍼에 채우고 곧바로 저장
-  // (이미지 생성이 저장본을 읽으므로). indices 로 대상 씬 지정(키프레임=[0]).
+  // 3·4단계: 씬별 한글 이미지 프롬프트 생성·저장. 라우트가 단계 상태를 안 건드리므로
+  // 승인 후 생성해도 승인이 풀리지 않는다. indices 로 대상 씬 지정(키프레임=[0]).
   async function genImagePrompts(indices: number[], action: string) {
     const targets = indices
       .map((i) => ({ index: i, narration: (scenes[i]?.narration ?? "").trim() }))
@@ -800,12 +799,7 @@ export default function Studio({
         projectId: project.id,
         scenes: targets,
       });
-      const map = new Map<number, string>(
-        (data.prompts as { index: number; prompt: string }[]).map((p) => [p.index, p.prompt])
-      );
-      await saveMerged(
-        scenes.map((s, i) => (map.has(i) ? { ...s, imagePrompt: map.get(i)! } : s))
-      );
+      applySavedScenes(data.scenes as Scene[]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "프롬프트 생성 실패");
     } finally {
@@ -813,7 +807,7 @@ export default function Studio({
     }
   }
 
-  // 5단계: 씬별 영문 모션 생성 → 버퍼에 채우고 저장.
+  // 5단계: 씬별 영문 모션 생성·저장(단계 상태 보존).
   async function genMotions(indices: number[], action: string) {
     const targets = indices
       .map((i) => ({ index: i, narration: (scenes[i]?.narration ?? "").trim() }))
@@ -829,12 +823,7 @@ export default function Studio({
         projectId: project.id,
         scenes: targets,
       });
-      const map = new Map<number, string>(
-        (data.motions as { index: number; motion: string }[]).map((m) => [m.index, m.motion])
-      );
-      await saveMerged(
-        scenes.map((s, i) => (map.has(i) ? { ...s, motion: map.get(i)! } : s))
-      );
+      applySavedScenes(data.scenes as Scene[]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "모션 생성 실패");
     } finally {

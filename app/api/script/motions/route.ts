@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getProject } from "@/lib/projectStore";
+import { getProject, saveProject } from "@/lib/projectStore";
 import { generateMotions, type SceneInput } from "@/lib/sceneFill";
 import { formatKrw } from "@/lib/cost";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-// 5단계 — 씬별 영문 모션 프롬프트 생성. 저장은 안 하고 값만 반환.
+// 5단계 — 씬별 영문 모션 프롬프트 생성·저장. 편집 저장과 달리 단계 상태는 안 건드림.
 // body: { projectId, scenes: [{ index, narration }] }
 export async function POST(req: NextRequest) {
   let body: { projectId?: string; scenes?: SceneInput[] };
@@ -33,11 +33,18 @@ export async function POST(req: NextRequest) {
 
   try {
     const { motions, costUsd } = await generateMotions({ projectId, scenes });
+    const narrMap = new Map(scenes.map((s) => [s.index, s.narration.trim()]));
+    project.scenes = project.scenes.map((sc) => {
+      const motion = motions.get(sc.index);
+      if (motion === undefined) return sc;
+      const narration = narrMap.get(sc.index);
+      return { ...sc, motion, ...(narration ? { narration } : {}) };
+    });
+    project.updatedAt = Date.now();
+    await saveProject(project);
     return NextResponse.json({
       ok: true,
-      motions: scenes
-        .map((s) => ({ index: s.index, motion: motions.get(s.index) ?? "" }))
-        .filter((m) => m.motion),
+      scenes: project.scenes,
       cost: formatKrw(costUsd),
     });
   } catch (e) {

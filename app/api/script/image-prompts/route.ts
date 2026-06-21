@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getProject } from "@/lib/projectStore";
+import { getProject, saveProject } from "@/lib/projectStore";
 import { generateImagePrompts, type SceneInput } from "@/lib/sceneFill";
 import { formatKrw } from "@/lib/cost";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-// 3·4단계 — 씬별 한글 이미지 프롬프트 생성(모드=styleBible 반영). 저장은 안 하고
-// 값만 반환 → 클라이언트가 편집 버퍼에 채우고 "편집 저장"으로 저장.
-// body: { projectId, scenes: [{ index, narration }] }
+// 3·4단계 — 씬별 한글 이미지 프롬프트 생성·저장(모드=styleBible 반영). 편집 저장
+// (/api/script/scenes)과 달리 단계 상태(script approved 등)는 건드리지 않는다 —
+// 승인 후 프롬프트 생성해도 승인이 풀리지 않게. body: { projectId, scenes: [{index, narration}] }
 export async function POST(req: NextRequest) {
   let body: { projectId?: string; scenes?: SceneInput[] };
   try {
@@ -38,11 +38,19 @@ export async function POST(req: NextRequest) {
       scenes,
       styleBible: project.styleBible,
     });
+    // 생성된 프롬프트 + 보낸 나레이션을 해당 씬에 저장(나머지 필드·단계 상태 보존).
+    const narrMap = new Map(scenes.map((s) => [s.index, s.narration.trim()]));
+    project.scenes = project.scenes.map((sc) => {
+      const prompt = prompts.get(sc.index);
+      if (prompt === undefined) return sc;
+      const narration = narrMap.get(sc.index);
+      return { ...sc, imagePrompt: prompt, ...(narration ? { narration } : {}) };
+    });
+    project.updatedAt = Date.now();
+    await saveProject(project);
     return NextResponse.json({
       ok: true,
-      prompts: scenes
-        .map((s) => ({ index: s.index, prompt: prompts.get(s.index) ?? "" }))
-        .filter((p) => p.prompt),
+      scenes: project.scenes,
       cost: formatKrw(costUsd),
     });
   } catch (e) {
