@@ -2544,7 +2544,14 @@ export default function Studio({
                     ) : (
                       <span className="mt-2 block text-[11px] text-zinc-400">미생성</span>
                     )}
-                    {/* 음성 전용 스크립트(선택). 자막은 위 나레이션 그대로, 음성만 다르게. */}
+                    {/* 음성 전용 스크립트. 자막은 위 나레이션, 이 칸은 실제 읽는 텍스트. */}
+                    <span className="mt-2 block text-[11px] font-medium text-zinc-500">
+                      🔊 음성 스크립트{" "}
+                      <span className="font-normal text-zinc-400">
+                        — 실제로 읽는 텍스트(나레이션으로 미리 채움). 자막과 다르게 하려면
+                        여기를 고치세요.
+                      </span>
+                    </span>
                     <textarea
                       value={ttsScripts[sc.index] ?? ""}
                       onChange={(e) => {
@@ -2559,7 +2566,7 @@ export default function Studio({
                       }}
                       rows={2}
                       placeholder={sc.narration}
-                      className={`${fieldCls} mt-2`}
+                      className={`${fieldCls} mt-1`}
                     />
                     <p className="mt-1 text-[10px] text-zinc-400">
                       {(ttsScripts[sc.index] ?? "").trim()
