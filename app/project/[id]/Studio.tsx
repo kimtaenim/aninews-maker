@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import {
   STEP_ORDER,
   DEFAULT_SUBTITLE,
@@ -14,12 +15,7 @@ import {
 import { upload } from "@vercel/blob/client";
 import { estimateDuration } from "@/lib/scenes";
 import type { SourceMaterial } from "@/lib/source";
-import {
-  TARGET_LANGUAGES,
-  getLang,
-  dubNarration,
-  dubAudioUrl,
-} from "@/lib/languages";
+import { TARGET_LANGUAGES, getLang } from "@/lib/languages";
 import Spinner from "@/components/Spinner";
 import ScenePreview from "./ScenePreview";
 
@@ -208,31 +204,25 @@ export default function Studio({
 
   // 자막 설정 (프로젝트 일괄)
   const [sub, setSub] = useState<SubtitleSettings>(initial.subtitle ?? DEFAULT_SUBTITLE);
-  const [composeLang, setComposeLang] = useState<string>("ko");
+
+  const router = useRouter();
+  // 다른 언어판(별도 프로젝트) 생성 상태.
+  const [creatingVersion, setCreatingVersion] = useState<string | null>(null);
+  const [versionError, setVersionError] = useState<string | null>(null);
+  // 합성/표시용 이 프로젝트의 언어 라벨. 원본은 한국어판, 다국어판은 그 언어판.
+  const composeLangLabel = initial.lang
+    ? `${getLang(initial.lang)?.label ?? initial.lang}판`
+    : "한국어판";
 
   // ── 보이스오버 엔진(프로젝트별) — env 기본값을 덮어쓴다 ───────────────────────
   const [ttsProvider, setTtsProvider] = useState<string>(
     initial.ttsProvider ?? tts?.default ?? "elevenlabs"
   );
-  // 다국어판 언어 가용성 — 선택한 엔진과 voice 설정에 연동.
-  //   타입캐스트: 언어 전용 voice(TYPECAST_VOICE_ID_<LANG>) 또는 공용 voice 가 있어야 함.
-  //   일레븐랩스: 한 voice 가 모든 언어를 말하므로 키만 있으면 전 언어 가능.
-  function dubLangAvailable(code: string, provider: string = ttsProvider): boolean {
-    if (provider === "typecast") {
-      return !!(tts?.typecastVoices?.perLang?.[code] || tts?.typecastVoices?.fallback);
-    }
-    return tts?.configured?.elevenlabs ?? true;
-  }
   async function saveTtsProvider(p: "elevenlabs" | "typecast") {
     if (p === ttsProvider) return;
     const prev = ttsProvider;
     setTtsProvider(p);
     setProject((pr) => ({ ...pr, ttsProvider: p }));
-    // 엔진을 바꿔 현재 선택 언어가 불가해지면 가능한 첫 언어로 옮긴다.
-    if (!dubLangAvailable(dubLang, p)) {
-      const first = TARGET_LANGUAGES.find((L) => dubLangAvailable(L.code, p));
-      if (first) setDubLang(first.code);
-    }
     try {
       await call("/api/project/tts", { projectId: project.id, provider: p });
     } catch (e) {
@@ -411,95 +401,23 @@ export default function Studio({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project.scenes]);
 
-  // ── 다국어판 (영어/스페인어/일본어…) ─────────────────────────────────────────
-  // 언어별로 번역 → 로컬 편집 → 저장. 더빙(dub[lang].audioUrl)은 언어 트랙으로 별도 생성.
-  const [dubLang, setDubLang] = useState<string>(
-    () => TARGET_LANGUAGES.find((L) => dubLangAvailable(L.code))?.code ?? TARGET_LANGUAGES[0].code
-  );
-  // 편집 버퍼: { [langCode]: { [sceneIndex]: text } }
-  const [dubScripts, setDubScripts] = useState<Record<string, Record<number, string>>>(() =>
-    Object.fromEntries(
-      TARGET_LANGUAGES.map((L) => [
-        L.code,
-        Object.fromEntries(initial.scenes.map((s) => [s.index, dubNarration(s, L.code)])),
-      ])
-    )
-  );
-  const [dubDirty, setDubDirty] = useState<Record<string, boolean>>({});
-
-  async function translateDub(lang: string) {
-    setError(null);
-    setBusy(`translate-${lang}`);
+  // ── 다른 언어판 만들기 — 번역된 새 프로젝트를 생성한다(별도 라이브러리 항목) ──────
+  async function createVersion(lang: string) {
+    if (creatingVersion) return;
+    setCreatingVersion(lang);
+    setVersionError(null);
     try {
-      const data = await call("/api/subtitle/translate", { projectId: project.id, lang });
-      const rows = (data.scenes as Array<{ index: number; narration?: string }>) ?? [];
-      const map = Object.fromEntries(rows.map((r) => [r.index, r.narration ?? ""]));
-      setDubScripts((prev) => ({ ...prev, [lang]: { ...prev[lang], ...map } }));
-      setProject((p) => ({
-        ...p,
-        scenes: p.scenes.map((s) => ({
-          ...s,
-          dub: { ...s.dub, [lang]: { ...s.dub?.[lang], narration: map[s.index] ?? dubNarration(s, lang) } },
-        })),
-      }));
-      setDubDirty((d) => ({ ...d, [lang]: false }));
+      const r = await fetch("/api/project/translate-version", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId: project.id, lang }),
+      });
+      const data = await r.json();
+      if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      router.push(`/project/${data.projectId}`); // 새 언어판 페이지로 이동
     } catch (e) {
-      setError(e instanceof Error ? e.message : "번역 실패");
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function saveDubScripts(lang: string) {
-    setError(null);
-    setBusy(`save-${lang}`);
-    try {
-      const payload = project.scenes.map((s) => ({
-        index: s.index,
-        narration: dubScripts[lang]?.[s.index] ?? "",
-      }));
-      await call("/api/i18n/script", { projectId: project.id, lang, scenes: payload });
-      setProject((p) => ({
-        ...p,
-        scenes: p.scenes.map((s) => ({
-          ...s,
-          dub: { ...s.dub, [lang]: { ...s.dub?.[lang], narration: dubScripts[lang]?.[s.index] ?? "" } },
-        })),
-      }));
-      setDubDirty((d) => ({ ...d, [lang]: false }));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "스크립트 저장 실패");
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function generateOneAudioDub(lang: string, sceneIndex: number): Promise<void> {
-    const data = await call("/api/audio/scene", { projectId: project.id, sceneIndex, lang });
-    setProject((p) => ({
-      ...p,
-      scenes: p.scenes.map((s, i) =>
-        i === sceneIndex
-          ? { ...s, dub: { ...s.dub, [lang]: { ...s.dub?.[lang], audioUrl: data.url as string } } }
-          : s
-      ),
-    }));
-  }
-
-  async function generateAllAudioDub(lang: string) {
-    // 저장 안 한 편집이 있으면 먼저 저장(더빙은 저장된 번역 기준).
-    if (dubDirty[lang]) await saveDubScripts(lang);
-    setError(null);
-    setBusy(`audio-${lang}-all`);
-    try {
-      for (let i = 0; i < project.scenes.length; i++) {
-        if (!(dubScripts[lang]?.[project.scenes[i].index] ?? "").trim()) continue;
-        await generateOneAudioDub(lang, i);
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "더빙 실패");
-    } finally {
-      setBusy(null);
+      setVersionError(e instanceof Error ? e.message : "다국어판 생성 실패");
+      setCreatingVersion(null);
     }
   }
   async function saveSubtitle(patch: Partial<SubtitleSettings>) {
@@ -553,7 +471,7 @@ export default function Studio({
     setError(null);
     setBusy("compose");
     try {
-      await call("/api/compose", { projectId: project.id, lang: composeLang });
+      await call("/api/compose", { projectId: project.id, lang: "ko" });
       const now = Date.now();
       composeStartRef.current = now;
       setProject((p) => ({
@@ -2701,142 +2619,29 @@ export default function Studio({
         </section>
       )}
 
-      {/* 다국어판 — 미리보기와 합성 사이. 언어를 골라 자막 번역 + 더빙을 별도 트랙으로. */}
-      {project.scenes.some((s) => s.videoUrl) && (
+      {/* 다른 언어판 만들기 — 번역한 새 프로젝트(별도 라이브러리 항목)를 만든다. */}
+      {!project.lang && hasScenes && (
         <section className="mt-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 p-5">
-          <h2 className="text-sm font-semibold">🌐 다국어판</h2>
+          <h2 className="text-sm font-semibold">🌐 다른 언어판 만들기</h2>
           <p className="mt-1 text-[11px] text-zinc-400">
-            한국어 영상은 그대로 두고, 언어별 자막 번역 + 더빙을 따로 만듭니다. 합성 때
-            한국어판/각 언어판 중 하나를 골라 구워요.
+            고른 언어로 나레이션을 번역한 <span className="font-medium">새 프로젝트</span>를
+            만듭니다. 이미지 프롬프트·모션·스타일은 가져오고, 영상·음성은 새 프로젝트에서
+            따로 생성해요(라이브러리에 별도 저장).
           </p>
-
-          {/* 언어 탭 — voice 설정된 언어만 활성(선택 엔진에 연동) + 더빙 상태 뱃지 */}
-          <div className="mt-3 inline-flex flex-wrap rounded-xl border border-zinc-200 dark:border-zinc-800 p-0.5 text-xs">
-            {TARGET_LANGUAGES.map((L) => {
-              const dubbed = project.scenes.some((s) => dubAudioUrl(s, L.code));
-              const available = dubLangAvailable(L.code);
-              return (
-                <button
-                  key={L.code}
-                  type="button"
-                  onClick={() => available && setDubLang(L.code)}
-                  disabled={!available}
-                  title={
-                    available
-                      ? ""
-                      : ttsProvider === "typecast"
-                        ? `타입캐스트에 ${L.label} voice 가 없어요 (.env 에 TYPECAST_VOICE_ID_${L.code.toUpperCase()})`
-                        : "일레븐랩스 API 키가 없어요"
-                  }
-                  className={`rounded-lg px-3 py-1.5 font-medium transition-colors disabled:opacity-40 ${dubLang === L.code ? "bg-accent text-white" : "text-zinc-500"}`}
-                >
-                  {L.label}
-                  {dubbed && <span className={dubLang === L.code ? "ml-1" : "ml-1 text-accent"}>🔊</span>}
-                  {!available && <span className="ml-1 text-[10px]">·voice 없음</span>}
-                </button>
-              );
-            })}
-          </div>
-          <p className="mt-1 text-[10px] text-zinc-400">
-            {ttsProvider === "typecast"
-              ? "타입캐스트 — voice(TYPECAST_VOICE_ID_*)가 설정된 언어만 켜집니다."
-              : "일레븐랩스 — 한 voice가 전 언어를 처리합니다."}
-          </p>
-
           <div className="mt-3 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => translateDub(dubLang)}
-              disabled={busy !== null}
-              className="rounded-lg border border-accent text-accent px-3 py-1.5 text-xs font-medium hover:bg-accent/10 disabled:opacity-40"
-            >
-              {busy === `translate-${dubLang}` ? (
-                <Busy>번역 중…</Busy>
-              ) : (
-                `① Claude ${getLang(dubLang)?.label ?? ""} 번역 생성`
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={() => saveDubScripts(dubLang)}
-              disabled={busy !== null || !dubDirty[dubLang]}
-              className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-1.5 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
-            >
-              {busy === `save-${dubLang}` ? (
-                <Busy>저장 중…</Busy>
-              ) : dubDirty[dubLang] ? (
-                "번역 저장"
-              ) : (
-                "저장됨"
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={() => generateAllAudioDub(dubLang)}
-              disabled={busy !== null || !dubLangAvailable(dubLang)}
-              title={dubLangAvailable(dubLang) ? "" : "이 언어 voice 가 없어 더빙할 수 없어요"}
-              className="rounded-lg border border-accent text-accent px-3 py-1.5 text-xs font-medium hover:bg-accent/10 disabled:opacity-40"
-            >
-              {busy === `audio-${dubLang}-all` ? (
-                <Busy>더빙 중…</Busy>
-              ) : (
-                `② ${getLang(dubLang)?.label ?? ""} 더빙 생성 (전체)`
-              )}
-            </button>
-          </div>
-
-          {/* 번역 스크립트 편집 (선택 언어) */}
-          <div className="mt-3 grid gap-2">
-            {project.scenes.map((sc, i) => (
-              <label key={i} className="grid gap-1">
-                <span className="text-[10px] text-zinc-500">
-                  씬 {i + 1}
-                  <span className="ml-1 text-zinc-400">· {sc.narration}</span>
-                  <span className={`ml-2 ${dubAudioUrl(sc, dubLang) ? "text-accent" : "text-zinc-400"}`}>
-                    {dubAudioUrl(sc, dubLang) ? "🔊 더빙됨" : "더빙 없음"}
-                  </span>
-                </span>
-                <textarea
-                  value={dubScripts[dubLang]?.[sc.index] ?? ""}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setDubScripts((prev) => ({
-                      ...prev,
-                      [dubLang]: { ...prev[dubLang], [sc.index]: v },
-                    }));
-                    setDubDirty((d) => ({ ...d, [dubLang]: true }));
-                  }}
-                  rows={2}
-                  placeholder={`${getLang(dubLang)?.english ?? ""} narration… (①로 자동 번역 후 다듬기)`}
-                  className={fieldCls}
-                />
-              </label>
+            {TARGET_LANGUAGES.map((L) => (
+              <button
+                key={L.code}
+                type="button"
+                onClick={() => createVersion(L.code)}
+                disabled={creatingVersion !== null}
+                className="rounded-xl border border-accent text-accent px-4 py-2 text-sm font-medium hover:bg-accent/10 disabled:opacity-40"
+              >
+                {creatingVersion === L.code ? <Busy>만드는 중…</Busy> : L.label}
+              </button>
             ))}
           </div>
-
-          {/* 다국어 미리보기 — 선택 언어 자막 + 더빙 */}
-          {project.scenes.some((s) => dubAudioUrl(s, dubLang) || dubNarration(s, dubLang)) && (
-            <>
-              <h3 className="mt-4 text-xs font-semibold text-zinc-500">
-                다국어 미리보기 ({getLang(dubLang)?.label})
-              </h3>
-              <ol className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {project.scenes.map((sc, i) =>
-                  sc.videoUrl ? (
-                    <ScenePreview
-                      key={i}
-                      index={i}
-                      videoUrl={sc.videoUrl}
-                      audioUrl={dubAudioUrl(sc, dubLang)}
-                      subtitle={sc.narration}
-                      subtitleEn={dubScripts[dubLang]?.[sc.index] || dubNarration(sc, dubLang)}
-                      sub={{ ...sub, lang: "en" }}
-                    />
-                  ) : null
-                )}
-              </ol>
-            </>
-          )}
+          {versionError && <p className="mt-2 text-xs text-red-600">{versionError}</p>}
         </section>
       )}
 
@@ -2895,32 +2700,6 @@ export default function Studio({
             <p className="mt-2 text-xs text-red-600">{project.steps.compose.error}</p>
           )}
 
-          {/* 언어 선택 — 한국어판 / 각 언어판. 언어판은 그 언어 더빙이 있어야 활성화. */}
-          <div className="mt-3 inline-flex flex-wrap rounded-xl border border-zinc-200 dark:border-zinc-800 p-0.5 text-xs">
-            <button
-              type="button"
-              onClick={() => setComposeLang("ko")}
-              className={`rounded-lg px-3 py-1.5 font-medium transition-colors ${composeLang === "ko" ? "bg-accent text-white" : "text-zinc-500"}`}
-            >
-              한국어판
-            </button>
-            {TARGET_LANGUAGES.map((L) => {
-              const ready = project.scenes.some((s) => dubAudioUrl(s, L.code));
-              return (
-                <button
-                  key={L.code}
-                  type="button"
-                  onClick={() => ready && setComposeLang(L.code)}
-                  disabled={!ready}
-                  title={ready ? "" : `위 다국어판에서 ${L.label} 더빙을 먼저 생성하세요`}
-                  className={`rounded-lg px-3 py-1.5 font-medium transition-colors disabled:opacity-40 ${composeLang === L.code ? "bg-accent text-white" : "text-zinc-500"}`}
-                >
-                  {L.label}판
-                </button>
-              );
-            })}
-          </div>
-
           {(() => {
             const n = project.scenes.filter((s) => s.videoUrl).length;
             const estMin = Math.max(1, Math.ceil((n * 35 + 30) / 60)); // 씬당 ~35초 + 마무리
@@ -2932,7 +2711,7 @@ export default function Studio({
               return (
                 <div className="mt-3">
                   <p className="inline-flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-300">
-                    <Spinner /> 합성 중… {composeLang === "ko" ? "한국어판" : `${getLang(composeLang)?.label ?? composeLang}판`} ·{" "}
+                    <Spinner /> 합성 중… {composeLangLabel} ·{" "}
                     <span className="tabular-nums font-medium">{fmt(composeElapsed)}</span>
                     <span className="text-zinc-400">/ 예상 ~{estMin}분</span>
                   </p>
@@ -2973,7 +2752,7 @@ export default function Studio({
                   className="mt-2 w-full rounded-xl bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-semibold py-3 transition-colors"
                 >
                   {project.finalVideoUrl ? "🎬 다시 합성" : "🎬 최종 합성하기"} (
-                  {composeLang === "ko" ? "한국어판" : `${getLang(composeLang)?.label ?? composeLang}판`})
+                  {composeLangLabel})
                 </button>
               </>
             );

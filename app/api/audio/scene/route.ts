@@ -44,10 +44,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "sceneIndex 범위 밖" }, { status: 422 });
   }
   const scene = project.scenes[sceneIndex];
-  // lang="ko"(또는 미지정) → 한국어판. 그 외 등록 언어 → 다국어판 더빙.
+  // lang="ko"(또는 미지정) → 이 프로젝트의 기본(primary) 트랙. 그 외 등록 언어 →
+  // [레거시] 같은 프로젝트 안 다국어판 더빙. 다국어 개편 후에는 언어판이 별도
+  // 프로젝트라, primary 트랙이라도 voice 는 project.lang(예: vi)으로 합성한다.
   const isDub = isTargetLang(body.lang);
   const lang = isDub ? (body.lang as string) : "ko";
   const langDef = isDub ? getLang(lang) : undefined;
+  // 합성 voice 언어: 더빙이면 그 언어, primary 면 프로젝트 콘텐츠 언어(없으면 ko).
+  const voiceLang = isDub ? lang : project.lang || "ko";
   // 한국어 음성은 ttsScript(음성 전용 오버라이드)가 있으면 그걸, 없으면 narration(자막)을 쓴다.
   // 다국어판은 해당 언어 번역(dub[lang].narration)을 쓴다.
   // 클라이언트가 text 를 명시하면 항상 그게 우선(기존 동작 유지).
@@ -77,7 +81,7 @@ export async function POST(req: NextRequest) {
   try {
     const { audioBuffer, costUsd, vendor, model } = await synthesize({
       text,
-      lang,
+      lang: voiceLang,
       provider: project.ttsProvider,
     });
     const { url } = await uploadAsset(
