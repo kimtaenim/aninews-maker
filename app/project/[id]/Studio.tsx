@@ -847,29 +847,17 @@ export default function Studio({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [imagesApproved, project.scenes]);
 
-  // 텍스트 대비 짧은 씬 길이 자동 조정 — 승인 게이트에서 확인받을 목록.
-  const [durationAdjustments, setDurationAdjustments] = useState<
-    { index: number; from: number; to: number }[] | null
-  >(null);
-
-  async function approveScript(confirmAdjustments = false) {
+  async function approveScript() {
     if (dirty && !confirm("저장 안 한 편집이 있습니다. 저장하지 않고 승인할까요?")) return;
     setError(null);
     setBusy("approve-script");
     try {
+      // 텍스트 대비 짧은 씬 길이는 묻지 않고 자동 적용(confirmAdjustments) 후 승인.
       const data = await call("/api/step/approve", {
         projectId: project.id,
         step: "script",
-        confirmAdjustments,
+        confirmAdjustments: true,
       });
-      // 조정 필요 → 모달로 확인받고 보류(아직 승인 안 됨).
-      if (data.approved === false && Array.isArray(data.pendingAdjustments)) {
-        setDurationAdjustments(
-          data.pendingAdjustments as { index: number; from: number; to: number }[]
-        );
-        return;
-      }
-      // 승인됨 (+ 조정 적용됐으면 갱신된 scenes 로 동기화)
       const savedScenes = data.scenes as Scene[] | undefined;
       setProject((p) => ({
         ...p,
@@ -877,7 +865,6 @@ export default function Studio({
         steps: { ...p.steps, script: { ...p.steps.script, status: "approved" } },
       }));
       if (savedScenes) setScenes(savedScenes.map(toEdit));
-      setDurationAdjustments(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "승인 실패");
     } finally {
@@ -2897,50 +2884,6 @@ export default function Studio({
         </p>
       </div>
 
-      {/* 씬 길이 자동 조정 확인 모달 — 텍스트가 길어 음성이 안 들어가는 씬만 늘린다. */}
-      {durationAdjustments && durationAdjustments.length > 0 && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-zinc-900 p-5 shadow-xl">
-            <h3 className="text-sm font-semibold">씬 길이 자동 조정</h3>
-            <p className="mt-2 text-xs text-zinc-600 dark:text-zinc-400">
-              다음 씬들의 길이가 텍스트(나레이션)에 비해 짧아 자동으로 늘립니다. 씬 분할이나
-              이미지 변경은 없습니다.
-            </p>
-            <ul className="mt-3 grid gap-1.5 max-h-60 overflow-y-auto">
-              {durationAdjustments.map((a) => (
-                <li
-                  key={a.index}
-                  className="flex items-center justify-between rounded-lg bg-zinc-50 dark:bg-zinc-800 px-3 py-2 text-sm"
-                >
-                  <span className="text-zinc-600 dark:text-zinc-300">씬 {a.index + 1}</span>
-                  <span className="font-medium">
-                    {a.from}초 <span className="text-zinc-400">→</span>{" "}
-                    <span className="text-accent">{a.to}초</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <div className="mt-4 flex gap-2">
-              <button
-                type="button"
-                onClick={() => setDurationAdjustments(null)}
-                disabled={busy === "approve-script"}
-                className="flex-1 rounded-xl border border-zinc-300 dark:border-zinc-700 py-2.5 text-sm font-medium hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-40"
-              >
-                취소
-              </button>
-              <button
-                type="button"
-                onClick={() => approveScript(true)}
-                disabled={busy === "approve-script"}
-                className="flex-1 rounded-xl bg-accent hover:bg-accent-strong disabled:opacity-40 text-white text-sm font-semibold py-2.5"
-              >
-                {busy === "approve-script" ? <Busy>조정 중…</Busy> : "조정 후 승인"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* 썸네일 확대 라이트박스 — 아무 곳이나 누르면 닫힘. */}
       {zoomUrl && (
