@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Spinner from "@/components/Spinner";
 import type { RssItem, RssCategory } from "@/lib/rss";
 import type { ArticleBriefing } from "@/lib/briefing";
+import type { WikiSearchResult } from "@/lib/wikipedia";
 import { ACCEPT_ATTR, MAX_FILE_SIZE, MAX_TOTAL_SIZE } from "@/lib/attachments";
 
 type Mode = "rss" | "url" | "wiki" | "text" | "file";
@@ -21,6 +22,8 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
   const [mode, setMode] = useState<Mode>("rss");
   const [url, setUrl] = useState("");
   const [wiki, setWiki] = useState("");
+  const [wikiResults, setWikiResults] = useState<WikiSearchResult[] | null>(null);
+  const [wikiSearching, setWikiSearching] = useState(false);
   const [text, setText] = useState("");
   const [files, setFiles] = useState<File[]>([]);
 
@@ -177,8 +180,61 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
     }
   }
 
+  // 위키 검색 — 검색어로 한·영 위키 후보를 받아 보여준다. URL을 바로 넣었으면 검색 없이 생성.
+  async function searchWiki() {
+    const q = wiki.trim();
+    if (!q) {
+      setError("검색어나 위키 주소를 입력해주세요");
+      return;
+    }
+    if (/wikipedia\.org\/wiki\//i.test(q)) {
+      void submitWikiUrl(q);
+      return;
+    }
+    setError(null);
+    setWikiSearching(true);
+    try {
+      const r = await fetch("/api/source/wiki-search", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ query: q }),
+      });
+      const data = await r.json();
+      if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      const results = data.results as WikiSearchResult[];
+      setWikiResults(results);
+      if (results.length === 0) {
+        setError("관련 위키 문서를 못 찾았어요. 다른 검색어를 시도해보세요.");
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "위키 검색 실패");
+    } finally {
+      setWikiSearching(false);
+    }
+  }
+
+  // 고른 위키 문서로 프로젝트 생성.
+  async function submitWikiUrl(urlOrTitle: string) {
+    setError(null);
+    setLoading(true);
+    try {
+      const r = await fetch("/api/source/from-wiki", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ input: urlOrTitle }),
+      });
+      const data = await r.json();
+      if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      router.push(`/project/${data.projectId}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "생성 실패");
+      setLoading(false);
+    }
+  }
+
   async function submit() {
     if (mode === "file") return submitFiles();
+    if (mode === "wiki") return searchWiki();
     setError(null);
     let endpoint = "/api/source/from-url";
     let payload: Record<string, unknown>;
@@ -200,13 +256,6 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
         return;
       }
       payload = { url };
-    } else if (mode === "wiki") {
-      if (!wiki.trim()) {
-        setError("위키백과 주소나 표제어를 입력해주세요");
-        return;
-      }
-      endpoint = "/api/source/from-wiki";
-      payload = { input: wiki };
     } else {
       if (!text.trim()) {
         setError("텍스트를 입력해주세요");
@@ -451,18 +500,73 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
       )}
 
       {mode === "wiki" && (
-        <div className="grid gap-2">
-          <input
-            type="text"
-            placeholder="위키백과 주소 붙여넣기 또는 표제어 (예: 인공지능)"
-            value={wiki}
-            onChange={(e) => setWiki(e.target.value)}
-            className={inputCls}
-          />
+        <div className="grid gap-3">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="검색어 (예: 냉면, 인공지능) 또는 위키 주소"
+              value={wiki}
+              onChange={(e) => {
+                setWiki(e.target.value);
+                setWikiResults(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void searchWiki();
+                }
+              }}
+              className={inputCls + " flex-1"}
+            />
+            <button
+              type="button"
+              onClick={() => void searchWiki()}
+              disabled={wikiSearching}
+              className="shrink-0 rounded-xl bg-accent hover:bg-accent-strong disabled:opacity-50 text-white text-sm font-medium px-4"
+            >
+              {wikiSearching ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <Spinner /> 검색 중…
+                </span>
+              ) : (
+                "검색"
+              )}
+            </button>
+          </div>
           <p className="text-[11px] text-zinc-400">
-            위키백과 공식 API로 깨끗한 본문만 가져옵니다 (각주·편집 링크 없음). 표제어만
-            넣으면 한글은 한국어판, 영문은 영어판에서 찾아요.
+            한·영 위키에서 관련 문서를 찾아 보여드려요. 하나 고르면 그 문서로 영상을
+            만듭니다. (위키 주소를 바로 넣어도 됩니다.)
           </p>
+
+          {wikiResults && wikiResults.length > 0 && (
+            <ul className="grid gap-1.5 max-h-96 overflow-y-auto pr-1">
+              {wikiResults.map((r) => (
+                <li key={r.url}>
+                  <button
+                    type="button"
+                    onClick={() => void submitWikiUrl(r.url)}
+                    disabled={loading}
+                    className="w-full text-left rounded-xl border border-zinc-200 dark:border-zinc-800 p-3 hover:border-accent hover:bg-accent/5 disabled:opacity-50 transition-colors"
+                  >
+                    <p className="text-sm font-medium leading-snug">
+                      <span className="mr-1.5 rounded bg-accent/10 px-1.5 py-0.5 text-[10px] text-accent align-middle">
+                        {r.langLabel}
+                      </span>
+                      {r.title}
+                    </p>
+                    {r.snippet && (
+                      <p className="mt-1 text-xs text-zinc-500 line-clamp-2">{r.snippet}</p>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {loading && (
+            <p className="inline-flex items-center gap-1.5 text-xs text-accent">
+              <Spinner /> 선택한 문서로 만드는 중…
+            </p>
+          )}
         </div>
       )}
 
@@ -535,20 +639,23 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
-      <button
-        type="button"
-        onClick={submit}
-        disabled={loading}
-        className="rounded-2xl bg-accent hover:bg-accent-strong disabled:opacity-50 text-white font-semibold px-5 py-3.5 transition-colors"
-      >
-        {loading ? (
-          <span className="inline-flex items-center justify-center gap-1.5">
-            <Spinner /> 소스 분석 중…
-          </span>
-        ) : (
-          "다음 → 스튜디오"
-        )}
-      </button>
+      {/* 위키 모드는 자체 "검색" + 결과 클릭으로 진행하므로 이 버튼은 숨김. */}
+      {mode !== "wiki" && (
+        <button
+          type="button"
+          onClick={submit}
+          disabled={loading}
+          className="rounded-2xl bg-accent hover:bg-accent-strong disabled:opacity-50 text-white font-semibold px-5 py-3.5 transition-colors"
+        >
+          {loading ? (
+            <span className="inline-flex items-center justify-center gap-1.5">
+              <Spinner /> 소스 분석 중…
+            </span>
+          ) : (
+            "다음 → 스튜디오"
+          )}
+        </button>
+      )}
     </div>
   );
 }
