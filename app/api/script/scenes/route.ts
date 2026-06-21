@@ -83,7 +83,9 @@ export async function POST(req: NextRequest) {
   }
 
   project.scenes = scenes;
-  project.steps.script.status = "generated";
+  // 승인 상태는 보존한다 — 편집 저장(나레이션·프롬프트 수정)이 승인을 풀면 키프레임
+  // 단계가 "스크립트 먼저 승인"으로 막힌다. 스크립트를 새로 만들 때만(/api/script)
+  // generated 로 되돌린다.
   project.steps.script.updatedAt = Date.now();
   project.updatedAt = Date.now();
   await saveProject(project);
