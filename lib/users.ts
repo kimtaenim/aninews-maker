@@ -25,6 +25,12 @@ export async function createUser(email: string, passwordHash: string): Promise<U
   return user;
 }
 
+export async function updateUserPassword(email: string, passwordHash: string): Promise<void> {
+  const user = await getUser(email);
+  if (!user) return;
+  await getRedis().set(KEY(email), { ...user, passwordHash });
+}
+
 export async function listUserEmails(): Promise<string[]> {
   return (await getRedis().smembers(USERS_SET)) ?? [];
 }

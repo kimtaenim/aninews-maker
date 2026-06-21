@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUser } from "@/lib/users";
-import { verifyPassword } from "@/lib/auth";
+import { getUser, updateUserPassword } from "@/lib/users";
+import { verifyPassword, hashPassword, isLegacyHash } from "@/lib/auth";
 import { createSessionToken, SESSION_COOKIE, SESSION_MAX_AGE } from "@/lib/session";
 
 export const runtime = "nodejs";
@@ -23,6 +23,15 @@ export async function POST(req: NextRequest) {
       { ok: false, error: "이메일 또는 비밀번호가 맞지 않아요" },
       { status: 401 }
     );
+  }
+
+  // 레거시 bcrypt 해시면 빠른 scrypt 로 재해싱(다음 로그인부터 빠름).
+  if (isLegacyHash(user.passwordHash)) {
+    try {
+      await updateUserPassword(user.email, await hashPassword(password));
+    } catch {
+      /* 마이그레이션 실패는 무시(로그인은 계속) */
+    }
   }
 
   const token = await createSessionToken(user.email);
