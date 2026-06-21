@@ -6,7 +6,7 @@
 import { SignJWT, jwtVerify } from "jose";
 
 export const SESSION_COOKIE = "aninews_session";
-export const SESSION_MAX_AGE = 60 * 60 * 24 * 30; // 30일
+export const SESSION_MAX_AGE = 60 * 60 * 24 * 365; // 1년 (영구 로그인 — 로그인 시 갱신)
 const ALG = "HS256";
 
 function secret(): Uint8Array {
@@ -19,7 +19,7 @@ export async function createSessionToken(email: string): Promise<string> {
   return new SignJWT({ email })
     .setProtectedHeader({ alg: ALG })
     .setIssuedAt()
-    .setExpirationTime("30d")
+    .setExpirationTime("365d")
     .sign(secret());
 }
 

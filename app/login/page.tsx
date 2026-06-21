@@ -1,10 +1,9 @@
 "use client";
 
 import { Suspense, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 
 function LoginForm() {
-  const router = useRouter();
   const params = useSearchParams();
   const next = params.get("next") || "/";
   const [mode, setMode] = useState<"login" | "signup">("login");
@@ -25,8 +24,8 @@ function LoginForm() {
       });
       const data = await r.json();
       if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
-      router.push(next);
-      router.refresh();
+      // 새 세션 쿠키를 확실히 반영하도록 하드 이동(클라 라우터 캐시 우회).
+      window.location.href = next;
     } catch (err) {
       setError(err instanceof Error ? err.message : "실패했어요");
       setLoading(false);
