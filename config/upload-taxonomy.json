@@ -1,0 +1,11 @@
+{
+  "_comment": "Drive 업로드 파일명용 분야·언어. 분야 추가는 categories 배열에, 언어 추가는 languages 맵에(프로젝트 lang 코드 → 파일명 라벨). 한국어 원본은 lang 이 비어있어 'ko' 기본값을 쓴다.",
+  "categories": ["PARANORMAL", "NEWS", "CULTURE", "LIFE", "BUSINESS"],
+  "languages": {
+    "ko": "KO",
+    "en": "EN",
+    "ja": "JP",
+    "vi": "VI",
+    "es": "ES"
+  }
+}
