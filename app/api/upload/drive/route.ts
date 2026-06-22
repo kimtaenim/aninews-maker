@@ -67,6 +67,13 @@ export async function POST(req: NextRequest) {
     if (!r.ok) throw new Error(`영상 다운로드 실패 (HTTP ${r.status})`);
     const bytes = Buffer.from(await r.arrayBuffer());
     const { link } = await uploadVideoToDrive({ email, filename, bytes });
+    // 업로드 결과 저장 — 리로드해도 "보기"로 보이고, 재합성(finalVideoUrl 변경) 시
+    // 다시 업로드 버튼이 뜨도록 업로드 당시 URL 도 함께 기록.
+    const fresh = (await getProject(projectId)) ?? project;
+    fresh.driveLink = link;
+    fresh.driveUploadedUrl = fresh.finalVideoUrl;
+    fresh.updatedAt = Date.now();
+    await saveProject(fresh);
     return NextResponse.json({ ok: true, link, filename });
   } catch (e) {
     return NextResponse.json(

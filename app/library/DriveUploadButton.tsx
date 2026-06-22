@@ -3,9 +3,21 @@
 import { useState } from "react";
 
 // 완성 영상을 내 Google 드라이브(ANINEWS 폴더)에 업로드. 연결 안 됐으면 연결 플로우로.
-export default function DriveUploadButton({ projectId }: { projectId: string }) {
-  const [state, setState] = useState<"idle" | "uploading" | "done" | "error">("idle");
-  const [link, setLink] = useState<string | null>(null);
+// uploaded=true(이미 업로드됨, 재합성 안 됨)면 처음부터 "보기" 링크로 시작 — 리로드해도 유지.
+export default function DriveUploadButton({
+  projectId,
+  driveLink,
+  uploaded,
+}: {
+  projectId: string;
+  driveLink?: string;
+  uploaded?: boolean;
+}) {
+  const alreadyUp = !!(uploaded && driveLink);
+  const [state, setState] = useState<"idle" | "uploading" | "done" | "error">(
+    alreadyUp ? "done" : "idle"
+  );
+  const [link, setLink] = useState<string | null>(alreadyUp ? driveLink! : null);
   const [msg, setMsg] = useState<string | null>(null);
 
   async function upload() {

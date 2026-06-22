@@ -168,7 +168,13 @@ export default async function LibraryPage({
                   </p>
                 </div>
               </Link>
-              {p.finalVideoUrl && <DriveUploadButton projectId={p.id} />}
+              {p.finalVideoUrl && (
+                <DriveUploadButton
+                  projectId={p.id}
+                  driveLink={p.driveLink}
+                  uploaded={!!p.driveLink && p.driveUploadedUrl === p.finalVideoUrl}
+                />
+              )}
             </li>
           ))}
         </ul>

@@ -142,6 +142,8 @@ export interface Project {
   sourceProjectId?: string; // 다국어판이면 원본 프로젝트 id (라이브러리 그룹·검색용).
   ownerEmail?: string; // 만든 사람(로그인 이메일). 비면 관리자(ADMIN_EMAIL) 소유로 본다.
   category?: string; // 업로드 파일명용 분야(스크립트로 Claude 자동 분류, 첫 업로드 시 저장).
+  driveLink?: string; // Drive 업로드된 파일 보기 링크.
+  driveUploadedUrl?: string; // 업로드 당시의 finalVideoUrl — 이게 현재 값과 다르면(재합성) 다시 업로드 버튼.
   createdAt: number;
   updatedAt: number;
 }
