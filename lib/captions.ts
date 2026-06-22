@@ -28,10 +28,10 @@ function estWidth(s: string): number {
   return w;
 }
 
-export function segmentCaptions(text: string, size: SubSize = "medium"): string[] {
-  const t = (text ?? "").trim().replace(/\s+/g, " ");
+// 한 "줄"(수동 줄바꿈으로 나뉜 단위)을 자동 분할해 캡션 배열로.
+function segmentLine(line: string, budget: number): string[] {
+  const t = line.replace(/\s+/g, " ").trim();
   if (!t) return [];
-  const budget = BUDGET[size] ?? BUDGET.medium;
   // 천 단위 콤마(숫자 사이)는 절 경계가 아니다 → 센티넬로 보호 후 분할, 끝에 복원.
   const safe = t.replace(/(\d),(?=\d)/g, "$1" + NUM_COMMA);
 
@@ -63,4 +63,14 @@ export function segmentCaptions(text: string, size: SubSize = "medium"): string[
   return caps
     .map((c) => c.split(NUM_COMMA).join(",").replace(/[,、]\s*$/, "").trim())
     .filter(Boolean);
+}
+
+export function segmentCaptions(text: string, size: SubSize = "medium"): string[] {
+  const raw = (text ?? "").trim();
+  if (!raw) return [];
+  const budget = BUDGET[size] ?? BUDGET.medium;
+  // 수동 줄바꿈(Enter) = 캡션 강제 경계. 줄마다 자동 분할 후 순서대로 이어붙인다.
+  const caps: string[] = [];
+  for (const line of raw.split(/\r?\n+/)) caps.push(...segmentLine(line, budget));
+  return caps;
 }

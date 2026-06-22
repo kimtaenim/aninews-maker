@@ -1537,6 +1537,9 @@ export default function Studio({
                   <p className="text-[10px] text-zinc-400">
                     길이 ~{estimateDuration(sc.narration)}초 (글자수 기준 자동). 이미지
                     프롬프트·모션은 3~5단계에서 생성합니다.
+                    <br />
+                    <span className="text-zinc-500">⏎ 자막을 끊고 싶은 곳에서 줄바꿈(Enter)</span>{" "}
+                    하면 그 자리에서 자막이 나뉩니다(음성엔 영향 없음).
                   </p>
                 </li>
               ))}
