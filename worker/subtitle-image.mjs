@@ -86,35 +86,51 @@ const fontPx = (size) => (size === "small" ? 56 : size === "large" ? 84 : 68);
 const fontStr = (sub) =>
   `${sub.weight === "bold" ? 700 : 500} ${fontPx(sub.size)}px "${familyFor(sub)}"${LATIN_FALLBACK}`;
 
-// 그리디 줄바꿈 + 고아글자 방지. 첫 줄을 폭까지 채우되, 마지막 줄이 너무 짧으면
-// (한두 글자만 남는 고아) 윗줄 끝 어절을 한 개씩 내려 마지막 두 줄을 보기 좋게.
+// 그리디 줄바꿈. 폭까지 글자를 채우다 넘치면 줄을 바꾼다.
+//  - 공백 있는 언어(한국어 어절·영어 단어): 직전 공백에서 끊어 단어를 안 쪼갠다.
+//  - 공백 없는 언어(일본어·중국어): 글자 단위로 끊는다(이전엔 한 덩어리라 안 끊겨 가로로 넘침).
 function wrapGreedyNoOrphan(ctx, text, maxW, maxLines = 3) {
   const t = (text ?? "").trim().replace(/\s+/g, " ");
   if (!t) return [];
-  const words = t.split(" ");
+  const fits = (s) => ctx.measureText(s).width <= maxW;
   const lines = [];
   let cur = "";
-  for (const w of words) {
-    const trial = cur ? cur + " " + w : w;
-    if (cur && ctx.measureText(trial).width > maxW) {
+  for (const ch of [...t]) {
+    if (cur === "" && ch === " ") continue; // 줄 앞 공백 무시
+    if (!cur || fits(cur + ch)) {
+      cur += ch;
+      continue;
+    }
+    // 넘침 → 줄바꿈.
+    if (ch === " ") {
       lines.push(cur);
-      cur = w;
+      cur = "";
+      continue;
+    }
+    const sp = cur.lastIndexOf(" ");
+    if (sp > 0) {
+      // 공백 있음 → 거기서 끊어 마지막 단어/어절을 다음 줄로(단어 보존).
+      lines.push(cur.slice(0, sp));
+      cur = cur.slice(sp + 1) + ch;
     } else {
-      cur = trial;
+      // 공백 없음(일본어·중국어 등) → 글자 단위로 끊음.
+      lines.push(cur);
+      cur = ch;
     }
   }
-  if (cur) lines.push(cur);
+  if (cur.trim()) lines.push(cur.trim());
 
-  // 고아 방지: 마지막 줄이 maxW의 절반에 못 미치면 윗줄 끝 어절을 내려본다.
+  // 고아 방지(공백 있는 언어에만): 마지막 줄이 너무 짧으면 윗줄 끝 어절을 내려본다.
   let guard = 0;
   while (lines.length >= 2 && guard++ < 30) {
     const li = lines.length - 1;
     if (ctx.measureText(lines[li]).width >= maxW * 0.5) break;
+    if (!lines[li - 1].includes(" ")) break; // CJK 등 공백 없으면 스킵
     const prev = lines[li - 1].split(" ");
     if (prev.length <= 1) break;
     const moved = prev[prev.length - 1];
     const cand = moved + " " + lines[li];
-    if (ctx.measureText(cand).width > maxW) break; // 더 내리면 넘침
+    if (ctx.measureText(cand).width > maxW) break;
     prev.pop();
     lines[li - 1] = prev.join(" ");
     lines[li] = cand;
