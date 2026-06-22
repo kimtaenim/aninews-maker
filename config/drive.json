@@ -1,0 +1,4 @@
+{
+  "_comment": "라이브러리에서 여는 Google 드라이브 업로드 폴더. 폴더가 바뀌면 folderUrl 만 교체. 비우면 링크 숨김.",
+  "folderUrl": "https://drive.google.com/drive/folders/16Nqiu26UvDqbiqv_SqB0bzjbLlKY0l31"
+}

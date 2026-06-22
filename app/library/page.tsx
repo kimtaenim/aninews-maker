@@ -5,6 +5,7 @@ import { listRecentProjects, getProject } from "@/lib/projectStore";
 import { STEP_ORDER, type Project } from "@/lib/types";
 import { getLang } from "@/lib/languages";
 import { ADMIN_EMAIL } from "@/lib/auth";
+import driveConfig from "@/config/drive.json";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic"; // 항상 최신 목록(Redis)
@@ -67,14 +68,26 @@ export default async function LibraryPage({
 
   return (
     <main className="px-4 py-8 md:max-w-2xl md:mx-auto">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <h1 className="text-lg font-semibold tracking-tight">라이브러리</h1>
-        <Link
-          href="/new"
-          className="text-xs font-medium rounded-lg bg-accent hover:bg-accent-strong text-white px-3 py-1.5"
-        >
-          + 새 영상
-        </Link>
+        <div className="flex items-center gap-2">
+          {driveConfig.folderUrl && (
+            <a
+              href={driveConfig.folderUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-medium rounded-lg border border-zinc-200 dark:border-zinc-800 px-3 py-1.5 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-900"
+            >
+              📁 드라이브 폴더
+            </a>
+          )}
+          <Link
+            href="/new"
+            className="text-xs font-medium rounded-lg bg-accent hover:bg-accent-strong text-white px-3 py-1.5"
+          >
+            + 새 영상
+          </Link>
+        </div>
       </div>
 
       {/* 검색 — 제목·나레이션(스크립트) 부분일치. 서버 렌더(쿼리 ?q=). */}
