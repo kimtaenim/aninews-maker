@@ -46,14 +46,24 @@ export default function DriveUploadButton({
 
   if (state === "done" && link) {
     return (
-      <a
-        href={link}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="mt-1 block text-center text-[11px] font-medium text-accent rounded-lg border border-accent/40 py-1 hover:bg-accent/10"
-      >
-        ✓ 드라이브에서 보기
-      </a>
+      <div className="mt-1 flex items-center gap-1">
+        <a
+          href={link}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="min-w-0 flex-1 text-center text-[11px] font-medium text-accent rounded-lg border border-accent/40 py-1 hover:bg-accent/10"
+        >
+          ✓ 드라이브에서 보기
+        </a>
+        <button
+          type="button"
+          onClick={upload}
+          title="드라이브에 다시 업로드 (새 파일로)"
+          className="shrink-0 text-[11px] rounded-lg border border-zinc-300 dark:border-zinc-700 px-2 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+        >
+          ↻
+        </button>
+      </div>
     );
   }
 
