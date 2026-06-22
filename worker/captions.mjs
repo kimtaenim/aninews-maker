@@ -21,9 +21,17 @@ export function segmentCaptions(text, size = "medium") {
   const budget = BUDGET[size] ?? BUDGET.medium;
   // 천 단위 콤마(숫자 사이)는 절 경계가 아니다 → 센티넬로 보호 후 분할, 끝에 복원.
   const safe = t.replace(/(\d),(?=\d)/g, "$1" + NUM_COMMA);
-  const units = (safe.match(/[^.!?…,、]+[.!?…,、]?/g) ?? [safe])
-    .map((u) => u.split(NUM_COMMA).join(",").trim())
+  // 1차: 문장부호(.!?…)에서만 끊는다. 콤마(나열·절)로는 안 끊어 "사과, 배"를 보존.
+  const sentences = (safe.match(/[^.!?…]+[.!?…]?/g) ?? [safe])
+    .map((u) => u.trim())
     .filter(Boolean);
+  // 2차: 한 문장이 캡션 1컷 용량을 넘을 때만(어쩔 수 없을 때) 콤마에서 더 쪼갠다.
+  const units = [];
+  for (const s of sentences) {
+    if (estWidth(s) <= budget) units.push(s);
+    else units.push(...(s.match(/[^,、]+[,、]?/g) ?? [s]).map((u) => u.trim()).filter(Boolean));
+  }
+  // 3차: 용량 안에서 그리디로 합친다(센티넬은 콤마와 폭이 같아 그대로 측정).
   const caps = [];
   let cur = "";
   for (const u of units) {
@@ -36,5 +44,7 @@ export function segmentCaptions(text, size = "medium") {
     }
   }
   if (cur) caps.push(cur);
-  return caps.map((c) => c.replace(/[,、]\s*$/, "").trim()).filter(Boolean);
+  return caps
+    .map((c) => c.split(NUM_COMMA).join(",").replace(/[,、]\s*$/, "").trim())
+    .filter(Boolean);
 }
