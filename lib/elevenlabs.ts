@@ -28,6 +28,7 @@ export async function synthesizeSpeech(opts: {
   text: string;
   voiceId?: string;
   model?: string;
+  speed?: number; // 1.0 기본. ElevenLabs voice_settings.speed 허용 범위 0.7~1.2.
 }): Promise<{
   audioBuffer: ArrayBuffer;
   costUsd: number;
@@ -40,6 +41,8 @@ export async function synthesizeSpeech(opts: {
 
   const voiceId = opts.voiceId || DEFAULT_VOICE_ID;
   const model = opts.model || DEFAULT_MODEL;
+  // ElevenLabs 는 speed 0.7~1.2 만 허용 — 범위 밖 값은 클램프.
+  const speed = Math.min(1.2, Math.max(0.7, opts.speed ?? 1.0));
 
   const r = await fetch(`${API_BASE}/text-to-speech/${voiceId}`, {
     method: "POST",
@@ -51,7 +54,7 @@ export async function synthesizeSpeech(opts: {
     body: JSON.stringify({
       text,
       model_id: model,
-      voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+      voice_settings: { stability: 0.5, similarity_boost: 0.75, speed },
     }),
     signal: AbortSignal.timeout(TTS_TIMEOUT_MS),
   });

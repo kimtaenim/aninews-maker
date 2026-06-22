@@ -231,6 +231,21 @@ export default function Studio({
     }
   }
 
+  // 보이스오버 속도(1.0 기본 / 1.2 빠르게) — 음성 생성 시 적용. 바꾸면 다시 생성해야 반영.
+  const [voiceSpeed, setVoiceSpeed] = useState<number>(initial.voiceSpeed ?? 1.0);
+  async function saveVoiceSpeed(s: number) {
+    if (s === voiceSpeed) return;
+    const prev = voiceSpeed;
+    setVoiceSpeed(s);
+    setProject((pr) => ({ ...pr, voiceSpeed: s }));
+    try {
+      await call("/api/project/voice-speed", { projectId: project.id, speed: s });
+    } catch (e) {
+      setVoiceSpeed(prev); // 실패 시 롤백
+      setError(e instanceof Error ? e.message : "속도 저장 실패");
+    }
+  }
+
   // 워터마크 (최종 출력에 새김) — 텍스트 + 위치(4모서리)
   const [wmText, setWmText] = useState(initial.watermark?.text ?? "");
   const [wmPos, setWmPos] = useState<"tl" | "tr" | "bl" | "br">(
@@ -2577,6 +2592,31 @@ export default function Studio({
           {!initial.ttsProvider && tts?.default && (
             <span className="text-[10px] text-zinc-400">기본값(env): {tts.default === "typecast" ? "타입캐스트" : "일레븐랩스"}</span>
           )}
+        </div>
+
+        {/* 음성 속도 — 생성 시 적용. 바꾼 뒤엔 음성을 다시 생성해야 반영된다. */}
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <span className="text-[11px] text-zinc-500">속도</span>
+          <div className="inline-flex rounded-xl border border-zinc-200 dark:border-zinc-800 p-0.5 text-xs">
+            {([
+              { v: 1.0, label: "보통" },
+              { v: 1.2, label: "빠르게 1.2배" },
+            ] as const).map((opt) => {
+              const active = voiceSpeed === opt.v;
+              return (
+                <button
+                  key={opt.v}
+                  type="button"
+                  onClick={() => saveVoiceSpeed(opt.v)}
+                  disabled={busy !== null}
+                  className={`rounded-lg px-3 py-1.5 font-medium transition-colors disabled:opacity-40 ${active ? "bg-accent text-white" : "text-zinc-500"}`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+          <span className="text-[10px] text-zinc-400">바꾸면 음성을 다시 생성하세요</span>
         </div>
 
         {!keyframeApproved && (

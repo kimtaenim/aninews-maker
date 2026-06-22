@@ -51,6 +51,7 @@ export async function synthesizeSpeechTypecast(opts: {
   lang?: string;
   voiceId?: string;
   model?: string;
+  speed?: number; // 1.0 기본. output.tempo 로 적용(0.5~2.0).
 }): Promise<{
   audioBuffer: ArrayBuffer;
   costUsd: number;
@@ -71,6 +72,8 @@ export async function synthesizeSpeechTypecast(opts: {
   const voiceId = getVoiceId(lang, opts.voiceId);
   const model = opts.model || DEFAULT_MODEL;
   const language = toIso3(lang);
+  // Typecast 속도는 output.tempo(0.5~2.0). 범위 밖 값은 클램프.
+  const tempo = Math.min(2.0, Math.max(0.5, opts.speed ?? 1.0));
 
   const r = await fetch(API_URL, {
     method: "POST",
@@ -84,7 +87,7 @@ export async function synthesizeSpeechTypecast(opts: {
       text,
       model,
       ...(language ? { language } : {}),
-      output: { audio_format: "mp3" },
+      output: { audio_format: "mp3", tempo },
     }),
     signal: AbortSignal.timeout(TTS_TIMEOUT_MS),
   });

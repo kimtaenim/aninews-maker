@@ -83,6 +83,7 @@ export async function POST(req: NextRequest) {
       text,
       lang: voiceLang,
       provider: project.ttsProvider,
+      speed: project.voiceSpeed,
     });
     const { url } = await uploadAsset(
       `project/${projectId}/scene-${sceneIndex}-audio-${lang}-${Date.now()}.mp3`,
