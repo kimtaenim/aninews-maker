@@ -127,19 +127,23 @@ export async function composeProject(projectId, lang) {
         await writeFile(cp, png);
         capPaths.push(cp);
       }
-      // 캡션당 3초 보장. 캡션 수×3초가 음성보다 길면 장면을 그만큼 늘린다(음성은 끝까지).
-      const PER = 3;
-      const duration = capPaths.length
-        ? Math.max(audioLen, capPaths.length * PER)
-        : audioLen;
+      // 비례 타이밍: 캡션을 글자수에 비례해 음성 길이에 배분(음성이 마스터) → 자막이
+      // 말 속도를 따라간다. 너무 짧으면 못 읽으니 캡션당 최소 1.2초 보장. 최소시간 합이
+      // 음성보다 길면(짧은 음성에 캡션 多) 그만큼 장면을 늘린다. 미리보기와 동일 공식.
+      const MIN_CAP = 1.2;
+      const weights = caps.map((c) => Math.max(1, c.replace(/\s/g, "").length));
+      const wSum = weights.reduce((a, b) => a + b, 0) || 1;
+      const durs = weights.map((w) => Math.max(MIN_CAP, (audioLen * w) / wSum));
+      const capTotal = durs.reduce((a, b) => a + b, 0);
+      const duration = capPaths.length ? Math.max(audioLen, capTotal) : audioLen;
       // 음성/자막이 영상보다 길면 영상을 슬로모션으로 늘림(루프 X).
       const speed = vd > 0 && duration > vd ? duration / vd : 1;
       const spans = [];
       let acc = 0;
-      capPaths.forEach((_, j) => {
+      durs.forEach((d, j) => {
         const start = acc;
-        acc += PER;
-        const end = j === capPaths.length - 1 ? duration + 0.5 : acc;
+        acc += d;
+        const end = j === durs.length - 1 ? duration + 0.5 : acc;
         spans.push([start, end]);
       });
 

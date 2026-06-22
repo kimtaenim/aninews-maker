@@ -45,11 +45,29 @@ export default function ScenePreview({
         ? [koCaps[capIdx] ?? "", enCaps[capIdx] ?? ""].filter(Boolean)
         : [koCaps[capIdx] ?? ""];
 
+  // 비례 타이밍 — worker(compose.mjs)와 동일 공식. 캡션을 글자수에 비례해 음성
+  // 길이에 배분, 캡션당 최소 1.2초. capEnds[j] = 캡션 j 의 종료 시각(초).
+  const primaryCaps = sub.lang === "en" ? enCaps : koCaps;
+  function capEnds(duration: number): number[] {
+    const MIN_CAP = 1.2;
+    const weights = primaryCaps.map((c) => Math.max(1, c.replace(/\s/g, "").length));
+    const wSum = weights.reduce((a, b) => a + b, 0) || 1;
+    const ends: number[] = [];
+    let acc = 0;
+    for (const w of weights) {
+      acc += Math.max(MIN_CAP, (duration * w) / wSum);
+      ends.push(acc);
+    }
+    return ends;
+  }
+
   function onTime() {
     const a = audioRef.current;
     if (!a || !a.duration) return;
-    const per = capCount * 3 <= a.duration ? 3 : a.duration / capCount;
-    setCapIdx(Math.min(capCount - 1, Math.floor(a.currentTime / per)));
+    const ends = capEnds(a.duration);
+    let idx = ends.findIndex((e) => a.currentTime < e);
+    if (idx < 0) idx = capCount - 1;
+    setCapIdx(Math.min(capCount - 1, idx));
   }
 
   function play() {
