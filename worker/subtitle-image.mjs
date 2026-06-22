@@ -89,6 +89,9 @@ const fontStr = (sub) =>
 // 그리디 줄바꿈. 폭까지 글자를 채우다 넘치면 줄을 바꾼다.
 //  - 공백 있는 언어(한국어 어절·영어 단어): 직전 공백에서 끊어 단어를 안 쪼갠다.
 //  - 공백 없는 언어(일본어·중국어): 글자 단위로 끊는다(이전엔 한 덩어리라 안 끊겨 가로로 넘침).
+// 줄 첫머리에 혼자 오면 안 되는 닫는 구두점(일본어·중국어·영어). 넘쳐도 앞 줄에 붙인다.
+const NO_LINE_START = /[。、，．！？!?…‥」』）)】〕》〉\]｝},.;:’””]/;
+
 function wrapGreedyNoOrphan(ctx, text, maxW, maxLines = 3) {
   const t = (text ?? "").trim().replace(/\s+/g, " ");
   if (!t) return [];
@@ -98,6 +101,11 @@ function wrapGreedyNoOrphan(ctx, text, maxW, maxLines = 3) {
   for (const ch of [...t]) {
     if (cur === "" && ch === " ") continue; // 줄 앞 공백 무시
     if (!cur || fits(cur + ch)) {
+      cur += ch;
+      continue;
+    }
+    // 넘쳐도 닫는 구두점은 현재 줄에 붙임(줄 첫머리에 혼자 오는 것 방지).
+    if (NO_LINE_START.test(ch)) {
       cur += ch;
       continue;
     }
