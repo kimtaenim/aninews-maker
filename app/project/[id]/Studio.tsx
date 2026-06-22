@@ -471,6 +471,10 @@ export default function Studio({
     setError(null);
     setBusy("compose");
     try {
+      // 자막 설정 버튼은 누를 때마다 비동기 저장(POST)이라, 누르자마자 합성하면 직전
+      // 변경(예: "작게")이 아직 Redis 에 안 닿아 worker 가 이전 값으로 구울 수 있다.
+      // → 현재 화면의 자막 설정을 먼저 확실히 저장한 뒤 합성 큐에 넣는다.
+      await call("/api/project/subtitle", { projectId: project.id, subtitle: sub });
       await call("/api/compose", { projectId: project.id, lang: "ko" });
       const now = Date.now();
       composeStartRef.current = now;
