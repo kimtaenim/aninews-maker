@@ -1,0 +1,63 @@
+"use client";
+
+import { useState } from "react";
+
+// 완성 영상을 내 Google 드라이브(ANINEWS 폴더)에 업로드. 연결 안 됐으면 연결 플로우로.
+export default function DriveUploadButton({ projectId }: { projectId: string }) {
+  const [state, setState] = useState<"idle" | "uploading" | "done" | "error">("idle");
+  const [link, setLink] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  async function upload() {
+    setState("uploading");
+    setMsg(null);
+    try {
+      const r = await fetch("/api/upload/drive", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId }),
+      });
+      const data = await r.json();
+      if (r.status === 409 && data.needConnect) {
+        // 드라이브 미연결 → 연결 화면으로(돌아오면 라이브러리).
+        window.location.href = `/api/google/connect?back=${encodeURIComponent("/library")}`;
+        return;
+      }
+      if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      setLink(data.link as string);
+      setState("done");
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "업로드 실패");
+      setState("error");
+    }
+  }
+
+  if (state === "done" && link) {
+    return (
+      <a
+        href={link}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-1 block text-center text-[11px] font-medium text-accent rounded-lg border border-accent/40 py-1 hover:bg-accent/10"
+      >
+        ✓ 드라이브에서 보기
+      </a>
+    );
+  }
+
+  return (
+    <div className="mt-1">
+      <button
+        type="button"
+        onClick={upload}
+        disabled={state === "uploading"}
+        className="w-full text-center text-[11px] font-medium rounded-lg border border-zinc-300 dark:border-zinc-700 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-50"
+      >
+        {state === "uploading" ? "업로드 중…" : "📁 드라이브 업로드"}
+      </button>
+      {state === "error" && msg && (
+        <p className="mt-0.5 text-[10px] text-red-600 leading-tight">{msg}</p>
+      )}
+    </div>
+  );
+}

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import DeleteButton from "./DeleteButton";
+import DriveUploadButton from "./DriveUploadButton";
 import { listRecentProjects, getProject } from "@/lib/projectStore";
 import { STEP_ORDER, type Project } from "@/lib/types";
 import { getLang } from "@/lib/languages";
@@ -154,6 +155,7 @@ export default async function LibraryPage({
                   </p>
                 </div>
               </Link>
+              {p.finalVideoUrl && <DriveUploadButton projectId={p.id} />}
             </li>
           ))}
         </ul>
