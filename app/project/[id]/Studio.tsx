@@ -2651,6 +2651,7 @@ export default function Studio({
                     <div className="flex items-center gap-3">
                       <span className="shrink-0 text-[11px] text-zinc-500 w-10">씬 {i + 1}</span>
                       <p className="min-w-0 flex-1 truncate text-[11px] text-zinc-500">
+                        <span className="text-zinc-400">📝 자막 </span>
                         {sc.narration}
                       </p>
                       <div className="shrink-0 grid justify-items-end gap-0.5">
@@ -2682,12 +2683,12 @@ export default function Studio({
                     ) : (
                       <span className="mt-2 block text-[11px] text-zinc-400">미생성</span>
                     )}
-                    {/* 음성 전용 스크립트. 자막은 위 나레이션, 이 칸은 실제 읽는 텍스트. */}
+                    {/* 음성 대본 = 귀로 듣는 말. 위 📝 자막(화면 글자)과 구분. 비우면 자막대로 읽음. */}
                     <span className="mt-2 block text-[11px] font-medium text-zinc-500">
-                      🔊 음성 스크립트{" "}
+                      🔊 음성 대본{" "}
                       <span className="font-normal text-zinc-400">
-                        — 실제로 읽는 텍스트(나레이션으로 미리 채움). 자막과 다르게 하려면
-                        여기를 고치세요.
+                        — 귀로 듣는 말. 비워두면 위 📝 자막을 그대로 읽어요. 발음·표현만 다르게
+                        할 때만 고치세요.
                       </span>
                     </span>
                     <textarea
@@ -2708,8 +2709,8 @@ export default function Studio({
                     />
                     <p className="mt-1 text-[10px] text-zinc-400">
                       {(ttsScripts[sc.index] ?? "").trim()
-                        ? "이 텍스트로 음성이 생성됩니다 (자막은 위 나레이션 그대로)."
-                        : "비어 있으면 자막 텍스트가 그대로 음성으로 사용됩니다."}
+                        ? "🔊 이 대본으로 음성이 만들어집니다 (📝 자막은 위 그대로 유지)."
+                        : "비어 있어서 📝 자막을 그대로 읽습니다."}
                     </p>
                   </li>
                 );
