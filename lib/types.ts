@@ -108,8 +108,8 @@ export interface SubtitleSettings {
 export const DEFAULT_SUBTITLE: SubtitleSettings = {
   font: "sans",
   weight: "regular",
-  size: "medium",
-  position: "bottom",
+  size: "small",
+  position: "top",
   align: "center",
   box: "dark",
   lang: "ko",

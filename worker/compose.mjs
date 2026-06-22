@@ -75,8 +75,8 @@ export async function composeProject(projectId, lang) {
   if (scenes.length === 0) throw new Error("비디오가 있는 씬이 없어요");
 
   const sub = project.subtitle ?? {
-    font: "sans", weight: "regular", size: "medium",
-    position: "bottom", align: "center", box: "dark", lang: "ko",
+    font: "sans", weight: "regular", size: "small",
+    position: "top", align: "center", box: "dark", lang: "ko",
   };
   console.log(
     `[worker] 렌더러=캡션PNG 오버레이(미리보기와 동일 디자인·캡션 분할) + cover-crop, 씬 ${scenes.length}개, lang=${lang}`
