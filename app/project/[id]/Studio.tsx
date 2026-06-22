@@ -439,7 +439,7 @@ export default function Studio({
             ["font", "폰트", [["sans", "산세리프"], ["serif", "세리프"]]],
             ["weight", "굵기", [["regular", "보통"], ["bold", "볼드"]]],
             ["size", "크기", [["small", "작게"], ["medium", "보통"], ["large", "크게"]]],
-            ["position", "위치", [["bottom", "하단"], ["top", "상단"]]],
+            ["position", "위치", [["top", "상단"], ["two-thirds", "⅔"], ["three-quarters", "¾"], ["bottom", "하단"]]],
             ["align", "정렬", [["center", "가운데"], ["left", "왼쪽"]]],
             ["box", "색(배경)", [["dark", "검은 박스·흰 글씨"], ["light", "흰 박스·검은 글씨"]]],
           ] as const

@@ -17,6 +17,10 @@ const REF_FETCH_TIMEOUT_MS = 30_000;
 const NO_TEXT =
   "Keep on-image text minimal: avoid signs, banners, paragraphs, or lots of words. A few short words are okay if natural, but no heavy text overlays.";
 
+// 상·하단 ~15% 는 자막이 얹히는 영역 — 인물·얼굴·글자 없이 배경/벽/하늘/소품만.
+const EDGE_SAFE =
+  "Composition: keep the top ~15% and bottom ~15% bands of the vertical frame free of any character figures, faces, and text — show only background, walls, sky, or props there (subtitles will overlay these edge bands). Place the main subject(s) within the central area, not touching the top or bottom edges.";
+
 // 씬 나레이션을 이미지 프롬프트에 "주제 이해용 컨텍스트"로 끼운다. 비주얼 권한은
 // 여전히 scenePrompt(image_prompt) 에 있고, 나레이션은 글자로 그리지 말라고 못박는다.
 function narrationContext(narration?: string): string {
@@ -69,7 +73,7 @@ export async function generateKeyframes(args: {
     ? "Use the provided reference image as the basis: preserve its main subject/character and " +
       "composition, but re-render it in the art style and palette described below.\n\n"
     : "";
-  const prompt = `${refClause}${styleBible}\n\n${narrationContext(narration)}Scene: ${scenePrompt}\n\n${NO_TEXT}`;
+  const prompt = `${refClause}${styleBible}\n\n${narrationContext(narration)}Scene: ${scenePrompt}\n\n${NO_TEXT}\n\n${EDGE_SAFE}`;
 
   const result = referenceImageUrl
     ? await client.images.edit({
@@ -163,7 +167,7 @@ export async function generateScene(args: {
   const prompt =
     `${styleBible}\n\n` +
     `${styleClause}${refClause} Render a NEW scene described below in that same world.\n\n` +
-    `${narrationContext(narration)}Scene: ${scenePrompt}\n\n${NO_TEXT}`;
+    `${narrationContext(narration)}Scene: ${scenePrompt}\n\n${NO_TEXT}\n\n${EDGE_SAFE}`;
 
   const result = await client.images.edit({
     model: IMAGE_MODEL,
