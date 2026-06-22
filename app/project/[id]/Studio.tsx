@@ -1332,8 +1332,25 @@ export default function Studio({
     }
   }
 
+  // 일시적 실패(TTS 서버 타임아웃·일시 제한 등) 자동 재시도. 영구 오류면 마지막 에러를 던진다.
+  async function withRetry<T>(fn: () => Promise<T>, tries = 3, delayMs = 1200): Promise<T> {
+    let lastErr: unknown;
+    for (let attempt = 1; attempt <= tries; attempt++) {
+      try {
+        return await fn();
+      } catch (e) {
+        lastErr = e;
+        if (attempt < tries) await new Promise((r) => setTimeout(r, delayMs));
+      }
+    }
+    throw lastErr;
+  }
+
   async function generateOneAudio(sceneIndex: number): Promise<void> {
-    const data = await call("/api/audio/scene", { projectId: project.id, sceneIndex });
+    // 씬 하나가 일시적으로 삐끗해도 전체 생성이 멈추지 않도록 짧게 재시도.
+    const data = await withRetry(() =>
+      call("/api/audio/scene", { projectId: project.id, sceneIndex })
+    );
     setAudioCost((c) => ({ ...c, [sceneIndex]: (data.cost as string) ?? "" }));
     setProject((p) => ({
       ...p,
