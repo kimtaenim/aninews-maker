@@ -1,6 +1,7 @@
 import Link from "next/link";
 import DeleteButton from "./DeleteButton";
 import DriveUploadButton from "./DriveUploadButton";
+import DailySeqControl from "./DailySeqControl";
 import { listRecentProjects, getProject } from "@/lib/projectStore";
 import { STEP_ORDER, type Project } from "@/lib/types";
 import { getLang } from "@/lib/languages";
@@ -71,6 +72,7 @@ export default async function LibraryPage({
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-lg font-semibold tracking-tight">라이브러리</h1>
         <div className="flex items-center gap-2">
+          <DailySeqControl />
           {driveConfig.folderUrl && (
             <a
               href={driveConfig.folderUrl}
