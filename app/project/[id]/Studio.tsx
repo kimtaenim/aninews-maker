@@ -1103,10 +1103,11 @@ export default function Studio({
   }
 
   // 씬1 이후 이미지 없는 씬들을 병렬 생성.
-  async function generateAllScenes() {
+  // all=false: 빈 씬만. all=true: 완성본 포함 전체 다시 생성.
+  async function generateAllScenes(all = false) {
     const targets = project.scenes
       .map((_, i) => i)
-      .filter((i) => i >= 1 && !project.scenes[i].imageUrl && !skipInBatch(i));
+      .filter((i) => i >= 1 && !skipInBatch(i) && (all || !project.scenes[i].imageUrl));
     await runImageBatch(targets, "images-all");
   }
 
@@ -1235,13 +1236,13 @@ export default function Studio({
 
   // 비디오 없는 씬들을 병렬 생성: 전부 제출(빠름) → fal 이 병렬 처리 → 동시 폴링.
   // (폴링 완료 저장은 서버가 재읽기-병합이라 동시 완료에 안전.)
-  async function generateAllVideos() {
+  async function generateAllVideos(all = false) {
     setError(null);
     setBusy("videos-all");
     try {
       const targets = project.scenes
         .map((_, i) => i)
-        .filter((i) => !project.scenes[i].videoUrl && project.scenes[i].videoSource !== "upload");
+        .filter((i) => project.scenes[i].videoSource !== "upload" && (all || !project.scenes[i].videoUrl));
       // 1) 전부 제출(순차·빠름). 한 씬 제출이 실패해도 나머지는 계속.
       const submitted: number[] = [];
       for (const i of targets) {
@@ -1386,13 +1387,13 @@ export default function Studio({
   }
 
   // 음성 없는 씬들을 순차 생성(병렬 금지 — last-write-wins 방지).
-  async function generateAllAudio() {
+  async function generateAllAudio(all = false) {
     if (ttsDirty) await saveTtsScripts();
     setError(null);
     setBusy("audio-all");
     try {
       for (let i = 0; i < project.scenes.length; i++) {
-        if (project.scenes[i].audioUrl) continue;
+        if (!all && project.scenes[i].audioUrl) continue;
         await generateOneAudio(i);
       }
     } catch (e) {
@@ -2024,17 +2025,19 @@ export default function Studio({
             </button>
             <button
               type="button"
-              onClick={generateAllScenes}
+              onClick={() => generateAllScenes(false)}
               disabled={busy !== null}
               className="text-xs rounded-lg border border-accent text-accent px-3 py-1.5 hover:bg-accent/10 disabled:opacity-40"
             >
-              {busy === "images-all" ? (
-                <Busy>생성 중…</Busy>
-              ) : allScenesHaveImage ? (
-                "빈 씬만 생성"
-              ) : (
-                "전체 생성"
-              )}
+              {busy === "images-all" ? <Busy>생성 중…</Busy> : "빈 씬만 생성"}
+            </button>
+            <button
+              type="button"
+              onClick={() => generateAllScenes(true)}
+              disabled={busy !== null}
+              className="text-xs rounded-lg border border-accent text-accent px-3 py-1.5 hover:bg-accent/10 disabled:opacity-40"
+            >
+              전체 생성
             </button>
             <span className="text-[11px] text-zinc-400">
               체크한 씬만 생성/리롤됩니다 (선택 안 한 건 그대로).
@@ -2350,17 +2353,19 @@ export default function Studio({
             </button>
             <button
               type="button"
-              onClick={generateAllVideos}
+              onClick={() => generateAllVideos(false)}
               disabled={!imagesApproved || busy !== null || project.scenes.length === 0}
               className="shrink-0 text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-medium px-3 py-1.5"
             >
-              {busy === "videos-all" ? (
-                <Busy>생성 중…</Busy>
-              ) : allScenesHaveVideo ? (
-                "빈 씬만 생성"
-              ) : (
-                "전체 생성"
-              )}
+              {busy === "videos-all" ? <Busy>생성 중…</Busy> : "빈 씬만 생성"}
+            </button>
+            <button
+              type="button"
+              onClick={() => generateAllVideos(true)}
+              disabled={!imagesApproved || busy !== null || project.scenes.length === 0}
+              className="shrink-0 text-xs rounded-lg border border-accent text-accent px-3 py-1.5 hover:bg-accent/10 disabled:opacity-40"
+            >
+              전체 생성
             </button>
           </div>
         </div>
@@ -2567,17 +2572,19 @@ export default function Studio({
           </h2>
           <button
             type="button"
-            onClick={generateAllAudio}
+            onClick={() => generateAllAudio(false)}
             disabled={!keyframeApproved || busy !== null || project.scenes.length === 0}
             className="shrink-0 text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-medium px-3 py-1.5"
           >
-            {busy === "audio-all" ? (
-              <Busy>생성 중…</Busy>
-            ) : allScenesHaveAudio ? (
-              "빈 씬만 생성"
-            ) : (
-              "전체 생성"
-            )}
+            {busy === "audio-all" ? <Busy>생성 중…</Busy> : "빈 씬만 생성"}
+          </button>
+          <button
+            type="button"
+            onClick={() => generateAllAudio(true)}
+            disabled={!keyframeApproved || busy !== null || project.scenes.length === 0}
+            className="shrink-0 text-xs rounded-lg border border-accent text-accent px-3 py-1.5 hover:bg-accent/10 disabled:opacity-40"
+          >
+            전체 생성
           </button>
         </div>
 
