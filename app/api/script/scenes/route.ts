@@ -51,7 +51,10 @@ export async function POST(req: NextRequest) {
     return {
       index,
       narration: String(s.narration ?? "").trim(),
-      ttsScript: carry?.ttsScript, // 음성 전용 오버라이드는 같은 index 면 보존
+      // 음성 오버라이드 보존 — 단, 그 씬의 나레이션을 그대로 미러링하던 값(=실제로
+      // 다르게 지정한 게 아님)이면 비운다. 그래야 나레이션이 바뀌면 음성대본도 따라간다.
+      ttsScript:
+        carry?.ttsScript && carry.ttsScript !== carry.narration ? carry.ttsScript : undefined,
       imagePrompt: String(s.imagePrompt ?? "").trim(),
       motion: String(s.motion ?? "").trim(),
       durationSec: clampDur(s.durationSec),

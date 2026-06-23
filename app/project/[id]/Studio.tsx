@@ -565,7 +565,7 @@ export default function Studio({
   const [ttsScripts, setTtsScripts] = useState<Record<number, string>>(
     Object.fromEntries(
       initial.scenes
-        .filter((s) => (s.ttsScript ?? "").trim())
+        .filter((s) => (s.ttsScript ?? "").trim() && s.ttsScript !== s.narration)
         .map((s) => [s.index, s.ttsScript as string])
     )
   );
