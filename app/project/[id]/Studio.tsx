@@ -1797,8 +1797,8 @@ export default function Studio({
             <textarea
               value={scenes[0]?.imagePrompt ?? ""}
               onChange={(e) => patchScene(0, { imagePrompt: e.target.value })}
-              rows={2}
-              className={fieldCls + " resize-y"}
+              rows={7}
+              className={fieldCls + " resize-y min-h-[8rem]"}
             />
           </label>
         )}

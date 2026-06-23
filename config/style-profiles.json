@@ -1,8 +1,8 @@
 {
   "version": "2.0",
   "updated": "2026-06-17",
-  "_comment": "스타일 프로필(=모드). cardnews categories.json image_styles 방식 — config 프리셋으로 드롭다운 제공. 각 프로필이 image_bible(팔레트·룩) + motion_style + post_fx 를 들고 전 단계에 자동 주입. 'custom'은 직접 입력용(빈 bible → 사용자가 textarea 로 작성). 기본값은 3d-stopmotion.",
-  "default": "3d-stopmotion",
+  "_comment": "스타일 프로필(=모드). cardnews categories.json image_styles 방식 — config 프리셋으로 드롭다운 제공. 각 프로필이 image_bible(팔레트·룩) + motion_style + post_fx 를 들고 전 단계에 자동 주입. 'custom'은 직접 입력용(빈 bible → 사용자가 textarea 로 작성). 기본값은 3d-business.",
+  "default": "3d-business",
   "profiles": [
     {
       "id": "2d-cartoon",
