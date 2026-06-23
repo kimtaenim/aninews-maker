@@ -802,6 +802,7 @@ export default function Studio({
   const editBibleRef = useRef(editBible);
   editBibleRef.current = editBible;
   const savingBibleRef = useRef(false);
+  const styleEditedRef = useRef(false); // 사용자가 스타일을 직접 고쳤는지(프롬프트 자동 재생성 트리거)
 
   // 씬 버퍼를 서버에 저장(무음). 저장 중이면 끝난 뒤 dirty 가 다시 트리거한다.
   async function autoSaveScenes() {
@@ -871,6 +872,25 @@ export default function Studio({
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editBible, bibleDirty]);
+
+  // 스타일을 직접 고치면 잠시 뒤(멈춤 감지) 키프레임 이미지 프롬프트를 새 스타일로
+  // AI 자동 재생성. 승인됐고 씬0 나레이션·기존 프롬프트가 있을 때만(생성 시작 전엔 X).
+  useEffect(() => {
+    if (!styleEditedRef.current) return;
+    const t = setTimeout(async () => {
+      if (!styleEditedRef.current || busyRef.current) return;
+      const s0 = scenesRef.current[0];
+      if (!scriptApproved || !(s0?.narration ?? "").trim() || !(s0?.imagePrompt ?? "").trim()) {
+        styleEditedRef.current = false;
+        return;
+      }
+      styleEditedRef.current = false;
+      await flushScenes(); // 새 스타일 저장 보장 후 재생성
+      await genImagePrompts([0], "keyframe-prompt");
+    }, 1800);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editBible]);
 
   // 자동저장 상태 표시(작게). 편집저장 버튼 자리에 들어간다.
   function renderSaveStatus() {
@@ -1865,6 +1885,7 @@ export default function Studio({
                 onChange={(e) => {
                   setEditBible(e.target.value);
                   setBibleDirty(true);
+                  styleEditedRef.current = true; // 스타일 멈추면 키프레임 프롬프트 자동 재생성
                 }}
                 rows={4}
                 disabled={busy !== null}
@@ -1874,7 +1895,7 @@ export default function Studio({
             <div className="flex items-center gap-2">
               {renderSaveStatus()}
               <span className="text-[11px] text-amber-600">
-                고치면 자동 저장 — ‘다시 생성’을 눌러야 이미지에 반영됩니다
+                고치면 자동 저장 + 키프레임 프롬프트 자동 재생성 — ‘다시 생성’으로 이미지 반영
               </span>
             </div>
           </div>
