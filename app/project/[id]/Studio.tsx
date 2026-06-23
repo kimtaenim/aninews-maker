@@ -592,30 +592,58 @@ export default function Studio({
       ...prev,
       { narration: "", imagePrompt: "", motion: "", durationSec: 5 },
     ]);
+    // 미디어 배열(project.scenes)도 같은 길이로 — 편집 그리드가 두 배열을 같은 index 로
+    // 묶고, 저장 라우트도 index 로 산출물을 carry 하므로 항상 정렬돼 있어야 한다.
+    setProject((p) => ({
+      ...p,
+      scenes: [
+        ...p.scenes,
+        { index: p.scenes.length, narration: "", imagePrompt: "", motion: "", durationSec: 5, status: "generated" },
+      ],
+    }));
     setDirty(true);
   }
   // 나레이션만으로 새 씬 추가 — 길이는 글자수로 자동, 프롬프트·모션은 3~5단계에서.
   function addSceneFromNarration() {
     const n = newNarration.trim();
     if (!n) return;
-    setScenes((prev) => [
-      ...prev,
-      { narration: n, imagePrompt: "", motion: "", durationSec: estimateDuration(n) },
-    ]);
+    const dur = estimateDuration(n);
+    setScenes((prev) => [...prev, { narration: n, imagePrompt: "", motion: "", durationSec: dur }]);
+    setProject((p) => ({
+      ...p,
+      scenes: [
+        ...p.scenes,
+        { index: p.scenes.length, narration: n, imagePrompt: "", motion: "", durationSec: dur, status: "generated" },
+      ],
+    }));
     setDirty(true);
     setNewNarration(""); // 다음 씬을 바로 이어 입력할 수 있게 비움(컴포저는 열린 채).
   }
   function deleteScene(i: number) {
     setScenes((prev) => prev.filter((_, idx) => idx !== i));
+    // 미디어도 같은 씬을 제거하고 index 재부여 — 안 그러면 삭제 지점 이후 씬들의
+    // 이미지/영상/음성이 한 칸씩 밀려 엉뚱하게 붙는다(저장 시 carry 오정렬).
+    setProject((p) => ({
+      ...p,
+      scenes: p.scenes.filter((_, idx) => idx !== i).map((s, idx) => ({ ...s, index: idx })),
+    }));
     setDirty(true);
   }
   function moveScene(i: number, dir: -1 | 1) {
+    const j = i + dir;
     setScenes((prev) => {
-      const j = i + dir;
       if (j < 0 || j >= prev.length) return prev;
       const next = [...prev];
       [next[i], next[j]] = [next[j], next[i]];
       return next;
+    });
+    // 미디어도 함께 스왑 + index 재부여 — 텍스트만 이동하고 이미지/영상이 제자리에
+    // 남는 desync 와 저장 시 carry 오정렬을 막는다.
+    setProject((p) => {
+      if (j < 0 || j >= p.scenes.length) return p;
+      const next = [...p.scenes];
+      [next[i], next[j]] = [next[j], next[i]];
+      return { ...p, scenes: next.map((s, idx) => ({ ...s, index: idx })) };
     });
     setDirty(true);
   }

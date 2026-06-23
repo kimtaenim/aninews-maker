@@ -49,6 +49,11 @@ export async function POST(req: NextRequest) {
     const videoSource =
       normMode(s.videoSource, ["generate", "upload"] as const) ?? carry?.videoSource;
     return {
+      // 같은 index 씬의 기존 산출물을 통째로 보존한다. 2단계(스크립트) 편집이 4·5·6단계
+      // 결과물(imageUrl/videoUrl/audioUrl·videoJobId·videoModelId·dub·narrationEn·
+      // audioUrlEn·ttsTimestamps 등)을 날려 재생성을 강요하지 않게 — 아래에서 편집
+      // 대상 필드(나레이션·프롬프트·모션·길이·소스모드)만 덮어쓴다.
+      ...(carry ?? {}),
       index,
       narration: String(s.narration ?? "").trim(),
       // 음성 오버라이드 보존 — 단, 그 씬의 나레이션을 그대로 미러링하던 값(=실제로
@@ -68,10 +73,6 @@ export async function POST(req: NextRequest) {
       paletteHint:
         typeof s.paletteHint === "string" ? s.paletteHint.trim() || undefined : carry?.paletteHint,
       videoSource,
-      imageUrl: carry?.imageUrl,
-      videoUrl: carry?.videoUrl,
-      audioUrl: carry?.audioUrl,
-      ttsTimestamps: carry?.ttsTimestamps,
     };
   });
 

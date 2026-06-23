@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 const FONT = ["sans", "serif"];
 const WEIGHT = ["regular", "bold"];
 const SIZE = ["small", "medium", "large"];
-const POS = ["bottom", "top"];
+const POS = ["top", "two-thirds", "three-quarters", "bottom"];
 const ALIGN = ["center", "left"];
 const BOX = ["dark", "light"];
 const LANG = ["ko", "en", "both"];
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
       ? (s.size as "small" | "medium" | "large")
       : cur.size,
     position: POS.includes(s.position as string)
-      ? (s.position as "bottom" | "top")
+      ? (s.position as SubtitleSettings["position"])
       : cur.position,
     align: ALIGN.includes(s.align as string)
       ? (s.align as "center" | "left")
