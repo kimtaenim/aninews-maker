@@ -44,28 +44,30 @@ export async function setDailySeq(dateStr: string, value: number): Promise<void>
   await getRedis().set(`upload-seq:${dateStr}`, Math.max(0, Math.floor(value)));
 }
 
-// 스크립트 내용으로 분야 자동 선택. 목록에 없으면 첫 분야로 폴백.
-export async function pickCategory(scriptText: string, projectId?: string): Promise<string> {
+// 스크립트 내용을 훑어 파일명용 "영어 한 단어 키워드"를 짓는다. 실패 시 "Video".
+export async function pickKeyword(scriptText: string, projectId?: string): Promise<string> {
   const text = (scriptText ?? "").trim().slice(0, 4000);
-  if (!text) return UPLOAD_CATEGORIES[0];
+  if (!text) return "Video";
   const client = getAnthropic();
   const system =
-    `Classify this short-form video script into exactly ONE category from: ${UPLOAD_CATEGORIES.join(", ")}. ` +
-    "Reply with ONLY the category word in uppercase, nothing else.";
+    "Name this short-form video file with ONE single English keyword that best captures its topic. " +
+    "Reply with ONLY one English word — a noun or proper noun, no spaces, no punctuation, no quotes, " +
+    "no explanation. Examples: Kimchi, SpaceX, Inflation, Naengmyeon, Offside.";
   try {
     const r = await client.messages.create({
       model: MODELS.haiku,
-      max_tokens: 16,
+      max_tokens: 12,
       system,
       messages: [{ role: "user", content: text }],
     });
-    const out = (
+    const raw = (
       r.content.filter((b) => b.type === "text") as Array<{ type: "text"; text: string }>
     )
       .map((b) => b.text)
       .join("")
-      .toUpperCase();
-    const found = UPLOAD_CATEGORIES.find((c) => out.includes(c));
+      .trim();
+    // 첫 단어만, 영숫자만 남기고 24자 제한.
+    const word = (raw.split(/\s+/)[0] ?? "").replace(/[^A-Za-z0-9]/g, "").slice(0, 24);
     try {
       const costUsd = anthropicCostUsd({
         inputTokens: r.usage.input_tokens,
@@ -74,21 +76,21 @@ export async function pickCategory(scriptText: string, projectId?: string): Prom
         cacheWriteTokens: r.usage.cache_creation_input_tokens ?? undefined,
         model: MODELS.haiku,
       });
-      await recordCost({ projectId, vendor: "anthropic", model: MODELS.haiku, costUsd, meta: { kind: "category" } });
+      await recordCost({ projectId, vendor: "anthropic", model: MODELS.haiku, costUsd, meta: { kind: "keyword" } });
     } catch {
       /* best-effort */
     }
-    return found ?? UPLOAD_CATEGORIES[0];
+    return word || "Video";
   } catch {
-    return UPLOAD_CATEGORIES[0];
+    return "Video";
   }
 }
 
 export function buildUploadName(args: {
   seq: string;
-  category: string;
+  keyword: string;
   lang?: string;
   date?: Date;
 }): string {
-  return `${yymmdd(args.date)}-${args.seq}-${args.category}-${uploadLangLabel(args.lang)}.mp4`;
+  return `${yymmdd(args.date)}-${args.seq}-${args.keyword}-${uploadLangLabel(args.lang)}.mp4`;
 }

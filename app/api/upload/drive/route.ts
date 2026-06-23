@@ -3,7 +3,7 @@ import { getProject, saveProject } from "@/lib/projectStore";
 import { getSessionEmail } from "@/lib/auth";
 import { uploadVideoToDrive, isDriveConnected } from "@/lib/google";
 import {
-  pickCategory,
+  pickKeyword,
   nextDailySeq,
   buildUploadName,
   yymmdd,
@@ -45,20 +45,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "완성된 영상이 없어요 (먼저 합성)" }, { status: 409 });
   }
 
-  // 분야: 스크립트로 Claude 자동 분류(첫 업로드 때 정해 저장, 이후 재사용).
-  let category = project.category;
-  if (!category) {
-    category = await pickCategory(
+  // 키워드: 스크립트 내용을 Claude 가 훑어 영어 한 단어로 작명(첫 업로드 때 정해 저장, 재사용).
+  let keyword = project.uploadKeyword;
+  if (!keyword) {
+    keyword = await pickKeyword(
       project.scenes.map((s) => s.narration).join(" "),
       projectId
     );
-    project.category = category;
+    project.uploadKeyword = keyword;
     project.updatedAt = Date.now();
     await saveProject(project);
   }
-  // 파일명: 날짜-번호-분야-언어 (예: 260622-01-NEWS-KO.mp4)
+  // 파일명: 날짜-번호-키워드-언어 (예: 260622-01-Kimchi-KO.mp4)
   const seq = await nextDailySeq(yymmdd());
-  const filename = buildUploadName({ seq, category, lang: project.lang });
+  const filename = buildUploadName({ seq, keyword, lang: project.lang });
 
   try {
     const r = await fetch(project.finalVideoUrl, {
