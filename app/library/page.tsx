@@ -172,6 +172,7 @@ export default async function LibraryPage({
                 <DriveUploadButton
                   projectId={p.id}
                   driveLink={p.driveLink}
+                  fileName={p.driveFileName}
                   uploaded={!!p.driveLink && p.driveUploadedUrl === p.finalVideoUrl}
                 />
               )}

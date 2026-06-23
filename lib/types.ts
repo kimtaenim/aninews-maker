@@ -144,6 +144,7 @@ export interface Project {
   ownerEmail?: string; // 만든 사람(로그인 이메일). 비면 관리자(ADMIN_EMAIL) 소유로 본다.
   category?: string; // 업로드 파일명용 분야(스크립트로 Claude 자동 분류, 첫 업로드 시 저장).
   driveLink?: string; // Drive 업로드된 파일 보기 링크.
+  driveFileName?: string; // 마지막 업로드 파일명(날짜-번호-분야-언어). UI 표시·번호 확인용.
   driveUploadedUrl?: string; // 업로드 당시의 finalVideoUrl — 이게 현재 값과 다르면(재합성) 다시 업로드 버튼.
   createdAt: number;
   updatedAt: number;

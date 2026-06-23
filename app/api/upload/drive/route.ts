@@ -71,6 +71,7 @@ export async function POST(req: NextRequest) {
     // 다시 업로드 버튼이 뜨도록 업로드 당시 URL 도 함께 기록.
     const fresh = (await getProject(projectId)) ?? project;
     fresh.driveLink = link;
+    fresh.driveFileName = filename;
     fresh.driveUploadedUrl = fresh.finalVideoUrl;
     fresh.updatedAt = Date.now();
     await saveProject(fresh);

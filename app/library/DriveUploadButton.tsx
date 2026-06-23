@@ -7,10 +7,12 @@ import { useState } from "react";
 export default function DriveUploadButton({
   projectId,
   driveLink,
+  fileName,
   uploaded,
 }: {
   projectId: string;
   driveLink?: string;
+  fileName?: string;
   uploaded?: boolean;
 }) {
   const alreadyUp = !!(uploaded && driveLink);
@@ -18,6 +20,8 @@ export default function DriveUploadButton({
     alreadyUp ? "done" : "idle"
   );
   const [link, setLink] = useState<string | null>(alreadyUp ? driveLink! : null);
+  // 업로드 시 부여된 파일명(번호 포함). 재업로드하면 새 번호로 갱신된다.
+  const [name, setName] = useState<string | null>(alreadyUp ? fileName ?? null : null);
   const [msg, setMsg] = useState<string | null>(null);
 
   async function upload() {
@@ -37,6 +41,7 @@ export default function DriveUploadButton({
       }
       if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
       setLink(data.link as string);
+      setName((data.filename as string) ?? null);
       setState("done");
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "업로드 실패");
@@ -46,23 +51,30 @@ export default function DriveUploadButton({
 
   if (state === "done" && link) {
     return (
-      <div className="mt-1 flex items-center gap-1">
-        <a
-          href={link}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="min-w-0 flex-1 text-center text-[11px] font-medium text-accent rounded-lg border border-accent/40 py-1 hover:bg-accent/10"
-        >
-          ✓ 드라이브에서 보기
-        </a>
-        <button
-          type="button"
-          onClick={upload}
-          title="드라이브에 다시 업로드 (새 파일로)"
-          className="shrink-0 text-[11px] rounded-lg border border-zinc-300 dark:border-zinc-700 px-2 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-900"
-        >
-          ↻
-        </button>
+      <div className="mt-1 grid gap-0.5">
+        <div className="flex items-center gap-1">
+          <a
+            href={link}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="min-w-0 flex-1 text-center text-[11px] font-medium text-accent rounded-lg border border-accent/40 py-1 hover:bg-accent/10"
+          >
+            ✓ 드라이브에서 보기
+          </a>
+          <button
+            type="button"
+            onClick={upload}
+            title="드라이브에 다시 업로드 (새 번호·새 파일로)"
+            className="shrink-0 text-[11px] rounded-lg border border-zinc-300 dark:border-zinc-700 px-2 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+          >
+            ↻
+          </button>
+        </div>
+        {name && (
+          <p className="truncate text-center text-[10px] text-zinc-400" title={name}>
+            {name}
+          </p>
+        )}
       </div>
     );
   }
