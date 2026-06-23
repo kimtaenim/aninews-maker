@@ -18,6 +18,7 @@ import type { SourceMaterial } from "@/lib/source";
 import { TARGET_LANGUAGES, getLang } from "@/lib/languages";
 import Spinner from "@/components/Spinner";
 import ScenePreview from "./ScenePreview";
+import MiniAudio from "./MiniAudio";
 
 // 진행 중 버튼 내용 — 스피너 + 라벨
 function Busy({ children }: { children: React.ReactNode }) {
@@ -2728,7 +2729,7 @@ export default function Studio({
                 return (
                   <li
                     key={i}
-                    className="rounded-xl bg-zinc-50 dark:bg-zinc-900 p-3"
+                    className="min-w-0 rounded-xl bg-zinc-50 dark:bg-zinc-900 p-3"
                   >
                     <div className="flex items-center gap-3">
                       <span className="shrink-0 text-[11px] text-zinc-500 w-10">씬 {i + 1}</span>
@@ -2750,14 +2751,11 @@ export default function Studio({
                         )}
                       </div>
                     </div>
-                    {/* 오디오 바는 카드 전체 폭을 차지하는 별도 줄 — 좁은 칼럼에서
-                        네이티브 컨트롤 최소폭이 삐져나오던 문제 방지 */}
+                    {/* 오디오 바는 카드 전체 폭 별도 줄. 네이티브 <audio controls> 는
+                        모바일 최소 폭이 viewport 를 넘겨 가로 스크롤을 만들어 커스텀
+                        미니 플레이어(MiniAudio)로 대체 — 폭을 완전히 제어. */}
                     {sc.audioUrl ? (
-                      <audio
-                        src={sc.audioUrl}
-                        controls
-                        className="mt-2 block w-full max-w-full h-8"
-                      />
+                      <MiniAudio src={sc.audioUrl} className="mt-2" />
                     ) : audioBusy && !sc.audioUrl ? (
                       <span className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-zinc-400">
                         <Spinner className="size-4" /> 생성 중…
