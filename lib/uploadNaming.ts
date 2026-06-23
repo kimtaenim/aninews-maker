@@ -22,8 +22,12 @@ function pad2(n: number): string {
   return String(n).padStart(2, "0");
 }
 
+// 파일명·그날 업로드 카운터의 "날짜" — 한국시간(KST=UTC+9, DST 없음) 기준.
+// 서버가 UTC(예: Vercel)여도 한국 달력일에 맞춰, 그날 카운터(upload-seq:{date})가
+// 한국시간 자정에 새 키로 롤오버된다 → 날마다 자정에 번호가 자동으로 01부터 시작.
 export function yymmdd(d: Date = new Date()): string {
-  return `${pad2(d.getFullYear() % 100)}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}`;
+  const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  return `${pad2(kst.getUTCFullYear() % 100)}${pad2(kst.getUTCMonth() + 1)}${pad2(kst.getUTCDate())}`;
 }
 
 // 그날의 업로드 순번(01, 02 …) — Redis INCR.
