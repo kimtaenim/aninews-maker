@@ -560,8 +560,14 @@ export default function Studio({
 
   // 음성(TTS) 전용 스크립트 편집 버퍼 — 자막(narration)으로 미리 채워 바로 편집 가능
   // (placeholder 만 떠서 회색 글씨를 선택·수정 못 하던 문제 해소). 비우면 자막이 그대로 쓰인다.
+  // 오버라이드(실제 ttsScript)만 담는다. 비어 있으면(키 없음) 화면엔 그 씬의 현재
+  // 나레이션을 보여주고 음성도 나레이션을 쓴다 → 2단계에서 나레이션 고치면 자동 동기화.
   const [ttsScripts, setTtsScripts] = useState<Record<number, string>>(
-    Object.fromEntries(initial.scenes.map((s) => [s.index, s.ttsScript ?? s.narration ?? ""]))
+    Object.fromEntries(
+      initial.scenes
+        .filter((s) => (s.ttsScript ?? "").trim())
+        .map((s) => [s.index, s.ttsScript as string])
+    )
   );
   const [ttsDirty, setTtsDirty] = useState(false);
 
@@ -777,21 +783,6 @@ export default function Studio({
     }
   }
 
-  async function saveScenes() {
-    setError(null);
-    setBusy("save");
-    try {
-      const data = await call("/api/script/scenes", { projectId: project.id, scenes });
-      const saved = data.scenes as Scene[];
-      setProject((p) => ({ ...p, scenes: saved }));
-      setScenes(saved.map(toEdit));
-      setDirty(false);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "저장 실패");
-    } finally {
-      setBusy(null);
-    }
-  }
 
   // 편집 버퍼 + 생성한 값(prompt/motion)을 합쳐 서버에 저장하고 project·버퍼 동기화.
   // 라우트가 저장한 씬을 project·편집 버퍼에 반영(단계 상태는 라우트가 보존).
@@ -799,6 +790,94 @@ export default function Studio({
     setProject((p) => ({ ...p, scenes: saved }));
     setScenes(saved.map(toEdit));
     setDirty(false);
+  }
+
+  // ── 자동 저장 (편집저장 버튼 제거) ──────────────────────────────────────────
+  // 씬 편집(2·4·5단계)·스타일(3단계)은 고칠 때마다 디바운스로 조용히 저장된다.
+  // busy 를 막지 않아(타이핑 중 UI 멈춤·버퍼 덮어쓰기 방지) 작은 상태 표시만 한다.
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const scenesRef = useRef(scenes);
+  scenesRef.current = scenes;
+  const savingScenesRef = useRef(false);
+  const editBibleRef = useRef(editBible);
+  editBibleRef.current = editBible;
+  const savingBibleRef = useRef(false);
+
+  // 씬 버퍼를 서버에 저장(무음). 저장 중이면 끝난 뒤 dirty 가 다시 트리거한다.
+  async function autoSaveScenes() {
+    if (savingScenesRef.current) return;
+    savingScenesRef.current = true;
+    const snapshot = scenes;
+    setSaveState("saving");
+    try {
+      const r = await fetch("/api/script/scenes", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId: project.id, scenes: snapshot }),
+      });
+      const data = await r.json();
+      if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      setProject((p) => ({ ...p, scenes: data.scenes as Scene[] }));
+      bumpMutation(); // 진행 중이던 /state 동기화가 방금 저장분을 덮지 않도록
+      // 저장 동안 추가 편집이 없었으면 dirty 해제(버퍼는 안 덮어써 입력 보존).
+      if (scenesRef.current === snapshot) setDirty(false);
+      setSaveState("saved");
+    } catch {
+      setSaveState("error"); // busy 안 막음 — 다음 편집/플러시 때 재시도
+    } finally {
+      savingScenesRef.current = false;
+    }
+  }
+  useEffect(() => {
+    if (!dirty) return;
+    const t = setTimeout(() => void autoSaveScenes(), 600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scenes, dirty]);
+
+  // 생성·승인 등 서버 씬을 읽는 액션 전에 호출 — 미저장 편집을 즉시 반영하고 기다린다.
+  async function flushScenes() {
+    if (dirty) await autoSaveScenes();
+    if (bibleDirty) await autoSaveBible();
+  }
+
+  // 스타일(styleBible) 자동 저장 — 별도 라우트. busy 안 막음.
+  async function autoSaveBible() {
+    if (savingBibleRef.current) return;
+    savingBibleRef.current = true;
+    const snapshot = editBible;
+    setSaveState("saving");
+    try {
+      const r = await fetch("/api/project/style", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId: project.id, styleBible: snapshot }),
+      });
+      const data = await r.json();
+      if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      setProject((p) => ({ ...p, styleBible: data.styleBible as string }));
+      bumpMutation();
+      if (editBibleRef.current === snapshot) setBibleDirty(false);
+      setSaveState("saved");
+    } catch {
+      setSaveState("error");
+    } finally {
+      savingBibleRef.current = false;
+    }
+  }
+  useEffect(() => {
+    if (!bibleDirty) return;
+    const t = setTimeout(() => void autoSaveBible(), 600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editBible, bibleDirty]);
+
+  // 자동저장 상태 표시(작게). 편집저장 버튼 자리에 들어간다.
+  function renderSaveStatus() {
+    if (saveState === "saving") return <span className="text-[11px] text-zinc-400">자동 저장 중…</span>;
+    if (saveState === "error") return <span className="text-[11px] text-red-600">저장 실패 — 다시 편집하면 재시도</span>;
+    if (saveState === "saved") return <span className="text-[11px] text-zinc-400">자동 저장됨 ✓</span>;
+    return null;
   }
 
   // 3·4단계: 씬별 한글 이미지 프롬프트 생성·저장. 라우트가 단계 상태를 안 건드리므로
@@ -867,9 +946,9 @@ export default function Studio({
   }, [imagesApproved, project.scenes]);
 
   async function approveScript() {
-    if (dirty && !confirm("저장 안 한 편집이 있습니다. 저장하지 않고 승인할까요?")) return;
     setError(null);
     setBusy("approve-script");
+    await flushScenes(); // 미저장 편집을 먼저 저장하고 승인
     try {
       // 텍스트 대비 짧은 씬 길이는 묻지 않고 자동 적용(confirmAdjustments) 후 승인.
       const data = await call("/api/step/approve", {
@@ -894,6 +973,7 @@ export default function Studio({
   async function generateKeyframe() {
     setError(null);
     setBusy("keyframe");
+    await flushScenes(); // 미저장 프롬프트·스타일 먼저 반영
     try {
       const data = await call("/api/image/keyframe", { projectId: project.id });
       setKeyframeCost((data.cost as string) ?? null);
@@ -969,24 +1049,6 @@ export default function Studio({
     }
   }
 
-  // 스타일/팔레트/프롬프트 직접 편집 저장.
-  async function saveBible() {
-    setError(null);
-    setBusy("keyframe-bible");
-    try {
-      const data = await call("/api/project/style", {
-        projectId: project.id,
-        styleBible: editBible,
-      });
-      setProject((p) => ({ ...p, styleBible: data.styleBible as string }));
-      setEditBible(data.styleBible as string);
-      setBibleDirty(false);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "스타일 저장 실패");
-    } finally {
-      setBusy(null);
-    }
-  }
 
   // 키프레임 StepChat: 대화로 style bible 미세조정 → 갱신. 이후 "다시 생성"으로 적용.
   async function sendKeyframeChat() {
@@ -1038,6 +1100,7 @@ export default function Studio({
   async function generateScene(sceneIndex: number) {
     setError(null);
     setBusy(`scene-${sceneIndex}`);
+    await flushScenes();
     try {
       await generateOneScene(sceneIndex);
     } catch (e) {
@@ -1105,6 +1168,7 @@ export default function Studio({
   // 씬1 이후 이미지 없는 씬들을 병렬 생성.
   // all=false: 빈 씬만. all=true: 완성본 포함 전체 다시 생성.
   async function generateAllScenes(all = false) {
+    await flushScenes();
     const targets = project.scenes
       .map((_, i) => i)
       .filter((i) => i >= 1 && !skipInBatch(i) && (all || !project.scenes[i].imageUrl));
@@ -1113,6 +1177,7 @@ export default function Studio({
 
   // 선택한 씬들만 병렬 생성/리롤.
   async function generateSelectedScenes() {
+    await flushScenes();
     const targets = [...selectedScenes]
       .filter((i) => i >= 1 && i < project.scenes.length && !skipInBatch(i))
       .sort((a, b) => a - b);
@@ -1373,7 +1438,8 @@ export default function Studio({
   }
 
   async function generateAudio(sceneIndex: number) {
-    // 저장 안 한 음성 스크립트 편집이 있으면 먼저 저장(합성은 저장된 ttsScript 기준).
+    // 미저장 나레이션·음성대본 편집을 먼저 저장(음성은 저장된 값 기준).
+    await flushScenes();
     if (ttsDirty) await saveTtsScripts();
     setError(null);
     setBusy(`audio-${sceneIndex}`);
@@ -1388,6 +1454,7 @@ export default function Studio({
 
   // 음성 없는 씬들을 순차 생성(병렬 금지 — last-write-wins 방지).
   async function generateAllAudio(all = false) {
+    await flushScenes();
     if (ttsDirty) await saveTtsScripts();
     setError(null);
     setBusy("audio-all");
@@ -1631,18 +1698,10 @@ export default function Studio({
               >
                 빈 씬
               </button>
-              <button
-                type="button"
-                onClick={saveScenes}
-                disabled={busy !== null || !dirty}
-                className="text-xs rounded-lg border border-accent text-accent px-3 py-1.5 hover:bg-accent/10 disabled:opacity-40"
-              >
-                {busy === "save" ? <Busy>저장 중…</Busy> : "편집 저장"}
-              </button>
+              <span className="ml-1 self-center">{renderSaveStatus()}</span>
             </div>
             <p className="mt-2 text-[11px] text-zinc-400">
-              길이는 4~7초로 저장 시 자동 보정됩니다. 편집 후 “편집 저장”을 눌러야
-              반영됩니다.
+              고치면 자동 저장됩니다(따로 저장 안 눌러도 됨). 길이는 4~7초로 자동 보정됩니다.
             </p>
             {/* 승인 = 다음 단계 잠금 해제. 눈에 띄게 전체 폭으로. */}
             {!scriptApproved ? (
@@ -1718,9 +1777,6 @@ export default function Studio({
             <textarea
               value={scenes[0]?.imagePrompt ?? ""}
               onChange={(e) => patchScene(0, { imagePrompt: e.target.value })}
-              onBlur={() => {
-                if (dirty) void saveScenes();
-              }}
               rows={2}
               className={fieldCls + " resize-y"}
             />
@@ -1816,19 +1872,10 @@ export default function Studio({
               />
             </label>
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={saveBible}
-                disabled={busy !== null || !bibleDirty}
-                className="text-xs rounded-lg border border-accent text-accent px-3 py-1.5 hover:bg-accent/10 disabled:opacity-40"
-              >
-                {busy === "keyframe-bible" ? <Busy>저장 중…</Busy> : "스타일 저장"}
-              </button>
-              {bibleDirty && (
-                <span className="text-[11px] text-amber-600">
-                  ● 저장 후 ‘다시 생성’을 눌러야 반영됩니다
-                </span>
-              )}
+              {renderSaveStatus()}
+              <span className="text-[11px] text-amber-600">
+                고치면 자동 저장 — ‘다시 생성’을 눌러야 이미지에 반영됩니다
+              </span>
             </div>
           </div>
         )}
@@ -2288,16 +2335,7 @@ export default function Studio({
               })}
             </ol>
 
-            {dirty && (
-              <button
-                type="button"
-                onClick={saveScenes}
-                disabled={busy !== null}
-                className="mt-3 text-xs rounded-lg border border-accent text-accent px-3 py-1.5 hover:bg-accent/10 disabled:opacity-40"
-              >
-                {busy === "save" ? <Busy>저장 중…</Busy> : "스크립트 편집 저장"}
-              </button>
-            )}
+            <div className="mt-3">{renderSaveStatus()}</div>
             <p className="mt-1 text-[11px] text-zinc-400">
               스크립트를 고치면 <span className="font-medium">저장</span> 후{" "}
               <span className="font-medium">리롤</span>해야 새 프롬프트로 이미지가 나옵니다.
@@ -2530,16 +2568,7 @@ export default function Studio({
               })}
             </ol>
 
-            {dirty && (
-              <button
-                type="button"
-                onClick={saveScenes}
-                disabled={busy !== null}
-                className="mt-3 text-xs rounded-lg border border-accent text-accent px-3 py-1.5 hover:bg-accent/10 disabled:opacity-40"
-              >
-                {busy === "save" ? <Busy>저장 중…</Busy> : "프롬프트 저장"}
-              </button>
-            )}
+            <div className="mt-3">{renderSaveStatus()}</div>
             <p className="mt-1 text-[11px] text-zinc-400">
               모션 프롬프트를 고치면 <span className="font-medium">저장</span> 후{" "}
               <span className="font-medium">리롤</span>하면 그 프롬프트로 생성됩니다.
@@ -2716,10 +2745,16 @@ export default function Studio({
                       </span>
                     </span>
                     <textarea
-                      value={ttsScripts[sc.index] ?? ""}
+                      value={ttsScripts[sc.index] ?? sc.narration}
                       onChange={(e) => {
                         const v = e.target.value;
-                        setTtsScripts((prev) => ({ ...prev, [sc.index]: v }));
+                        setTtsScripts((prev) => {
+                          const next = { ...prev };
+                          // 자막과 같거나 비우면 오버라이드 해제 → 나레이션을 따라가게.
+                          if (!v.trim() || v === sc.narration) delete next[sc.index];
+                          else next[sc.index] = v;
+                          return next;
+                        });
                         setTtsDirty(true);
                       }}
                       onBlur={() => {
@@ -2734,7 +2769,7 @@ export default function Studio({
                     <p className="mt-1 text-[10px] text-zinc-400">
                       {(ttsScripts[sc.index] ?? "").trim()
                         ? "🔊 이 대본으로 음성이 만들어집니다 (📝 자막은 위 그대로 유지)."
-                        : "비어 있어서 📝 자막을 그대로 읽습니다."}
+                        : "📝 자막을 그대로 읽습니다 — 다르게 발음·표현하려면 고치세요."}
                     </p>
                   </li>
                 );
