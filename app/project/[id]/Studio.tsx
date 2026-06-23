@@ -232,7 +232,7 @@ export default function Studio({
   }
 
   // 보이스오버 속도(1.0 기본 / 1.2 빠르게) — 음성 생성 시 적용. 바꾸면 다시 생성해야 반영.
-  const [voiceSpeed, setVoiceSpeed] = useState<number>(initial.voiceSpeed ?? 1.0);
+  const [voiceSpeed, setVoiceSpeed] = useState<number>(initial.voiceSpeed ?? 1.2);
   async function saveVoiceSpeed(s: number) {
     if (s === voiceSpeed) return;
     const prev = voiceSpeed;

@@ -64,6 +64,8 @@ export async function createProject(args: CreateProjectArgs): Promise<Project> {
     scenes: [],
     steps,
     ttsEnabled,
+    ttsProvider: "elevenlabs", // 보이스오버 기본 엔진(env 기본값보다 우선).
+    voiceSpeed: 1.2, // 보이스오버 기본 속도 — 빠르게(1.2배).
     videoModelId,
     subtitle: DEFAULT_SUBTITLE,
     userPrompt: userPrompt?.trim() || undefined,

@@ -109,7 +109,7 @@ export const DEFAULT_SUBTITLE: SubtitleSettings = {
   font: "sans",
   weight: "regular",
   size: "small",
-  position: "top",
+  position: "three-quarters",
   align: "center",
   box: "dark",
   lang: "ko",

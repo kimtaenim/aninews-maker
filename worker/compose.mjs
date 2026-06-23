@@ -76,7 +76,7 @@ export async function composeProject(projectId, lang) {
 
   const sub = project.subtitle ?? {
     font: "sans", weight: "regular", size: "small",
-    position: "top", align: "center", box: "dark", lang: "ko",
+    position: "three-quarters", align: "center", box: "dark", lang: "ko",
   };
   console.log(
     `[worker] 렌더러=캡션PNG 오버레이(미리보기와 동일 디자인·캡션 분할) + cover-crop, 씬 ${scenes.length}개, lang=${lang}`

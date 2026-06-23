@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
       text,
       lang: voiceLang,
       provider: project.ttsProvider,
-      speed: project.voiceSpeed,
+      speed: project.voiceSpeed ?? 1.2, // 기본 1.2배(미설정 프로젝트도 동일하게).
     });
     const { url } = await uploadAsset(
       `project/${projectId}/scene-${sceneIndex}-audio-${lang}-${Date.now()}.mp3`,
