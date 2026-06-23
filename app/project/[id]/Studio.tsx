@@ -117,6 +117,13 @@ export default function Studio({
     _setBusy(action);
     if (action) setErrorStep(actionToStep(action));
   }
+  // 음성(6단계) 전용 busy 레인 — 시각(이미지·영상) busy 와 독립이라 병렬로 돌 수 있다.
+  // (음성 저장은 서버에서 재읽기-머지하므로 동시 저장이 서로 안 덮어쓴다.)
+  const [voiceBusy, _setVoiceBusy] = useState<string | null>(null);
+  function setVoiceBusy(action: string | null) {
+    _setVoiceBusy(action);
+    if (action) setErrorStep(actionToStep(action));
+  }
 
   // 편집용 씬 사본 (저장 전까지 로컬 상태)
   const [scenes, setScenes] = useState<EditScene[]>(initial.scenes.map(toEdit));
@@ -1396,7 +1403,7 @@ export default function Studio({
   // 합성/재생성 전에 먼저 저장해야 한다(자막용 narration 은 안 건드림).
   async function saveTtsScripts() {
     setError(null);
-    setBusy("save-tts");
+    setVoiceBusy("save-tts");
     try {
       const payload = project.scenes.map((s) => ({
         index: s.index,
@@ -1414,7 +1421,7 @@ export default function Studio({
     } catch (e) {
       setError(e instanceof Error ? e.message : "음성 스크립트 저장 실패");
     } finally {
-      setBusy(null);
+      setVoiceBusy(null);
     }
   }
 
@@ -1462,22 +1469,23 @@ export default function Studio({
     await flushScenes();
     if (ttsDirty) await saveTtsScripts();
     setError(null);
-    setBusy(`audio-${sceneIndex}`);
+    setVoiceBusy(`audio-${sceneIndex}`);
     try {
       await generateOneAudio(sceneIndex);
     } catch (e) {
       setError(e instanceof Error ? e.message : "음성 생성 실패");
     } finally {
-      setBusy(null);
+      setVoiceBusy(null);
     }
   }
 
-  // 음성 없는 씬들을 순차 생성(병렬 금지 — last-write-wins 방지).
+  // 음성 없는 씬들을 순차 생성(씬끼리는 순차 — 같은 음성 트랙 경합 방지).
+  // 시각(이미지·영상) 작업과는 병렬 가능(voiceBusy 레인 + 서버 재읽기-머지).
   async function generateAllAudio(all = false) {
     await flushScenes();
     if (ttsDirty) await saveTtsScripts();
     setError(null);
-    setBusy("audio-all");
+    setVoiceBusy("audio-all");
     try {
       for (let i = 0; i < project.scenes.length; i++) {
         if (!all && project.scenes[i].audioUrl) continue;
@@ -1486,13 +1494,13 @@ export default function Studio({
     } catch (e) {
       setError(e instanceof Error ? e.message : "음성 생성 실패");
     } finally {
-      setBusy(null);
+      setVoiceBusy(null);
     }
   }
 
   async function approveVoiceover() {
     setError(null);
-    setBusy("approve-voiceover");
+    setVoiceBusy("approve-voiceover");
     try {
       await call("/api/step/approve", { projectId: project.id, step: "voiceover" });
       setProject((p) => ({
@@ -1502,7 +1510,7 @@ export default function Studio({
     } catch (e) {
       setError(e instanceof Error ? e.message : "승인 실패");
     } finally {
-      setBusy(null);
+      setVoiceBusy(null);
     }
   }
 
@@ -2623,15 +2631,15 @@ export default function Studio({
           <button
             type="button"
             onClick={() => generateAllAudio(false)}
-            disabled={!keyframeApproved || busy !== null || project.scenes.length === 0}
+            disabled={!keyframeApproved || voiceBusy !== null || project.scenes.length === 0}
             className="shrink-0 text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-medium px-3 py-1.5"
           >
-            {busy === "audio-all" ? <Busy>생성 중…</Busy> : "빈 씬만 생성"}
+            {voiceBusy === "audio-all" ? <Busy>생성 중…</Busy> : "빈 씬만 생성"}
           </button>
           <button
             type="button"
             onClick={() => generateAllAudio(true)}
-            disabled={!keyframeApproved || busy !== null || project.scenes.length === 0}
+            disabled={!keyframeApproved || voiceBusy !== null || project.scenes.length === 0}
             className="shrink-0 text-xs rounded-lg border border-accent text-accent px-3 py-1.5 hover:bg-accent/10 disabled:opacity-40"
           >
             전체 생성
@@ -2716,7 +2724,7 @@ export default function Studio({
           <>
             <ol className="mt-4 grid gap-2">
               {project.scenes.map((sc, i) => {
-                const audioBusy = busy === `audio-${i}` || busy === "audio-all";
+                const audioBusy = voiceBusy === `audio-${i}` || voiceBusy === "audio-all";
                 return (
                   <li
                     key={i}
@@ -2732,7 +2740,7 @@ export default function Studio({
                         <button
                           type="button"
                           onClick={() => generateAudio(i)}
-                          disabled={busy !== null || !sc.narration}
+                          disabled={voiceBusy !== null || !sc.narration}
                           className="text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
                         >
                           {sc.audioUrl ? "리롤" : "음성 생성"}
@@ -2801,10 +2809,10 @@ export default function Studio({
               <button
                 type="button"
                 onClick={approveVoiceover}
-                disabled={busy !== null}
+                disabled={voiceBusy !== null}
                 className="mt-4 w-full rounded-xl bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-semibold py-3 transition-colors"
               >
-                {busy === "approve-voiceover" ? (
+                {voiceBusy === "approve-voiceover" ? (
                   <Busy>승인 중…</Busy>
                 ) : (
                   "✓ 음성 승인 →"

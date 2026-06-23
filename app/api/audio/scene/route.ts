@@ -90,19 +90,23 @@ export async function POST(req: NextRequest) {
       Buffer.from(audioBuffer),
       "audio/mpeg"
     );
-    project.scenes[sceneIndex] = isDub
-      ? { ...scene, dub: { ...scene.dub, [lang]: { ...scene.dub?.[lang], audioUrl: url } } }
-      : { ...scene, audioUrl: url, status: "generated" };
+    // 합성 동안(~수 초) 다른 작업(이미지·영상)이 같은 프로젝트를 저장했을 수 있으니,
+    // 저장 직전에 최신본을 다시 읽어 audio 필드만 머지한다(병렬 생성 시 상호 덮어쓰기 방지).
+    const fresh = (await getProject(projectId)) ?? project;
+    const fScene = fresh.scenes[sceneIndex] ?? scene;
+    fresh.scenes[sceneIndex] = isDub
+      ? { ...fScene, dub: { ...fScene.dub, [lang]: { ...fScene.dub?.[lang], audioUrl: url } } }
+      : { ...fScene, audioUrl: url, status: "generated" };
 
     const allDone = isDub
-      ? project.scenes.every((s) => !!dubAudioUrl(s, lang))
-      : project.scenes.every((s) => !!s.audioUrl);
+      ? fresh.scenes.every((s) => !!dubAudioUrl(s, lang))
+      : fresh.scenes.every((s) => !!s.audioUrl);
     if (!isDub) {
-      project.steps.voiceover.status = allDone ? "generated" : "generating";
-      project.steps.voiceover.updatedAt = Date.now();
+      fresh.steps.voiceover.status = allDone ? "generated" : "generating";
+      fresh.steps.voiceover.updatedAt = Date.now();
     }
-    project.updatedAt = Date.now();
-    await saveProject(project);
+    fresh.updatedAt = Date.now();
+    await saveProject(fresh);
 
     await recordCost({
       projectId,
@@ -115,10 +119,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, url, sceneIndex, lang, allDone, cost: formatKrw(costUsd) });
   } catch (e) {
     const error = e instanceof Error ? e.message : "음성 생성 실패";
-    project.steps.voiceover.status = "error";
-    project.steps.voiceover.error = error;
-    project.steps.voiceover.updatedAt = Date.now();
-    await saveProject(project);
+    const fresh = (await getProject(projectId)) ?? project;
+    fresh.steps.voiceover.status = "error";
+    fresh.steps.voiceover.error = error;
+    fresh.steps.voiceover.updatedAt = Date.now();
+    await saveProject(fresh);
     const hint = /API_KEY|401|unauthor/i.test(error)
       ? " (TTS_PROVIDER 에 맞는 API 키가 .env.local 에 있는지 확인해주세요)"
       : "";
