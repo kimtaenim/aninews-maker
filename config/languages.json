@@ -1,0 +1,9 @@
+{
+  "languages": [
+    { "code": "ko", "geo": "KR", "label": "한국어" },
+    { "code": "en", "geo": "US", "label": "영어" },
+    { "code": "ja", "geo": "JP", "label": "일본어" },
+    { "code": "es", "geo": "ES", "label": "스페인어" },
+    { "code": "vi", "geo": "VN", "label": "베트남어" }
+  ]
+}

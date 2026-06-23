@@ -1,14 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Spinner from "@/components/Spinner";
 import type { RssItem, RssCategory } from "@/lib/rss";
 import type { ArticleBriefing } from "@/lib/briefing";
 import type { WikiSearchResult } from "@/lib/wikipedia";
 import { ACCEPT_ATTR, MAX_FILE_SIZE, MAX_TOTAL_SIZE } from "@/lib/attachments";
+import trendLangsData from "@/config/languages.json";
 
-type Mode = "rss" | "url" | "wiki" | "text" | "file";
+type Mode = "rss" | "url" | "wiki" | "trend" | "text" | "file";
+
+// 트렌드 언어 목록(config/languages.json) — 버튼용.
+const TREND_LANGS = (trendLangsData as {
+  languages: { code: string; geo: string; label: string }[];
+}).languages;
+
+interface TrendItem {
+  keyword: string;
+  traffic?: string;
+}
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes}B`;
@@ -24,6 +35,12 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
   const [wiki, setWiki] = useState("");
   const [wikiResults, setWikiResults] = useState<WikiSearchResult[] | null>(null);
   const [wikiSearching, setWikiSearching] = useState(false);
+
+  // 트렌드(구글 트렌드 실시간 급상승) — 기본 한국어. 키워드 클릭 → 위키 검색으로.
+  const [trendLang, setTrendLang] = useState("ko");
+  const [trends, setTrends] = useState<TrendItem[] | null>(null);
+  const [trendsLoading, setTrendsLoading] = useState(false);
+
   const [text, setText] = useState("");
   const [files, setFiles] = useState<File[]>([]);
 
@@ -180,9 +197,34 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
     }
   }
 
+  // 트렌드 로드 — 언어별 구글 트렌드 급상승 10개. 기본 한국어, 탭 진입/언어 변경 시 호출.
+  async function loadTrends(lang: string) {
+    setTrendLang(lang);
+    setTrends(null);
+    setTrendsLoading(true);
+    setError(null);
+    try {
+      const r = await fetch(`/api/source/trends?lang=${encodeURIComponent(lang)}`);
+      const data = await r.json();
+      if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      setTrends(data.items as TrendItem[]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "트렌드를 못 불러왔어요");
+    } finally {
+      setTrendsLoading(false);
+    }
+  }
+
+  // 트렌드 탭에 처음 들어오면 기본 언어(한국어)를 자동으로 불러온다.
+  useEffect(() => {
+    if (mode === "trend" && trends === null && !trendsLoading) void loadTrends(trendLang);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
+
   // 위키 검색 — 검색어로 한·영 위키 후보를 받아 보여준다. URL을 바로 넣었으면 검색 없이 생성.
-  async function searchWiki() {
-    const q = wiki.trim();
+  // queryOverride: 트렌드 키워드 클릭 시 그 키워드로 바로 검색(상태 갱신을 기다리지 않음).
+  async function searchWiki(queryOverride?: string) {
+    const q = (queryOverride ?? wiki).trim();
     if (!q) {
       setError("검색어나 위키 주소를 입력해주세요");
       return;
@@ -310,6 +352,7 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
         {tab("rss", "RSS")}
         {tab("url", "URL")}
         {tab("wiki", "위키")}
+        {tab("trend", "트렌드")}
         {tab("text", "텍스트")}
         {tab("file", "파일")}
       </div>
@@ -499,6 +542,69 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
         />
       )}
 
+      {mode === "trend" && (
+        <div className="grid gap-3">
+          {/* 언어 선택 — 기본 한국어. 누르면 그 언어 트렌드 10개를 불러온다. */}
+          <div className="flex flex-wrap gap-1.5">
+            {TREND_LANGS.map((l) => (
+              <button
+                key={l.code}
+                type="button"
+                onClick={() => void loadTrends(l.code)}
+                disabled={trendsLoading}
+                className={
+                  "px-3 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50 " +
+                  (trendLang === l.code
+                    ? "bg-accent text-white"
+                    : "bg-zinc-100 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300")
+                }
+              >
+                {l.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] text-zinc-400">
+            구글 트렌드 실시간 급상승 10개(최신순). 하나 누르면 그 키워드로 위키 문서를
+            찾아드려요.
+          </p>
+
+          {trendsLoading && (
+            <p className="inline-flex items-center gap-1.5 text-xs text-accent">
+              <Spinner /> 트렌드 불러오는 중…
+            </p>
+          )}
+          {trends && trends.length > 0 && (
+            <ol className="grid gap-1.5">
+              {trends.map((t, i) => (
+                <li key={i}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setWiki(t.keyword);
+                      setWikiResults(null);
+                      setMode("wiki");
+                      void searchWiki(t.keyword);
+                    }}
+                    className="w-full text-left rounded-xl border border-zinc-200 dark:border-zinc-800 p-3 hover:border-accent hover:bg-accent/5 transition-colors"
+                  >
+                    <span className="mr-2 text-xs text-zinc-400">{i + 1}</span>
+                    <span className="text-sm font-medium">{t.keyword}</span>
+                    {t.traffic && (
+                      <span className="ml-2 text-[10px] text-zinc-400">{t.traffic}</span>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ol>
+          )}
+          {trends && trends.length === 0 && !trendsLoading && (
+            <p className="text-xs text-zinc-500">
+              지금은 트렌드를 못 불러왔어요. 잠시 후 다시 시도해주세요.
+            </p>
+          )}
+        </div>
+      )}
+
       {mode === "wiki" && (
         <div className="grid gap-3">
           <div className="flex gap-2">
@@ -639,8 +745,8 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
-      {/* 위키 모드는 자체 "검색" + 결과 클릭으로 진행하므로 이 버튼은 숨김. */}
-      {mode !== "wiki" && (
+      {/* 위키·트렌드 모드는 자체 검색/클릭으로 진행하므로 이 버튼은 숨김. */}
+      {mode !== "wiki" && mode !== "trend" && (
         <button
           type="button"
           onClick={submit}
