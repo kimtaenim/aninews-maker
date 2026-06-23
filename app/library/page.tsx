@@ -65,7 +65,13 @@ export default async function LibraryPage({
     loadError = true;
   }
 
-  const shown = projects.filter((p) => matchesQuery(p, terms));
+  // 드라이브 업로드 완료(재합성 안 됨)는 뒤로, 아직 안 올린 것·재업로드 필요한 것은
+  // 앞으로. 그룹 안에서는 기존 순서(최신순) 유지(Array.sort 는 안정 정렬).
+  const isUploaded = (p: Project) =>
+    !!p.driveLink && p.driveUploadedUrl === p.finalVideoUrl;
+  const shown = projects
+    .filter((p) => matchesQuery(p, terms))
+    .sort((a, b) => Number(isUploaded(a)) - Number(isUploaded(b)));
 
   return (
     <main className="px-4 py-8 md:max-w-2xl md:mx-auto">
