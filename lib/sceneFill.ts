@@ -72,10 +72,7 @@ export async function generateImagePrompts(args: {
     "what is visible, the subject, setting, composition. Calm, censorship-safe, metaphorical everyday visuals — " +
     "avoid protests, raised fists, marching crowds, violence, weapons, blood, political slogans/symbols, real public figures. " +
     "Write ONE natural scene as plain prose and compose it freely — camera angle, framing and subject size are " +
-    "entirely up to you. Just do NOT output layout/zone words: 'safety zone'/'designated area'/zone/section/area/" +
-    "존/구역/영역, ratios or fractions (1/3, 2/3, 3분의, 절반, 50%), or screen-position words (top/bottom/upper/lower, " +
-    "상단/하단/위 영역/아래 영역) " +
-    "(하나의 자연스러운 장면을 자유롭게 묘사 — 카메라·프레이밍·인물 크기는 자유. 다만 '세이프티존'·'존'·'구역'·'영역'·1/3·2/3·3분의·절반·상단·하단 같은 구역·위치 어휘는 출력에 쓰지 말 것). " +
+    "entirely up to you (하나의 자연스러운 장면을 자유롭게 묘사 — 카메라·프레이밍·인물 크기는 자유). " +
     "Keep on-image text minimal. One scene = one concise Korean prompt. " +
     'Output ONLY JSON: {"items":[{"index":0,"prompt":"..."}]} with the SAME indices, one per scene.';
   // 모델이 임의 인덱스를 0-based 로 다시 매기는 일이 있어, 입력은 0..N-1 위치로 주고
