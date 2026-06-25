@@ -17,9 +17,9 @@ const REF_FETCH_TIMEOUT_MS = 30_000;
 const NO_TEXT =
   "Keep on-image text minimal: avoid signs, banners, paragraphs, or lots of words. A few short words are okay if natural, but no heavy text overlays.";
 
-// 자막이 얹힐 한 띠(position)에는 인물의 얼굴·머리·손이 겹치지 않도록 그 띠 바깥에 배치한다.
-// "안 보이게 숨기는" 게 아니라 "자막 자리 밖으로 배치"하는 것 — 인물은 정상적으로 그리되
-// 자막 영역에만 머리·손이 안 오게 한다. 자막 자리는 비우지 말고 배경·하늘·소품으로 채운다.
+// 사용자가 지정한 한 영역(position)과 그 주변에는 인물의 얼굴·머리·손이 오지 않게 배치한다
+// (그 위에 텍스트 등 오버레이가 올라갈 수 있음). 지정 영역은 비우지 말고 배경·하늘·소품으로
+// 차분히 채우고, 나머지 화면은 인물·배경을 자유롭게 그린다.
 function edgeSafe(position?: string): string {
   const band: Record<string, string> = {
     top: "the top area",
@@ -30,10 +30,11 @@ function edgeSafe(position?: string): string {
   };
   const zone = band[position ?? ""] ?? band["three-quarters"];
   return (
-    `A subtitle will overlay ${zone} of the vertical frame. Keep people's faces, heads, and hands clear of ` +
-    `that subtitle area (and the band right around it). The ${zone} area should be visually calm with ` +
-    "background, sky, or simple props — no heads or hands there. The rest of the frame can include people, " +
-    "body, props, and environment naturally; do not leave the scene blank."
+    `The ${zone} of the vertical frame is a designated area reserved by the user (text or other overlay may ` +
+    `be placed there). Keep people's faces, heads, and hands clear of that designated area and the band right ` +
+    `around it. The ${zone} area should be visually calm with background, sky, or simple props — no heads or ` +
+    "hands there. The rest of the frame can include people, body, props, and environment naturally; do not " +
+    "leave the scene blank."
   );
 }
 
