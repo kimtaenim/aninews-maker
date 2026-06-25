@@ -17,22 +17,15 @@ const REF_FETCH_TIMEOUT_MS = 30_000;
 const NO_TEXT =
   "Keep on-image text minimal: avoid signs, banners, paragraphs, or lots of words. A few short words are okay if natural, but no heavy text overlays.";
 
-// 사용자가 지정한 한 영역(position)과 그 주변에는 인물의 얼굴·머리·손이 오지 않게 배치한다
-// (그 위에 텍스트 등 오버레이가 올라갈 수 있음). 지정 영역은 비우지 말고 배경·하늘·소품으로
-// 차분히 채우고, 나머지 화면은 인물·배경을 자유롭게 그린다.
-function edgeSafe(position?: string): string {
-  const band: Record<string, string> = {
-    top: "the top area",
-    center: "the vertical middle",
-    "two-thirds": "the lower-middle area (around two-thirds height)",
-    "three-quarters": "the lower area (around three-quarters height)",
-    bottom: "the bottom area",
-  };
-  const zone = band[position ?? ""] ?? band["three-quarters"];
+// 사용자가 지정한 한 영역과 그 주변에는 인물의 얼굴·머리·손이 오지 않게 배치한다(그 위에
+// 텍스트 등 오버레이가 올라갈 수 있음). 위치(상단/하단 등)는 프롬프트에 명시하지 않고
+// "지정된 영역" 한 곳만 가리킨다. 지정 영역은 비우지 말고 배경·하늘·소품으로 채우고,
+// 나머지 화면은 인물·배경을 자유롭게 그린다. (_position 은 호환용으로 받기만 하고 안 씀.)
+function edgeSafe(_position?: string): string {
   return (
-    `The ${zone} of the vertical frame is a designated area reserved by the user (text or other overlay may ` +
-    `be placed there). Keep people's faces, heads, and hands clear of that designated area and the band right ` +
-    `around it. The ${zone} area should be visually calm with background, sky, or simple props — no heads or ` +
+    "A specific area of the frame has been designated by the user — text or other overlays may be placed " +
+    "there. Keep people's faces, heads, and hands clear of that designated area and the band right around " +
+    "it. The designated area should be visually calm with background, sky, or simple props — no heads or " +
     "hands there. The rest of the frame can include people, body, props, and environment naturally; do not " +
     "leave the scene blank."
   );
