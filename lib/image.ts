@@ -17,16 +17,21 @@ const REF_FETCH_TIMEOUT_MS = 30_000;
 const NO_TEXT =
   "Keep on-image text minimal: avoid signs, banners, paragraphs, or lots of words. A few short words are okay if natural, but no heavy text overlays.";
 
-// 안전 영역을 'zone' 명칭 대신 영화 촬영 용어로 구현 — 인물은 medium shot 으로 정상 크기를
-// 유지하고, 위쪽 헤드룸에만 환경 요소(천장·하늘·벽 등)를 채운다. 인물을 작게 줄이지 않는다.
-// 이미지 모델 전용(Claude 비노출). (_position 은 호환용으로 받기만 하고 반영하지 않는다.)
-function edgeSafe(_position?: string): string {
+// 이미지 모델 전용(Claude 비노출). 자막(subtitlePosition) 자리에만 얼굴·머리·손이 오지
+// 않게 하는 짧은 안전 지시. 인물 크기·위치·카메라 앵글은 강제하지 않고 자연스럽게 둔다.
+function edgeSafe(position?: string): string {
+  const area: Record<string, string> = {
+    top: "top",
+    center: "central",
+    "two-thirds": "lower",
+    "three-quarters": "lower",
+    bottom: "bottom",
+  };
+  const where = area[position ?? ""] ?? "bottom";
   return (
-    "Subject framing: medium shot or medium close-up — the character should be clearly visible at a natural size, " +
-    "well-composed in the frame center. Leave moderate headroom above the subject (sky, ceiling, wall texture, " +
-    "ambient lighting, or environmental details fill that headroom). Keep faces, heads, and hands within the " +
-    "central or lower portion of the frame; the headroom above is for atmospheric and environmental detail. Do NOT " +
-    "shrink the subject or pull the camera back — the subject is the focus."
+    `Keep faces, heads, and hands clear of the ${where} area of the frame (an overlay may be placed there). ` +
+    "The rest of the composition is unconstrained — compose naturally with whatever camera angle, framing, and " +
+    "subject size fits the scene."
   );
 }
 
