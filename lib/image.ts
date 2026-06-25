@@ -22,10 +22,14 @@ const NO_TEXT =
 // 어휘를 직접 써도 된다. (_position 은 호환용으로 받기만 하고 반영하지 않는다.)
 function edgeSafe(_position?: string): string {
   return (
-    "Composition: high-angle medium-wide shot with a slight downward tilt. The subject is framed in the lower " +
-    "half of the vertical frame with ample headroom showing ceiling, sky, or background texture above. Keep " +
-    "faces, heads, and hands in the lower-to-mid region, not at the very top. The upper region is occupied by " +
-    "environmental elements (background, ambient lighting, props attached to the upper space)."
+    "Camera: high-angle medium-wide shot with a slight downward tilt. " +
+    "Subject placement: faces, heads, and hands stay in the lower-to-mid region of the vertical frame. " +
+    "CRITICAL — the upper region must be visually FULL, never blank or empty: fill it with rich detail such as " +
+    "ceiling architecture, sky with clouds, sunlight, wall textures with patterns, decorative elements, hanging " +
+    "lights, foliage, distant scenery, atmospheric haze, or environmental props. Treat the upper region as ACTIVE " +
+    "BACKGROUND — never negative space. Only faces and hands are excluded there; everything else (body, environment, " +
+    "props, atmospheric elements) can fill it freely. Do NOT leave the upper region as flat color, gradient, or " +
+    "empty space — it should be as rich and detailed as the rest of the composition."
   );
 }
 

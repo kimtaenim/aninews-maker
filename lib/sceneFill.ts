@@ -72,15 +72,18 @@ export async function generateImagePrompts(args: {
     "what is visible, the subject, setting, composition. Calm, censorship-safe, metaphorical everyday visuals — " +
     "avoid protests, raised fists, marching crowds, violence, weapons, blood, political slogans/symbols, real public figures. " +
     "Framing (apply it THROUGH the description using cinematography terms — never name it as a region): use a " +
-    "high-angle shot with a slight downward tilt (about 20-30°); frame the subject in the lower-to-mid of the " +
-    "vertical frame, mostly at chest level or below with ample headroom; let the upper part of the frame show " +
-    "ceiling, sky, wallpaper, background texture or ambient lighting; keep faces, heads and hands in the mid-to-" +
-    "lower part, never at the very top. Express this ONLY with cinematography vocabulary (e.g. 'high-angle medium-" +
-    "wide shot', 'overhead downward tilt', 'low framing with headroom'). NEVER write these words in the output: " +
-    "'safety zone'/'designated area'/zone/section/area/존/구역/영역, ratios or fractions (1/3, 2/3, 3분의, 절반, 50%), " +
-    "screen-position words (top/bottom/upper/lower, 상단/하단/위 영역/아래 영역), or leave-empty words (leave empty/" +
-    "reserve/blank, 비우다/비워두다/여백) " +
-    "(프레이밍은 묘사 안에 영화 촬영 용어로 녹여 쓰세요 — 하이앵글 하향 틸트, 미디엄 와이드, 어깨 위 헤드룸, 배경에 천장 노출 등. '세이프티존'·'존'·'구역'·'영역'·1/3·2/3·3분의·절반·상단·하단·'비우다'·'여백' 같은 어휘는 출력에 절대 쓰지 마세요). " +
+    "high-angle shot with a slight downward tilt; place the subject in the lower-to-mid of the vertical frame, " +
+    "mostly at chest level or below; keep faces, heads and hands in the mid-to-lower part, never at the very top. " +
+    "The upper part must be visually FULL — never blank or empty: pack it with rich detail such as ceiling " +
+    "architecture, sky with clouds, sunlight, patterned wall textures, decorative elements, hanging lights, " +
+    "foliage, distant scenery, atmospheric haze, or environmental props (ACTIVE BACKGROUND, not negative space — " +
+    "only faces and hands are kept out of it; body, environment and props can fill it freely). Never render the top " +
+    "as flat color, gradient, or empty space. Express all of this ONLY with cinematography vocabulary (e.g. 'high-" +
+    "angle medium-wide shot', 'overhead downward tilt', 'low framing with headroom'). NEVER write these words in " +
+    "the output: 'safety zone'/'designated area'/zone/section/area/존/구역/영역, ratios or fractions (1/3, 2/3, 3분의, " +
+    "절반, 50%), screen-position words (top/bottom/upper/lower, 상단/하단/위 영역/아래 영역), or leave-empty words " +
+    "(leave empty/reserve/blank, 비우다/비워두다/여백) " +
+    "(영화 촬영 용어로만 묘사: 하이앵글 하향 틸트, 인물은 하단~중앙·어깨선 이하, 얼굴·머리·손은 중하단. 위쪽은 절대 비우지 말고 천장 구조물·하늘·구름·햇빛·조명기구·식물·벽지 무늬·인테리어 디테일·원경 등으로 풍부하게 채울 것 — NEGATIVE SPACE 아니라 ACTIVE BACKGROUND, 평평한 색·그라데이션·빈 공간 금지. '세이프티존'·'존'·'구역'·'영역'·1/3·2/3·3분의·절반·상단·하단·'비우다'·'여백' 같은 어휘는 출력에 쓰지 말 것). " +
     "Keep on-image text minimal. One scene = one concise Korean prompt. " +
     'Output ONLY JSON: {"items":[{"index":0,"prompt":"..."}]} with the SAME indices, one per scene.';
   // 모델이 임의 인덱스를 0-based 로 다시 매기는 일이 있어, 입력은 0..N-1 위치로 주고
