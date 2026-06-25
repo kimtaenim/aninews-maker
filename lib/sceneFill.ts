@@ -71,11 +71,10 @@ export async function generateImagePrompts(args: {
     "The art style is applied separately (style bible below) — so describe ONLY the scene CONTENT in Korean: " +
     "what is visible, the subject, setting, composition. Calm, censorship-safe, metaphorical everyday visuals — " +
     "avoid protests, raised fists, marching crowds, violence, weapons, blood, political slogans/symbols, real public figures. " +
-    "Write ONE natural scene as plain prose. In the output, NEVER describe the layout by screen position " +
-    "(top/bottom/upper/lower), by ratio or fraction (1/3, 2/3, 3분의), or as a named region ('subtitle zone'/" +
-    "'action zone'/'safety zone'). Just compose so faces, heads, and hands do not fill the whole frame, leaving " +
-    "some calm, uncluttered background — but convey that only through natural scene content, never as a region " +
-    "(하나의 자연스러운 장면을 평범한 묘사로. 출력에 화면 위/아래·1/3·2/3·3분의 같은 위치·비율이나 '존' 같은 구역 표현을 절대 쓰지 말 것. 얼굴·머리·손이 화면을 가득 채우지 않고 배경 여백을 남기되, 그건 구역이 아니라 장면 내용으로만 표현). " +
+    "Write ONE natural scene as plain prose, describing only the content. In the output, NEVER lay out the frame " +
+    "by screen position (top/bottom/upper/lower), by ratio or fraction (1/3, 2/3, 3분의), or as any named region " +
+    "or zone ('subtitle zone'/'action zone'/'safety zone'/zone/area) " +
+    "(하나의 자연스러운 장면을 평범한 묘사로 — 출력에 화면 위/아래·1/3·2/3·3분의 같은 위치·비율이나 '존'·'영역' 같은 구역 표현을 절대 쓰지 말 것). " +
     "Keep on-image text minimal. One scene = one concise Korean prompt. " +
     'Output ONLY JSON: {"items":[{"index":0,"prompt":"..."}]} with the SAME indices, one per scene.';
   // 모델이 임의 인덱스를 0-based 로 다시 매기는 일이 있어, 입력은 0..N-1 위치로 주고
