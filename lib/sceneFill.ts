@@ -71,10 +71,16 @@ export async function generateImagePrompts(args: {
     "The art style is applied separately (style bible below) — so describe ONLY the scene CONTENT in Korean: " +
     "what is visible, the subject, setting, composition. Calm, censorship-safe, metaphorical everyday visuals — " +
     "avoid protests, raised fists, marching crowds, violence, weapons, blood, political slogans/symbols, real public figures. " +
-    "Write ONE natural scene as plain prose, describing only the content. In the output, NEVER lay out the frame " +
-    "by screen position (top/bottom/upper/lower), by ratio or fraction (1/3, 2/3, 3분의), or as any named region " +
-    "or zone ('subtitle zone'/'action zone'/'safety zone'/zone/area) " +
-    "(하나의 자연스러운 장면을 평범한 묘사로 — 출력에 화면 위/아래·1/3·2/3·3분의 같은 위치·비율이나 '존'·'영역' 같은 구역 표현을 절대 쓰지 말 것). " +
+    "Framing (apply it THROUGH the description using cinematography terms — never name it as a region): use a " +
+    "high-angle shot with a slight downward tilt (about 20-30°); frame the subject in the lower-to-mid of the " +
+    "vertical frame, mostly at chest level or below with ample headroom; let the upper part of the frame show " +
+    "ceiling, sky, wallpaper, background texture or ambient lighting; keep faces, heads and hands in the mid-to-" +
+    "lower part, never at the very top. Express this ONLY with cinematography vocabulary (e.g. 'high-angle medium-" +
+    "wide shot', 'overhead downward tilt', 'low framing with headroom'). NEVER write these words in the output: " +
+    "'safety zone'/'designated area'/zone/section/area/존/구역/영역, ratios or fractions (1/3, 2/3, 3분의, 절반, 50%), " +
+    "screen-position words (top/bottom/upper/lower, 상단/하단/위 영역/아래 영역), or leave-empty words (leave empty/" +
+    "reserve/blank, 비우다/비워두다/여백) " +
+    "(프레이밍은 묘사 안에 영화 촬영 용어로 녹여 쓰세요 — 하이앵글 하향 틸트, 미디엄 와이드, 어깨 위 헤드룸, 배경에 천장 노출 등. '세이프티존'·'존'·'구역'·'영역'·1/3·2/3·3분의·절반·상단·하단·'비우다'·'여백' 같은 어휘는 출력에 절대 쓰지 마세요). " +
     "Keep on-image text minimal. One scene = one concise Korean prompt. " +
     'Output ONLY JSON: {"items":[{"index":0,"prompt":"..."}]} with the SAME indices, one per scene.';
   // 모델이 임의 인덱스를 0-based 로 다시 매기는 일이 있어, 입력은 0..N-1 위치로 주고

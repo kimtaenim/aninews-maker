@@ -17,15 +17,15 @@ const REF_FETCH_TIMEOUT_MS = 30_000;
 const NO_TEXT =
   "Keep on-image text minimal: avoid signs, banners, paragraphs, or lots of words. A few short words are okay if natural, but no heavy text overlays.";
 
-// 1/3·2/3 비율이나 '서브타이틀존' 같은 라벨 분할은 금지하되, 얼굴·머리·손이 오지 않는
-// "세이프티존"은 둔다(오버레이가 얹힐 수 있음). 세이프티존도 비우지 말고 배경/소품으로
-// 채운다. (_position 은 호환용으로 받기만 하고 프롬프트엔 반영하지 않는다.)
+// 안전 영역을 'zone' 명칭 대신 영화 촬영 용어로 구현 — 하이앵글 하향 틸트로 인물을 하단
+// 절반에 배치하고 상단은 천장/배경으로 채운다. 이미지 모델 전용(Claude 비노출)이라 위치
+// 어휘를 직접 써도 된다. (_position 은 호환용으로 받기만 하고 반영하지 않는다.)
 function edgeSafe(_position?: string): string {
   return (
-    "Compose the scene naturally as a single coherent shot — do not split the frame into rigid proportions " +
-    "like 1/3 + 2/3 or labeled sections. However, keep a safety zone within the frame that is free of faces, " +
-    "heads, and hands (this area may receive an overlay). Fill the safety zone with background, sky, or simple " +
-    "props — don't leave it blank. Place the subject's body, clothing, props, and environment naturally elsewhere."
+    "Composition: high-angle medium-wide shot with a slight downward tilt. The subject is framed in the lower " +
+    "half of the vertical frame with ample headroom showing ceiling, sky, or background texture above. Keep " +
+    "faces, heads, and hands in the lower-to-mid region, not at the very top. The upper region is occupied by " +
+    "environmental elements (background, ambient lighting, props attached to the upper space)."
   );
 }
 
