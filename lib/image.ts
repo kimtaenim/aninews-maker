@@ -17,12 +17,15 @@ const REF_FETCH_TIMEOUT_MS = 30_000;
 const NO_TEXT =
   "Keep on-image text minimal: avoid signs, banners, paragraphs, or lots of words. A few short words are okay if natural, but no heavy text overlays.";
 
-// 구역 분할(존 split) 없이 한 화면에 자연스러운 구도를 지시한다 — 인물·소품·배경을 균형
-// 있게 배치. (_position 은 호환용으로 받기만 하고 프롬프트엔 반영하지 않는다.)
+// 1/3·2/3 비율이나 '서브타이틀존' 같은 라벨 분할은 금지하되, 얼굴·머리·손이 오지 않는
+// "세이프티존"은 둔다(오버레이가 얹힐 수 있음). 세이프티존도 비우지 말고 배경/소품으로
+// 채운다. (_position 은 호환용으로 받기만 하고 프롬프트엔 반영하지 않는다.)
 function edgeSafe(_position?: string): string {
   return (
-    "Compose the scene naturally for a 9:16 vertical frame: place the subject, props, and environment in one " +
-    "coherent, balanced shot. Do NOT split the frame into zones or reserve any band. Do not leave it blank."
+    "Compose the scene naturally as a single coherent shot — do not split the frame into rigid proportions " +
+    "like 1/3 + 2/3 or labeled sections. However, keep a safety zone within the frame that is free of faces, " +
+    "heads, and hands (this area may receive an overlay). Fill the safety zone with background, sky, or simple " +
+    "props — don't leave it blank. Place the subject's body, clothing, props, and environment naturally elsewhere."
   );
 }
 

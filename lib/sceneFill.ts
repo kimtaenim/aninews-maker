@@ -71,8 +71,11 @@ export async function generateImagePrompts(args: {
     "The art style is applied separately (style bible below) — so describe ONLY the scene CONTENT in Korean: " +
     "what is visible, the subject, setting, composition. Calm, censorship-safe, metaphorical everyday visuals — " +
     "avoid protests, raised fists, marching crowds, violence, weapons, blood, political slogans/symbols, real public figures. " +
-    "Place the subject, props and background naturally in one coherent shot — do NOT split the frame into zones " +
-    "or reserve any band (인물·소품·배경을 한 화면에 자연스럽게 배치; 구역을 나누지 말 것). " +
+    "Draw one natural, coherent composition — do NOT split the frame by ratios like 1/3+2/3 or attach labels like " +
+    "'subtitle zone'/'action zone'. But keep a SAFETY ZONE within the frame that is free of faces, heads, and hands " +
+    "(it may receive an overlay); fill the safety zone with background/sky/simple props (not blank), and place the " +
+    "body, clothing, props and background naturally elsewhere " +
+    "(화면을 하나의 자연스러운 구도로 — 1/3·2/3 비율 분할이나 '서브타이틀존'·'액션존' 라벨 금지. 다만 얼굴·머리·손이 오지 않는 세이프티존을 두고, 그곳은 배경·하늘·소품으로 채우며 나머지에 신체·옷·소품·배경을 자연스럽게 배치). " +
     "Keep on-image text minimal. One scene = one concise Korean prompt. " +
     'Output ONLY JSON: {"items":[{"index":0,"prompt":"..."}]} with the SAME indices, one per scene.';
   // 모델이 임의 인덱스를 0-based 로 다시 매기는 일이 있어, 입력은 0..N-1 위치로 주고
