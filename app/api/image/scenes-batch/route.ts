@@ -90,6 +90,7 @@ export async function POST(req: NextRequest) {
         referenceImageUrl:
           s.imageSource === "reference" ? s.referenceImageUrl : undefined,
         paletteHint: s.paletteHint,
+        subtitlePosition: project.subtitle?.position, // 비워둘 지점(자막 위치) 반영
       });
       return { i, ok: true as const, url, costUsd };
     } catch (e) {

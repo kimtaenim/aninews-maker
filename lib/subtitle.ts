@@ -37,10 +37,12 @@ export function resolveSubtitleStyle(s: SubtitleSettings): SubtitleStyle {
     containerPosClass:
       s.position === "top"
         ? "top-[3%]"
-        : s.position === "two-thirds"
-          ? "top-[62%]"
-          : s.position === "three-quarters"
-            ? "top-[72%]"
-            : "bottom-[10%]",
+        : s.position === "center"
+          ? "top-[44%]"
+          : s.position === "two-thirds"
+            ? "top-[62%]"
+            : s.position === "three-quarters"
+              ? "top-[72%]"
+              : "bottom-[10%]",
   };
 }

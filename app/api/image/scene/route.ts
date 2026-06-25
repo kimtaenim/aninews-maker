@@ -89,6 +89,7 @@ export async function POST(req: NextRequest) {
       referenceImageUrl:
         scene.imageSource === "reference" ? scene.referenceImageUrl : undefined,
       paletteHint: scene.paletteHint,
+      subtitlePosition: project.subtitle?.position, // 비워둘 지점(자막 위치) 반영
     });
 
     // 무거운 생성(수십 초) 뒤 — 다른 씬의 동시 저장을 덮어쓰지 않도록 최신 상태 재읽기.

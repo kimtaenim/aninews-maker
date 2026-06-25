@@ -55,6 +55,7 @@ export async function POST(req: NextRequest) {
       quality: body.quality ?? "low",
       count: 3,
       referenceImageUrl: project.keyframeReferenceUrl, // 업로드한 참조본이 있으면 img2img
+      subtitlePosition: project.subtitle?.position, // 비워둘 지점(자막 위치) 반영
     });
     project.steps.keyframe.params = {
       ...project.steps.keyframe.params,

@@ -188,15 +188,17 @@ export async function renderCaptionPng(text, sub, opts = {}) {
 
   const left = sub.align === "left";
   const boxX = left ? Math.round(W * 0.045) : Math.round((W - boxW) / 2);
-  // 위치별 세로 배치. 2/3·3/4 는 박스 중심을 그 지점에 둔다. 하단은 바닥에서 10% 위.
+  // 위치별 세로 배치. 중앙·2/3·3/4 는 박스 중심을 그 지점에 둔다. 하단은 바닥에서 10% 위.
   const boxY =
     sub.position === "top"
       ? Math.round(H * 0.04)
-      : sub.position === "two-thirds"
-        ? Math.round((H * 2) / 3 - boxH / 2)
-        : sub.position === "three-quarters"
-          ? Math.round(H * 0.75 - boxH / 2)
-          : Math.round(H - H * 0.1 - boxH);
+      : sub.position === "center"
+        ? Math.round(H * 0.5 - boxH / 2)
+        : sub.position === "two-thirds"
+          ? Math.round((H * 2) / 3 - boxH / 2)
+          : sub.position === "three-quarters"
+            ? Math.round(H * 0.75 - boxH / 2)
+            : Math.round(H - H * 0.1 - boxH);
 
   const lightBox = sub.box === "light";
   ctx.fillStyle = lightBox ? "rgba(255,255,255,0.85)" : "rgba(0,0,0,0.6)";

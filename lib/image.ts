@@ -17,9 +17,23 @@ const REF_FETCH_TIMEOUT_MS = 30_000;
 const NO_TEXT =
   "Keep on-image text minimal: avoid signs, banners, paragraphs, or lots of words. A few short words are okay if natural, but no heavy text overlays.";
 
-// 상·하단 ~15% 는 자막이 얹히는 영역 — 인물·얼굴·글자 없이 배경/벽/하늘/소품만.
-const EDGE_SAFE =
-  "Composition: keep the top ~15% and bottom ~15% bands of the vertical frame free of any character figures, faces, and text — show only background, walls, sky, or props there (subtitles will overlay these edge bands). Place the main subject(s) within the central area, not touching the top or bottom edges.";
+// 사용자가 고른 한 지점(자막 위치)만 비운다 — 그 띠는 인물·얼굴·글자 없이 배경/벽/
+// 하늘/소품만. 위치는 4단계에서 SubtitleSettings.position 으로 고른다(상단·중앙·2/3·3/4·하단).
+function edgeSafe(position?: string): string {
+  const band: Record<string, string> = {
+    top: "the top ~22% band",
+    center: "a horizontal band across the vertical middle (about 40%-60% height)",
+    "two-thirds": "a horizontal band around two-thirds height (about 58%-78%)",
+    "three-quarters": "a horizontal band around three-quarters height (about 68%-86%)",
+    bottom: "the bottom ~22% band",
+  };
+  const zone = band[position ?? ""] ?? band["three-quarters"];
+  return (
+    `Composition: keep ${zone} of the vertical frame free of any character figures, faces, and text — ` +
+    "show only background, sky, walls, or props there (a subtitle will overlay this area). " +
+    "Place the main subject(s) clearly outside that band."
+  );
+}
 
 // 씬 나레이션을 이미지 프롬프트에 "주제 이해용 컨텍스트"로 끼운다. 비주얼 권한은
 // 여전히 scenePrompt(image_prompt) 에 있고, 나레이션은 글자로 그리지 말라고 못박는다.
@@ -56,6 +70,7 @@ export async function generateKeyframes(args: {
   quality?: ImageQuality;
   count?: number;
   referenceImageUrl?: string; // 있으면 이 이미지를 레퍼런스로 img2img(인물/구도 살림)
+  subtitlePosition?: string; // 비워둘 지점(자막 위치) — 그 띠만 배경/소품만 두게 한다
 }): Promise<{ urls: string[]; costUsd: number }> {
   const {
     projectId,
@@ -65,6 +80,7 @@ export async function generateKeyframes(args: {
     quality = "low",
     count = 3,
     referenceImageUrl,
+    subtitlePosition,
   } = args;
   const client = getOpenAI();
 
@@ -73,7 +89,7 @@ export async function generateKeyframes(args: {
     ? "Use the provided reference image as the basis: preserve its main subject/character and " +
       "composition, but re-render it in the art style and palette described below.\n\n"
     : "";
-  const prompt = `${refClause}${styleBible}\n\n${narrationContext(narration)}Scene: ${scenePrompt}\n\n${NO_TEXT}\n\n${EDGE_SAFE}`;
+  const prompt = `${refClause}${styleBible}\n\n${narrationContext(narration)}Scene: ${scenePrompt}\n\n${NO_TEXT}\n\n${edgeSafe(subtitlePosition)}`;
 
   const result = referenceImageUrl
     ? await client.images.edit({
@@ -133,6 +149,7 @@ export async function generateScene(args: {
   quality?: ImageQuality;
   referenceImageUrl?: string; // reference 모드: 키프레임과 함께 넣는 추가 참조(인물 보존)
   paletteHint?: string; // 비면 키프레임 팔레트 그대로, 있으면 색감/조명만 그쪽으로 변주
+  subtitlePosition?: string; // 비워둘 지점(자막 위치) — 그 띠만 배경/소품만 두게 한다
 }): Promise<{ url: string; costUsd: number }> {
   const {
     projectId,
@@ -144,6 +161,7 @@ export async function generateScene(args: {
     quality = "medium",
     referenceImageUrl,
     paletteHint,
+    subtitlePosition,
   } = args;
   const client = getOpenAI();
 
@@ -167,7 +185,7 @@ export async function generateScene(args: {
   const prompt =
     `${styleBible}\n\n` +
     `${styleClause}${refClause} Render a NEW scene described below in that same world.\n\n` +
-    `${narrationContext(narration)}Scene: ${scenePrompt}\n\n${NO_TEXT}\n\n${EDGE_SAFE}`;
+    `${narrationContext(narration)}Scene: ${scenePrompt}\n\n${NO_TEXT}\n\n${edgeSafe(subtitlePosition)}`;
 
   const result = await client.images.edit({
     model: IMAGE_MODEL,
