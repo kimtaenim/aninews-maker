@@ -17,19 +17,16 @@ const REF_FETCH_TIMEOUT_MS = 30_000;
 const NO_TEXT =
   "Keep on-image text minimal: avoid signs, banners, paragraphs, or lots of words. A few short words are okay if natural, but no heavy text overlays.";
 
-// 안전 영역을 'zone' 명칭 대신 영화 촬영 용어로 구현 — 하이앵글 하향 틸트로 인물을 하단
-// 절반에 배치하고 상단은 천장/배경으로 채운다. 이미지 모델 전용(Claude 비노출)이라 위치
-// 어휘를 직접 써도 된다. (_position 은 호환용으로 받기만 하고 반영하지 않는다.)
+// 안전 영역을 'zone' 명칭 대신 영화 촬영 용어로 구현 — 인물은 medium shot 으로 정상 크기를
+// 유지하고, 위쪽 헤드룸에만 환경 요소(천장·하늘·벽 등)를 채운다. 인물을 작게 줄이지 않는다.
+// 이미지 모델 전용(Claude 비노출). (_position 은 호환용으로 받기만 하고 반영하지 않는다.)
 function edgeSafe(_position?: string): string {
   return (
-    "Camera: high-angle medium-wide shot with a slight downward tilt. " +
-    "Subject placement: faces, heads, and hands stay in the lower-to-mid region of the vertical frame. " +
-    "CRITICAL — the upper region must be visually FULL, never blank or empty: fill it with rich detail such as " +
-    "ceiling architecture, sky with clouds, sunlight, wall textures with patterns, decorative elements, hanging " +
-    "lights, foliage, distant scenery, atmospheric haze, or environmental props. Treat the upper region as ACTIVE " +
-    "BACKGROUND — never negative space. Only faces and hands are excluded there; everything else (body, environment, " +
-    "props, atmospheric elements) can fill it freely. Do NOT leave the upper region as flat color, gradient, or " +
-    "empty space — it should be as rich and detailed as the rest of the composition."
+    "Subject framing: medium shot or medium close-up — the character should be clearly visible at a natural size, " +
+    "well-composed in the frame center. Leave moderate headroom above the subject (sky, ceiling, wall texture, " +
+    "ambient lighting, or environmental details fill that headroom). Keep faces, heads, and hands within the " +
+    "central or lower portion of the frame; the headroom above is for atmospheric and environmental detail. Do NOT " +
+    "shrink the subject or pull the camera back — the subject is the focus."
   );
 }
 
