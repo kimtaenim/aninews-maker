@@ -17,10 +17,9 @@ const REF_FETCH_TIMEOUT_MS = 30_000;
 const NO_TEXT =
   "Keep on-image text minimal: avoid signs, banners, paragraphs, or lots of words. A few short words are okay if natural, but no heavy text overlays.";
 
-// 얼굴·머리와 손만 화면에 안 보이게(faceless·handless) 하되, 신체·소품·배경은 정상적으로
-// 보이는 구도. AI 가 얼굴·손을 잘 못 그려서 두 부위를 피한다. "비우는" 게 아니라 두 부위만
-// 가린 자연스러운 씬이다. position 은 자막이 얹힐 자리 — 그 자리는 글자·중요 디테일을 피해
-// 읽히게 하되 비우진 않는다(배경/소품으로 채움).
+// 자막이 얹힐 한 띠(position)에는 인물의 얼굴·머리·손이 겹치지 않도록 그 띠 바깥에 배치한다.
+// "안 보이게 숨기는" 게 아니라 "자막 자리 밖으로 배치"하는 것 — 인물은 정상적으로 그리되
+// 자막 영역에만 머리·손이 안 오게 한다. 자막 자리는 비우지 말고 배경·하늘·소품으로 채운다.
 function edgeSafe(position?: string): string {
   const band: Record<string, string> = {
     top: "the top area",
@@ -31,13 +30,11 @@ function edgeSafe(position?: string): string {
   };
   const zone = band[position ?? ""] ?? band["three-quarters"];
   return (
-    "Composition — faceless and handless: people's faces, heads, AND hands must NOT be visible. Hide them " +
-    "naturally — back-turned poses, framing/cropping above the shoulders OR below the wrists, hands tucked in " +
-    "pockets/behind back/inside sleeves, occlusion by props or hair or shadow — while showing the body, clothing, " +
-    "props, and environment normally. Do NOT leave the scene empty or blank: include people naturally, just with " +
-    "their faces and hands hidden. " +
-    `A subtitle will overlay ${zone} of the vertical frame, so keep that area visually calm and free of ` +
-    "text or critical detail (still fill it with background or simple props — never blank)."
+    `A subtitle will overlay ${zone} of the vertical frame, so keep that zone visually calm and free of ` +
+    "text or critical detail (use background, sky, walls, or simple props there). " +
+    `Compose so that people's faces, heads, and hands do NOT overlap with the ${zone} subtitle area — ` +
+    "frame them outside that band. The subjects (body, props, environment) should fill the rest of the " +
+    "frame naturally; do NOT leave the scene blank."
   );
 }
 
