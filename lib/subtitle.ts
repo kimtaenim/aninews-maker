@@ -36,7 +36,7 @@ export function resolveSubtitleStyle(s: SubtitleSettings): SubtitleStyle {
     // 위치별 세로 배치(미리보기 근사). 합성(worker)은 박스 중심을 해당 지점에 둔다.
     containerPosClass:
       s.position === "top"
-        ? "top-[3%]"
+        ? "top-[8%]"
         : s.position === "center"
           ? "top-[44%]"
           : s.position === "two-thirds"

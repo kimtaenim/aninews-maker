@@ -191,7 +191,7 @@ export async function renderCaptionPng(text, sub, opts = {}) {
   // 위치별 세로 배치. 중앙·2/3·3/4 는 박스 중심을 그 지점에 둔다. 하단은 바닥에서 10% 위.
   const boxY =
     sub.position === "top"
-      ? Math.round(H * 0.04)
+      ? Math.round(H * 0.09)
       : sub.position === "center"
         ? Math.round(H * 0.5 - boxH / 2)
         : sub.position === "two-thirds"
