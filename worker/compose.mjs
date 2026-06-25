@@ -70,7 +70,7 @@ export async function composeProject(projectId, lang) {
   await log("composeProject 진입 — getProject 호출…");
   const project = await getProject(projectId);
   if (!project) throw new Error("프로젝트를 찾을 수 없어요");
-  const scenes = (project.scenes ?? []).filter((s) => s.videoUrl);
+  const scenes = (project.scenes ?? []).filter((s) => s.videoUrl && !s.skipped);
   await log(`프로젝트 로드됨 — 비디오 있는 씬 ${scenes.length}개`);
   if (scenes.length === 0) throw new Error("비디오가 있는 씬이 없어요");
 

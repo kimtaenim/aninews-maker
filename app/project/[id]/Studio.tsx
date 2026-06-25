@@ -573,7 +573,7 @@ export default function Studio({
   const voiceoverApproved = voiceoverStatus === "approved";
   const [audioCost, setAudioCost] = useState<Record<number, string>>({});
   const allScenesHaveAudio =
-    project.scenes.length > 0 && project.scenes.every((s) => !!s.audioUrl);
+    project.scenes.length > 0 && project.scenes.every((s) => s.skipped || !!s.audioUrl);
 
   // 음성(TTS) 전용 스크립트 편집 버퍼 — 자막(narration)으로 미리 채워 바로 편집 가능
   // (placeholder 만 떠서 회색 글씨를 선택·수정 못 하던 문제 해소). 비우면 자막이 그대로 쓰인다.
@@ -666,6 +666,44 @@ export default function Studio({
       return { ...p, scenes: next.map((s, idx) => ({ ...s, index: idx })) };
     });
     setDirty(true);
+  }
+  // 빈 씬을 afterIndex 뒤에 삽입 — 서버가 직접 splice 해 뒤 씬 산출물(imageUrl/videoUrl/
+  // audioUrl)을 배열과 함께 보존(중간 삽입 시 클라이언트 index carry 어긋남 회피).
+  // 미저장 편집은 먼저 flush 하고, 반환된 씬으로 버퍼를 재구성한다.
+  async function insertSceneAt(afterIndex: number) {
+    if (busy !== null) return;
+    try {
+      await flushScenes();
+      const data = await call("/api/script/insert", {
+        projectId: project.id,
+        insertAfterIndex: afterIndex,
+      });
+      const saved = data.scenes as Scene[];
+      setProject((p) => ({ ...p, scenes: saved }));
+      setScenes(saved.map(toEdit));
+      setDirty(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "씬 추가 실패");
+    }
+  }
+  // 씬 건너뛰기 토글 — /api/scene/source 로 즉시 저장. 건너뛴 씬은 이미지·영상·음성
+  // 생성/합성/완료판정에서 제외된다.
+  async function toggleSkip(i: number) {
+    const next = !project.scenes[i]?.skipped;
+    try {
+      const data = await call("/api/scene/source", {
+        projectId: project.id,
+        sceneIndex: i,
+        skipped: next,
+      });
+      const saved = data.scene as Scene;
+      setProject((p) => ({
+        ...p,
+        scenes: p.scenes.map((s, idx) => (idx === i ? saved : s)),
+      }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "건너뛰기 변경 실패");
+    }
   }
 
   async function call(path: string, payload: object) {
@@ -1012,7 +1050,7 @@ export default function Studio({
     if (!imagesApproved || autoMotionRef.current || busyRef.current) return;
     const need = project.scenes
       .map((s, i) => ({ i, s }))
-      .filter(({ s }) => (s.narration ?? "").trim() && !(s.motion ?? "").trim())
+      .filter(({ s }) => !s.skipped && (s.narration ?? "").trim() && !(s.motion ?? "").trim())
       .map(({ i }) => i);
     if (need.length === 0) return;
     autoMotionRef.current = true;
@@ -1191,6 +1229,7 @@ export default function Studio({
   function skipInBatch(i: number): boolean {
     const s = project.scenes[i];
     return (
+      !!s.skipped ||
       s.imageSource === "upload" ||
       (s.imageSource === "reference" && !s.referenceImageUrl) ||
       !(s.imagePrompt ?? "").trim()
@@ -1537,6 +1576,7 @@ export default function Studio({
     setVoiceBusy("audio-all");
     try {
       for (let i = 0; i < project.scenes.length; i++) {
+        if (project.scenes[i].skipped) continue; // 건너뛴 씬 제외
         if (!all && project.scenes[i].audioUrl) continue;
         await generateOneAudio(i);
       }
@@ -1718,6 +1758,14 @@ export default function Studio({
                     <span className="text-zinc-500">⏎ 자막을 끊고 싶은 곳에서 줄바꿈(Enter)</span>{" "}
                     하면 그 자리에서 자막이 나뉩니다(음성엔 영향 없음).
                   </p>
+                  <button
+                    type="button"
+                    onClick={() => insertSceneAt(i)}
+                    disabled={busy !== null}
+                    className="mt-1 justify-self-start text-[11px] text-accent hover:underline disabled:opacity-40"
+                  >
+                    ＋ 아래에 씬 추가
+                  </button>
                 </li>
               ))}
             </ol>
@@ -2234,6 +2282,7 @@ export default function Studio({
                 const ed = scenes[i];
                 const imgMode = ed?.imageSource ?? "generate";
                 const imgUploading = uploading === `img-${i}`;
+                const skipped = !!sc.skipped;
                 const sceneBusy =
                   imgUploading ||
                   busy === `scene-${i}` ||
@@ -2242,7 +2291,7 @@ export default function Studio({
                 return (
                   <li
                     key={i}
-                    className="grid grid-cols-[80px_1fr] gap-3 rounded-xl border border-zinc-200 dark:border-zinc-800 p-2.5"
+                    className={`grid grid-cols-[80px_1fr] gap-3 rounded-xl border border-zinc-200 dark:border-zinc-800 p-2.5${skipped ? " opacity-50" : ""}`}
                   >
                     <div className="flex aspect-[9/16] items-center justify-center overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900">
                       {sceneBusy ? (
@@ -2272,27 +2321,38 @@ export default function Studio({
                             className="size-3.5 accent-[var(--color-accent)]"
                           />
                           씬 {i + 1} · {sc.durationSec}s
+                          {skipped && <span className="ml-1 text-amber-600">· 건너뜀</span>}
                         </label>
-                        {imgMode !== "upload" && (
+                        <div className="flex items-center gap-1.5">
                           <button
                             type="button"
-                            onClick={() => generateScene(i)}
-                            disabled={
-                              busy !== null ||
-                              uploading !== null ||
-                              (imgMode === "reference" && !ed?.referenceImageUrl) ||
-                              !(ed?.imagePrompt ?? "").trim()
-                            }
-                            title={
-                              !(ed?.imagePrompt ?? "").trim()
-                                ? "이미지 프롬프트가 없어요 — '전체 프롬프트 생성'을 먼저 누르세요"
-                                : ""
-                            }
+                            onClick={() => toggleSkip(i)}
+                            disabled={busy !== null}
                             className="shrink-0 text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
                           >
-                            {sc.imageUrl ? "리롤" : "생성"}
+                            {skipped ? "복원" : "건너뛰기"}
                           </button>
-                        )}
+                          {imgMode !== "upload" && !skipped && (
+                            <button
+                              type="button"
+                              onClick={() => generateScene(i)}
+                              disabled={
+                                busy !== null ||
+                                uploading !== null ||
+                                (imgMode === "reference" && !ed?.referenceImageUrl) ||
+                                !(ed?.imagePrompt ?? "").trim()
+                              }
+                              title={
+                                !(ed?.imagePrompt ?? "").trim()
+                                  ? "이미지 프롬프트가 없어요 — '전체 프롬프트 생성'을 먼저 누르세요"
+                                  : ""
+                              }
+                              className="shrink-0 text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
+                            >
+                              {sc.imageUrl ? "리롤" : "생성"}
+                            </button>
+                          )}
+                        </div>
                       </div>
 
                       {/* 소스 모드: 프롬프트 생성 / 참조+프롬프트 / 직접 업로드 */}
@@ -2799,22 +2859,23 @@ export default function Studio({
             <ol className="mt-4 grid gap-2">
               {project.scenes.map((sc, i) => {
                 const audioBusy = voiceBusy === `audio-${i}` || voiceBusy === "audio-all";
+                const skipped = !!sc.skipped;
                 return (
                   <li
                     key={i}
-                    className="min-w-0 rounded-xl bg-zinc-50 dark:bg-zinc-900 p-3"
+                    className={`min-w-0 rounded-xl bg-zinc-50 dark:bg-zinc-900 p-3${skipped ? " opacity-50" : ""}`}
                   >
                     <div className="flex items-center gap-3">
                       <span className="shrink-0 text-[11px] text-zinc-500 w-10">씬 {i + 1}</span>
                       <p className="min-w-0 flex-1 truncate text-[11px] text-zinc-500">
                         <span className="text-zinc-400">📝 자막 </span>
-                        {sc.narration}
+                        {skipped ? <span className="text-amber-600">건너뜀</span> : sc.narration}
                       </p>
                       <div className="shrink-0 grid justify-items-end gap-0.5">
                         <button
                           type="button"
                           onClick={() => generateAudio(i)}
-                          disabled={voiceBusy !== null || !sc.narration}
+                          disabled={voiceBusy !== null || !sc.narration || skipped}
                           className="text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
                         >
                           {sc.audioUrl ? "리롤" : "음성 생성"}

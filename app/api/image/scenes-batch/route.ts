@@ -60,6 +60,7 @@ export async function POST(req: NextRequest) {
   const targets = [...new Set(wanted)].filter((i) => {
     const s = project.scenes[i];
     if (!s || i < 1 || i >= project.scenes.length) return false;
+    if (s.skipped) return false; // 건너뛴 씬 제외
     if (s.imageSource === "upload") return false;
     if (!(s.imagePrompt ?? "").trim()) return false;
     if (s.imageSource === "reference" && !s.referenceImageUrl) return false;
@@ -111,7 +112,7 @@ export async function POST(req: NextRequest) {
       fresh.scenes[o.i] = { ...sc, status: "error" };
     }
   }
-  const allDone = fresh.scenes.length > 1 && fresh.scenes.slice(1).every((s) => !!s.imageUrl);
+  const allDone = fresh.scenes.length > 1 && fresh.scenes.slice(1).every((s) => s.skipped || !!s.imageUrl);
   fresh.steps.images.status = allDone ? "generated" : "generating";
   fresh.steps.images.error = outcomes.find((o) => !o.ok)?.error;
   fresh.steps.images.updatedAt = Date.now();

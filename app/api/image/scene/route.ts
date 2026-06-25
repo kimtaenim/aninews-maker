@@ -72,6 +72,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  if (scene.skipped) {
+    return NextResponse.json({ ok: false, error: "건너뛴 씬이에요" }, { status: 422 });
+  }
+
   project.steps.images.status = "generating";
   project.steps.images.updatedAt = Date.now();
   project.scenes[sceneIndex] = { ...scene, status: "generating" };
@@ -99,7 +103,7 @@ export async function POST(req: NextRequest) {
 
     // 씬0 은 keyframe 단계 산출물 → 이미지 단계 완료는 씬1 이후 기준(클라이언트와 일치).
     const allDone =
-      fresh.scenes.length > 1 && fresh.scenes.slice(1).every((s) => !!s.imageUrl);
+      fresh.scenes.length > 1 && fresh.scenes.slice(1).every((s) => s.skipped || !!s.imageUrl);
     fresh.steps.images.status = allDone ? "generated" : "generating";
     fresh.steps.images.updatedAt = Date.now();
     fresh.updatedAt = Date.now();

@@ -44,6 +44,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "sceneIndex 범위 밖" }, { status: 422 });
   }
   const scene = project.scenes[sceneIndex];
+  if (scene?.skipped) {
+    return NextResponse.json({ ok: false, error: "건너뛴 씬이에요" }, { status: 422 });
+  }
   // lang="ko"(또는 미지정) → 이 프로젝트의 기본(primary) 트랙. 그 외 등록 언어 →
   // [레거시] 같은 프로젝트 안 다국어판 더빙. 다국어 개편 후에는 언어판이 별도
   // 프로젝트라, primary 트랙이라도 voice 는 project.lang(예: vi)으로 합성한다.
@@ -99,8 +102,8 @@ export async function POST(req: NextRequest) {
       : { ...fScene, audioUrl: url, status: "generated" };
 
     const allDone = isDub
-      ? fresh.scenes.every((s) => !!dubAudioUrl(s, lang))
-      : fresh.scenes.every((s) => !!s.audioUrl);
+      ? fresh.scenes.every((s) => s.skipped || !!dubAudioUrl(s, lang))
+      : fresh.scenes.every((s) => s.skipped || !!s.audioUrl);
     if (!isDub) {
       fresh.steps.voiceover.status = allDone ? "generated" : "generating";
       fresh.steps.voiceover.updatedAt = Date.now();

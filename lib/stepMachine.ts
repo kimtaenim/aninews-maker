@@ -53,11 +53,11 @@ export function stepOutputsComplete(project: Project, step: StepKind): boolean {
     case "keyframe":
       return !!project.keyframeUrl;
     case "images":
-      return hasScenes && scenes.slice(1).every((s) => !!s.imageUrl);
+      return hasScenes && scenes.slice(1).every((s) => s.skipped || !!s.imageUrl);
     case "videos":
-      return hasScenes && scenes.slice(1).every((s) => !!s.videoUrl);
+      return hasScenes && scenes.slice(1).every((s) => s.skipped || !!s.videoUrl);
     case "voiceover":
-      return hasScenes && scenes.every((s) => !!s.audioUrl);
+      return hasScenes && scenes.every((s) => s.skipped || !!s.audioUrl);
     case "compose":
     case "subtitle":
       return !!project.finalVideoUrl;
