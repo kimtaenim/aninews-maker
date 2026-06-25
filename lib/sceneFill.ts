@@ -71,8 +71,9 @@ export async function generateImagePrompts(args: {
     "The art style is applied separately (style bible below) — so describe ONLY the scene CONTENT in Korean: " +
     "what is visible, the subject, setting, composition. Calm, censorship-safe, metaphorical everyday visuals — " +
     "avoid protests, raised fists, marching crowds, violence, weapons, blood, political slogans/symbols, real public figures. " +
-    "When people appear, frame them FACELESS — back-turned, cropped above the shoulders, or with the face hidden " +
-    "by props/hair/shadow; describe the body, hands, clothing and setting rather than facial features (얼굴·머리는 보이지 않게). " +
+    "When people appear, frame them FACELESS and HANDLESS — back-turned, cropped above the shoulders or below the " +
+    "wrists, or with the face/hands hidden by props/hair/shadow; describe the body, clothing and setting rather than " +
+    "faces or hands (얼굴·머리와 손은 보이지 않게). " +
     "Keep on-image text minimal. One scene = one concise Korean prompt. " +
     'Output ONLY JSON: {"items":[{"index":0,"prompt":"..."}]} with the SAME indices, one per scene.';
   // 모델이 임의 인덱스를 0-based 로 다시 매기는 일이 있어, 입력은 0..N-1 위치로 주고

@@ -17,9 +17,10 @@ const REF_FETCH_TIMEOUT_MS = 30_000;
 const NO_TEXT =
   "Keep on-image text minimal: avoid signs, banners, paragraphs, or lots of words. A few short words are okay if natural, but no heavy text overlays.";
 
-// 얼굴·머리만 화면에 안 보이게(faceless) 하되, 신체·소품·배경은 정상적으로 보이는 구도.
-// "비우는" 게 아니라 얼굴만 가린 자연스러운 씬이다. position 은 자막이 얹힐 자리 — 그
-// 자리는 글자·중요 디테일을 피해 읽히게 하되 비우진 않는다(배경/소품으로 채움).
+// 얼굴·머리와 손만 화면에 안 보이게(faceless·handless) 하되, 신체·소품·배경은 정상적으로
+// 보이는 구도. AI 가 얼굴·손을 잘 못 그려서 두 부위를 피한다. "비우는" 게 아니라 두 부위만
+// 가린 자연스러운 씬이다. position 은 자막이 얹힐 자리 — 그 자리는 글자·중요 디테일을 피해
+// 읽히게 하되 비우진 않는다(배경/소품으로 채움).
 function edgeSafe(position?: string): string {
   const band: Record<string, string> = {
     top: "the top area",
@@ -30,10 +31,11 @@ function edgeSafe(position?: string): string {
   };
   const zone = band[position ?? ""] ?? band["three-quarters"];
   return (
-    "Composition — faceless: people's faces and heads must NOT be visible. Hide them naturally — " +
-    "back-turned poses, framing/cropping above the shoulders, occlusion by props or hair, or shadow — " +
-    "while showing the body, hands, props, and environment normally. Do NOT leave the scene empty or " +
-    "blank: include people naturally, just with their faces hidden. " +
+    "Composition — faceless and handless: people's faces, heads, AND hands must NOT be visible (AI renders " +
+    "faces and hands poorly, so avoid them). Hide them naturally — back-turned poses, off-camera framing " +
+    "(above the shoulders or below the wrists), occlusion by props or hair, or shadow — while showing the " +
+    "body, props, and environment normally. Do NOT leave the scene empty or blank: include people naturally, " +
+    "just with their faces and hands out of view. " +
     `A subtitle will overlay ${zone} of the vertical frame, so keep that area visually calm and free of ` +
     "text or critical detail (still fill it with background or simple props — never blank)."
   );
