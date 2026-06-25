@@ -1833,6 +1833,31 @@ export default function Studio({
             </button>
           </div>
         </div>
+        {scriptApproved && (
+          // 비워둘 자리 = 주요 정보·인물 없이 배경/소품만 두는 지점(자막이 들어갈 빈 영역).
+          // 키프레임이 구도를 잡으므로 키프레임 생성 전에 여기서 고른다. 자막 위치
+          // (sub.position)와 같은 값 — 고른 자리를 키프레임·씬 이미지가 모두 비운다.
+          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-zinc-50 dark:bg-zinc-900 p-3">
+            <span className="text-[11px] font-medium text-zinc-600 dark:text-zinc-300">🪟 비워둘 자리</span>
+            <select
+              value={sub.position}
+              onChange={(e) =>
+                saveSubtitle({ position: e.target.value as SubtitleSettings["position"] })
+              }
+              disabled={busy !== null}
+              className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1 text-xs outline-none focus:border-accent disabled:opacity-50"
+            >
+              {SUBTITLE_POSITIONS.map(([v, l]) => (
+                <option key={v} value={v}>
+                  {l}
+                </option>
+              ))}
+            </select>
+            <span className="text-[11px] text-zinc-400">
+              주요 정보·인물 없이 배경·소품만 두는 자리 — 자막이 들어갈 빈 영역이에요. 키프레임·이미지 생성에 반영됩니다(자막 위치와 동일).
+            </span>
+          </div>
+        )}
         {(scenes[0]?.narration ?? "").trim() && (
           <p className="mt-2 text-sm font-bold leading-snug">
             <span className="text-zinc-400 font-medium">씬 1 · </span>
@@ -2121,30 +2146,6 @@ export default function Studio({
             {imagesApproved && <span className="ml-2 text-xs text-accent">승인됨</span>}
           </h2>
         </div>
-        {keyframeApproved && (
-          // 비워둘 자리 = 주요 정보·인물 없이 배경/소품만 두는 지점(자막이 들어갈 빈 영역).
-          // 자막 위치(sub.position)와 같은 값을 써서, 고른 자리를 이미지 생성이 비우도록 한다.
-          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-zinc-50 dark:bg-zinc-900 p-3">
-            <span className="text-[11px] font-medium text-zinc-600 dark:text-zinc-300">🪟 비워둘 자리</span>
-            <select
-              value={sub.position}
-              onChange={(e) =>
-                saveSubtitle({ position: e.target.value as SubtitleSettings["position"] })
-              }
-              disabled={busy !== null}
-              className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1 text-xs outline-none focus:border-accent disabled:opacity-50"
-            >
-              {SUBTITLE_POSITIONS.map(([v, l]) => (
-                <option key={v} value={v}>
-                  {l}
-                </option>
-              ))}
-            </select>
-            <span className="text-[11px] text-zinc-400">
-              이 자리는 주요 정보·인물 없이 배경·소품만 — 자막이 들어갈 빈 영역이에요. 이미지 생성에 반영됩니다(자막 위치와 동일).
-            </span>
-          </div>
-        )}
         {keyframeApproved && extraScenes.length > 0 && (
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <button
