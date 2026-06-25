@@ -100,9 +100,9 @@ export async function generateImagePrompts(args: {
   return { prompts, costUsd };
 }
 
-// 5단계 — 씬별 영문 모션 프롬프트. 카메라 워크 + 조명 변화만 지정한다(피사체/내용
-// 움직임은 X). 정지 이미지는 이미 완성돼 있으므로, 피사체를 움직이려 하면 이미지와
-// 어긋난다 → 내용에 안전한 카메라·조명만 지시해 항상 자연스럽게 만든다.
+// 5단계 — 씬별 영문 모션 프롬프트. 카메라 워크 + 조명 변화 + (선택) 인물의 가벼운
+// 미세 움직임만 지정한다. 정지 이미지는 이미 완성돼 있으므로 큰 동작/새 요소는 이미지와
+// 어긋난다 → 카메라·조명에 더해 숨쉬기·머리카락 흔들림 정도의 잔잔한 움직임만 허용.
 export async function generateMotions(args: {
   projectId: string;
   scenes: SceneInput[];
@@ -113,19 +113,22 @@ export async function generateMotions(args: {
   const client = getAnthropic();
   const system =
     "You write short English MOTION prompts for an image-to-video model. " +
-    "The still image is ALREADY fully composed — DO NOT describe, add, or animate any subject, character, " +
-    "object, or scene content, and never invent new elements. Specify ONLY camera work and a lighting change:\n" +
+    "The still image is ALREADY fully composed — never invent new elements or new people, never add big or " +
+    "fast actions, and do not change what the scene depicts. Specify camera work, a lighting change, and " +
+    "optionally a very subtle subject movement:\n" +
     "- Camera (pick ONE that fits the mood): slow zoom in, slow zoom out, pan left, pan right, tilt up, " +
     "tilt down, dolly / track in, track out, push-in, pull-back, full 360-degree orbit around the subject, " +
     "gentle handheld drift.\n" +
     "- Lighting (optional, only if it suits): gradually brightens, slowly darkens, shifts to dramatic " +
     "cinematic lighting, a light sweeps across the scene, light rotates around the subject.\n" +
+    "- Subject (optional): only a slight, natural micro-movement — e.g. gentle breathing, a small head tilt, " +
+    "a soft blink, hair or clothing drifting in a light breeze. Keep it minimal; no walking, gestures, or new actions.\n" +
     "Use the narration ONLY to judge the mood — never describe its content. Keep it smooth and cinematic. " +
-    'One scene = one short English line, e.g. "Slow push-in, lighting gradually shifts to dramatic side-light" ' +
-    'or "Full 360-degree orbit around the subject, light rotating with the camera". ' +
+    'One scene = one short English line, e.g. "Slow push-in, lighting shifts to dramatic side-light, subject breathing gently" ' +
+    'or "Full 360-degree orbit around the subject, hair drifting softly". ' +
     'Output ONLY JSON: {"items":[{"index":0,"motion":"..."}]} with the SAME indices, one per scene.';
   const userMsg = [
-    "씬별 나레이션 (분위기 참고용 — 내용은 묘사하지 말고, 어울리는 카메라 워크와 조명만 고르세요. 번호 유지):",
+    "씬별 나레이션 (분위기 참고용 — 내용은 묘사하지 말고, 어울리는 카메라 워크·조명·인물의 가벼운 미세 움직임만 고르세요. 번호 유지):",
     ...scenes.map((s, pos) => `[${pos}] ${s.narration}`),
     "",
     'JSON only: {"items":[{"index":0,"motion":"camera work + lighting only, in English"}]} — keep the [number] as index.',
