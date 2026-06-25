@@ -30,11 +30,10 @@ function edgeSafe(position?: string): string {
   };
   const zone = band[position ?? ""] ?? band["three-quarters"];
   return (
-    `A subtitle will overlay ${zone} of the vertical frame, so keep that zone visually calm and free of ` +
-    "text or critical detail (use background, sky, walls, or simple props there). " +
-    `Compose so that people's faces, heads, and hands do NOT overlap with the ${zone} subtitle area — ` +
-    "frame them outside that band. The subjects (body, props, environment) should fill the rest of the " +
-    "frame naturally; do NOT leave the scene blank."
+    `A subtitle will overlay ${zone} of the vertical frame. Keep people's faces, heads, and hands clear of ` +
+    `that subtitle area (and the band right around it). The ${zone} area should be visually calm with ` +
+    "background, sky, or simple props — no heads or hands there. The rest of the frame can include people, " +
+    "body, props, and environment naturally; do not leave the scene blank."
   );
 }
 
