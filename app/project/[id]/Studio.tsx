@@ -585,6 +585,17 @@ export default function Studio({
 
   function patchScene(i: number, patch: Partial<EditScene>) {
     setScenes((prev) => prev.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
+    // 자막(narration)을 바꾸면 그 씬의 음성대본 오버라이드를 비워 자막을 따라가게 한다
+    // (단방향: 자막→음성). 안 그러면 화면에 옛 오버라이드가 남아 자막 변경이 음성에
+    // 반영되지 않는다. 백엔드(/api/script/scenes)도 같은 규칙으로 ttsScript 를 비운다.
+    if (patch.narration !== undefined) {
+      setTtsScripts((prev) => {
+        if (!(i in prev)) return prev;
+        const next = { ...prev };
+        delete next[i];
+        return next;
+      });
+    }
     setDirty(true);
   }
   function addScene() {

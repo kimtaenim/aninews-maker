@@ -48,6 +48,7 @@ export async function POST(req: NextRequest) {
       normMode(s.imageSource, ["generate", "reference", "upload"] as const) ?? carry?.imageSource;
     const videoSource =
       normMode(s.videoSource, ["generate", "upload"] as const) ?? carry?.videoSource;
+    const narration = String(s.narration ?? "").trim();
     return {
       // 같은 index 씬의 기존 산출물을 통째로 보존한다. 2단계(스크립트) 편집이 4·5·6단계
       // 결과물(imageUrl/videoUrl/audioUrl·videoJobId·videoModelId·dub·narrationEn·
@@ -55,11 +56,16 @@ export async function POST(req: NextRequest) {
       // 대상 필드(나레이션·프롬프트·모션·길이·소스모드)만 덮어쓴다.
       ...(carry ?? {}),
       index,
-      narration: String(s.narration ?? "").trim(),
-      // 음성 오버라이드 보존 — 단, 그 씬의 나레이션을 그대로 미러링하던 값(=실제로
-      // 다르게 지정한 게 아님)이면 비운다. 그래야 나레이션이 바뀌면 음성대본도 따라간다.
+      narration,
+      // 음성대본(ttsScript)은 단방향(자막→음성): 자막을 그대로 두고 실제로 다르게 지정한
+      // 오버라이드일 때만 유지하고, 자막이 바뀌면 비워서 새 자막을 따라가게 한다.
+      // (역방향 — 음성대본 편집이 자막을 바꾸는 일 — 은 없다.)
       ttsScript:
-        carry?.ttsScript && carry.ttsScript !== carry.narration ? carry.ttsScript : undefined,
+        carry?.ttsScript &&
+        carry.ttsScript !== carry.narration &&
+        (carry.narration ?? "").trim() === narration
+          ? carry.ttsScript
+          : undefined,
       imagePrompt: String(s.imagePrompt ?? "").trim(),
       motion: String(s.motion ?? "").trim(),
       durationSec: clampDur(s.durationSec),
