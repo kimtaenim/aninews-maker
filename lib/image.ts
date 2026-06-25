@@ -31,11 +31,11 @@ function edgeSafe(position?: string): string {
   };
   const zone = band[position ?? ""] ?? band["three-quarters"];
   return (
-    "Composition — faceless and handless: people's faces, heads, AND hands must NOT be visible (AI renders " +
-    "faces and hands poorly, so avoid them). Hide them naturally — back-turned poses, off-camera framing " +
-    "(above the shoulders or below the wrists), occlusion by props or hair, or shadow — while showing the " +
-    "body, props, and environment normally. Do NOT leave the scene empty or blank: include people naturally, " +
-    "just with their faces and hands out of view. " +
+    "Composition — faceless and handless: people's faces, heads, AND hands must NOT be visible. Hide them " +
+    "naturally — back-turned poses, framing/cropping above the shoulders OR below the wrists, hands tucked in " +
+    "pockets/behind back/inside sleeves, occlusion by props or hair or shadow — while showing the body, clothing, " +
+    "props, and environment normally. Do NOT leave the scene empty or blank: include people naturally, just with " +
+    "their faces and hands hidden. " +
     `A subtitle will overlay ${zone} of the vertical frame, so keep that area visually calm and free of ` +
     "text or critical detail (still fill it with background or simple props — never blank)."
   );
