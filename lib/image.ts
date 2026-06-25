@@ -17,21 +17,25 @@ const REF_FETCH_TIMEOUT_MS = 30_000;
 const NO_TEXT =
   "Keep on-image text minimal: avoid signs, banners, paragraphs, or lots of words. A few short words are okay if natural, but no heavy text overlays.";
 
-// 사용자가 고른 한 지점(자막 위치)만 비운다 — 그 띠는 인물·얼굴·글자 없이 배경/벽/
-// 하늘/소품만. 위치는 4단계에서 SubtitleSettings.position 으로 고른다(상단·중앙·2/3·3/4·하단).
+// 얼굴·머리만 화면에 안 보이게(faceless) 하되, 신체·소품·배경은 정상적으로 보이는 구도.
+// "비우는" 게 아니라 얼굴만 가린 자연스러운 씬이다. position 은 자막이 얹힐 자리 — 그
+// 자리는 글자·중요 디테일을 피해 읽히게 하되 비우진 않는다(배경/소품으로 채움).
 function edgeSafe(position?: string): string {
   const band: Record<string, string> = {
-    top: "the top ~22% band",
-    center: "a horizontal band across the vertical middle (about 40%-60% height)",
-    "two-thirds": "a horizontal band around two-thirds height (about 58%-78%)",
-    "three-quarters": "a horizontal band around three-quarters height (about 68%-86%)",
-    bottom: "the bottom ~22% band",
+    top: "the top area",
+    center: "the vertical middle",
+    "two-thirds": "the lower-middle area (around two-thirds height)",
+    "three-quarters": "the lower area (around three-quarters height)",
+    bottom: "the bottom area",
   };
   const zone = band[position ?? ""] ?? band["three-quarters"];
   return (
-    `Composition: keep ${zone} of the vertical frame free of any character figures, faces, and text — ` +
-    "show only background, sky, walls, or props there (a subtitle will overlay this area). " +
-    "Place the main subject(s) clearly outside that band."
+    "Composition — faceless: people's faces and heads must NOT be visible. Hide them naturally — " +
+    "back-turned poses, framing/cropping above the shoulders, occlusion by props or hair, or shadow — " +
+    "while showing the body, hands, props, and environment normally. Do NOT leave the scene empty or " +
+    "blank: include people naturally, just with their faces hidden. " +
+    `A subtitle will overlay ${zone} of the vertical frame, so keep that area visually calm and free of ` +
+    "text or critical detail (still fill it with background or simple props — never blank)."
   );
 }
 
