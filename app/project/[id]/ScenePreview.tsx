@@ -116,7 +116,7 @@ export default function ScenePreview({
           </div>
         )}
         {/* 자막 오버레이 (현재 캡션). 박스는 폭 가득(문단형)이라 끝줄이 짧아도 안 비뚤어짐. */}
-        <div className={`absolute inset-x-2 ${st.containerPosClass} ${st.alignClass}`}>
+        <div className={`absolute inset-x-2 ${st.alignClass}`} style={st.containerPos}>
           <span
             style={{ fontFamily: st.fontFamily }}
             className={`inline-block rounded px-2 py-1 leading-snug ${st.weightClass} ${st.sizeClass} ${st.boxClass}`}
