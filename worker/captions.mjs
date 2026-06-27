@@ -15,6 +15,27 @@ function estWidth(s) {
   return w;
 }
 
+// 문장·콤마로도 안 나뉘는 긴 한 덩어리를 폭(budget) 안에서 강제로 쪼갠다.
+// 공백 있는 언어는 어절 단위, 없는 언어(CJK)는 글자 단위 그리디. (잘림 방지 — 텍스트는 안 버림)
+function hardWrap(s, budget) {
+  const hasSpace = s.includes(" ");
+  const toks = hasSpace ? s.split(/\s+/).filter(Boolean) : [...s];
+  const sep = hasSpace ? " " : "";
+  const out = [];
+  let cur = "";
+  for (const tok of toks) {
+    const merged = cur ? cur + sep + tok : tok;
+    if (cur && estWidth(merged) > budget) {
+      out.push(cur);
+      cur = tok;
+    } else {
+      cur = merged;
+    }
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
 // 한 "줄"(수동 줄바꿈으로 나뉜 단위)을 자동 분할해 캡션 배열로.
 function segmentLine(line, budget) {
   const t = line.replace(/\s+/g, " ").trim();
@@ -28,8 +49,15 @@ function segmentLine(line, budget) {
   // 2차: 한 문장이 캡션 1컷 용량을 넘을 때만(어쩔 수 없을 때) 콤마에서 더 쪼갠다.
   const units = [];
   for (const s of sentences) {
-    if (estWidth(s) <= budget) units.push(s);
-    else units.push(...(s.match(/[^,、]+[,、]?/g) ?? [s]).map((u) => u.trim()).filter(Boolean));
+    const pieces =
+      estWidth(s) <= budget
+        ? [s]
+        : (s.match(/[^,、]+[,、]?/g) ?? [s]).map((u) => u.trim()).filter(Boolean);
+    // 콤마로도 안 나뉘는 긴 덩어리는 폭 기준으로 또 쪼갠다 — "두 줄 넘으면 자동 wrap".
+    for (const p of pieces) {
+      if (estWidth(p) <= budget) units.push(p);
+      else units.push(...hardWrap(p, budget));
+    }
   }
   // 3차: 용량 안에서 그리디로 합친다(센티넬은 콤마와 폭이 같아 그대로 측정).
   const caps = [];
