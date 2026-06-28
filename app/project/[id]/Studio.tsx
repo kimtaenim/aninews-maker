@@ -20,6 +20,7 @@ import Spinner from "@/components/Spinner";
 import ScenePreview from "./ScenePreview";
 import MiniAudio from "./MiniAudio";
 import SceneRecorder from "./SceneRecorder";
+import AutoTextarea from "./AutoTextarea";
 
 // 진행 중 버튼 내용 — 스피너 + 라벨
 function Busy({ children }: { children: React.ReactNode }) {
@@ -2981,7 +2982,7 @@ export default function Studio({
                         할 때만 고치세요.
                       </span>
                     </span>
-                    <textarea
+                    <AutoTextarea
                       value={ttsScripts[sc.index] ?? sc.narration}
                       onChange={(e) => {
                         const v = e.target.value;
@@ -2999,7 +3000,6 @@ export default function Studio({
                         const saved = (sc.ttsScript ?? "").trim();
                         if (buf !== saved) saveTtsScripts();
                       }}
-                      rows={2}
                       placeholder={sc.narration}
                       className={`${fieldCls} mt-1`}
                     />
