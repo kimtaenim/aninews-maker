@@ -19,6 +19,7 @@ import { TARGET_LANGUAGES, getLang } from "@/lib/languages";
 import Spinner from "@/components/Spinner";
 import ScenePreview from "./ScenePreview";
 import MiniAudio from "./MiniAudio";
+import SceneRecorder from "./SceneRecorder";
 
 // 진행 중 버튼 내용 — 스피너 + 라벨
 function Busy({ children }: { children: React.ReactNode }) {
@@ -1567,6 +1568,28 @@ export default function Studio({
     }
   }
 
+  // 녹음 저장(/api/audio/record)이 끝나 받은 URL 을 그 씬 음성으로 반영 — TTS 생성과 동일.
+  function applyRecordedAudio(sceneIndex: number, url: string) {
+    setProject((p) => {
+      const scenes = p.scenes.map((s, i) =>
+        i === sceneIndex ? { ...s, audioUrl: url, status: "generated" as const } : s
+      );
+      const allDone = scenes.every((s) => s.skipped || !!s.audioUrl);
+      return {
+        ...p,
+        scenes,
+        steps: {
+          ...p.steps,
+          voiceover: {
+            ...p.steps.voiceover,
+            status: (allDone ? "generated" : "generating") as "generated" | "generating",
+          },
+        },
+      };
+    });
+    bumpMutation(); // 진행 중이던 /state 동기화가 방금 녹음분을 덮지 않도록
+  }
+
   // 음성 없는 씬들을 순차 생성(씬끼리는 순차 — 같은 음성 트랙 경합 방지).
   // 시각(이미지·영상) 작업과는 병렬 가능(voiceBusy 레인 + 서버 재읽기-머지).
   async function generateAllAudio(all = false) {
@@ -2872,14 +2895,24 @@ export default function Studio({
                         {skipped ? <span className="text-amber-600">건너뜀</span> : sc.narration}
                       </p>
                       <div className="shrink-0 grid justify-items-end gap-0.5">
-                        <button
-                          type="button"
-                          onClick={() => generateAudio(i)}
-                          disabled={voiceBusy !== null || !sc.narration || skipped}
-                          className="text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
-                        >
-                          {sc.audioUrl ? "리롤" : "음성 생성"}
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <SceneRecorder
+                            projectId={project.id}
+                            sceneIndex={i}
+                            hasAudio={!!sc.audioUrl}
+                            disabled={voiceBusy !== null || skipped}
+                            onSaved={(url) => applyRecordedAudio(i, url)}
+                            onError={(m) => setError(m)}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => generateAudio(i)}
+                            disabled={voiceBusy !== null || !sc.narration || skipped}
+                            className="text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
+                          >
+                            {sc.audioUrl ? "리롤" : "음성 생성"}
+                          </button>
+                        </div>
                         {audioCost[i] && (
                           <span className="text-[11px] text-zinc-400">{audioCost[i]}</span>
                         )}
