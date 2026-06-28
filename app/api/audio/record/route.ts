@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProject, saveProject } from "@/lib/projectStore";
-import { canStart } from "@/lib/stepMachine";
 import { uploadAsset } from "@/lib/blob";
 
 export const runtime = "nodejs";
@@ -64,9 +63,6 @@ export async function POST(req: NextRequest) {
   const project = await getProject(projectId);
   if (!project) {
     return NextResponse.json({ ok: false, error: "프로젝트 없음" }, { status: 404 });
-  }
-  if (!canStart(project, "voiceover")) {
-    return NextResponse.json({ ok: false, error: "키프레임 단계를 먼저 승인해주세요" }, { status: 409 });
   }
   if (sceneIndex < 0 || sceneIndex >= project.scenes.length) {
     return NextResponse.json({ ok: false, error: "sceneIndex 범위 밖" }, { status: 422 });
