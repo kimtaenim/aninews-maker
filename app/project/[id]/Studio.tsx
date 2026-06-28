@@ -76,6 +76,17 @@ const SUBTITLE_POSITIONS = [
   ["bottom", "하단"],
 ] as const;
 
+// 5단계 카메라 워크 프리셋 — 고르면 그 씬 모션 프롬프트(영문)를 이 문구로 채운다.
+// 모두 "카메라만 움직이고 인물·오브젝트는 거의 정지"를 명시(과한 피사체 움직임 방지).
+const CAMERA_MOVES = [
+  ["orbit", "⟳ 120° 오비트", "120-degree orbit around the subject, smooth steady arc — camera moves while the subject and objects stay still."],
+  ["zoom-in", "＋ 줌인", "Slow zoom in (push-in) toward the subject — camera only; the subject and objects barely move."],
+  ["zoom-out", "－ 줌아웃", "Slow zoom out (pull-back) revealing more of the scene — camera only; the subject and objects barely move."],
+  ["pan", "↔ 팬", "Slow horizontal pan across the scene — camera only; the subject and objects stay mostly still."],
+  ["dolly", "🎥 달리인", "Slow dolly in toward the subject — camera only; the subject and objects stay still."],
+  ["static", "■ 고정", "Locked-off static camera, no camera movement — only very subtle ambient motion; the subject stays still."],
+] as const;
+
 export default function Studio({
   project: initial,
   styleProfiles,
@@ -220,6 +231,8 @@ export default function Studio({
   );
   // 씬별 모션 크기 (기본 잔잔, 가끔 크게)
   const [motionScale, setMotionScale] = useState<Record<number, "subtle" | "large">>({});
+  // 씬별 선택한 카메라 워크(하이라이트용). 고르면 그 씬 모션 프롬프트를 프리셋으로 채운다.
+  const [cameraMove, setCameraMove] = useState<Record<number, string>>({});
 
   // 자막 설정 (프로젝트 일괄)
   const [sub, setSub] = useState<SubtitleSettings>(initial.subtitle ?? DEFAULT_SUBTITLE);
@@ -1402,11 +1415,20 @@ export default function Studio({
     await pollVideoUntilDone(sceneIndex);
   }
 
+  // 카메라 워크 프리셋 선택 → 그 씬 모션 프롬프트(영문)를 프리셋 문구로 채운다.
+  function applyCameraMove(sceneIndex: number, moveId: string) {
+    const move = CAMERA_MOVES.find((m) => m[0] === moveId);
+    if (!move) return;
+    setCameraMove((prev) => ({ ...prev, [sceneIndex]: moveId }));
+    patchScene(sceneIndex, { motion: move[2] }); // 버퍼 갱신 + 자동저장
+  }
+
   async function generateVideo(sceneIndex: number) {
     setError(null);
     setBusy(`video-${sceneIndex}`);
     setActiveVideo(sceneIndex);
     try {
+      await flushScenes(); // 방금 고른 카메라 워크/모션을 먼저 저장(서버가 scene.motion 으로 읽음)
       await submitAndPollVideo(sceneIndex);
     } catch (e) {
       setError(e instanceof Error ? e.message : "비디오 생성 실패");
@@ -1422,6 +1444,7 @@ export default function Studio({
     setError(null);
     setBusy("videos-all");
     try {
+      await flushScenes(); // 미저장 모션(카메라 워크 등) 먼저 저장
       const targets = project.scenes
         .map((_, i) => i)
         .filter((i) => project.scenes[i].videoSource !== "upload" && (all || !project.scenes[i].videoUrl));
@@ -1453,6 +1476,7 @@ export default function Studio({
     if (targets.length === 0 || busy !== null) return;
     setError(null);
     setBusy("videos-selected");
+    await flushScenes(); // 미저장 모션(카메라 워크 등) 먼저 저장
     try {
       const submitted: number[] = [];
       for (const i of targets) {
@@ -2736,6 +2760,24 @@ export default function Studio({
                             <option value="subtle">잔잔 (기본)</option>
                             <option value="large">크게</option>
                           </select>
+                        </div>
+                        <span className="text-[10px] text-zinc-400">카메라 워크 (고르면 모션 채움 · 인물은 거의 정지)</span>
+                        <div className="flex flex-wrap gap-1">
+                          {CAMERA_MOVES.map(([id, label]) => (
+                            <button
+                              key={id}
+                              type="button"
+                              onClick={() => applyCameraMove(i, id)}
+                              disabled={busy !== null}
+                              className={`text-[10px] rounded-md border px-1.5 py-0.5 disabled:opacity-40 ${
+                                cameraMove[i] === id
+                                  ? "border-accent bg-accent/10 text-accent"
+                                  : "border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          ))}
                         </div>
                         <span className="text-[10px] text-zinc-400">비디오 모션 프롬프트 (영문)</span>
                         <textarea
