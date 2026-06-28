@@ -1,12 +1,13 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Spinner from "@/components/Spinner";
 
-// 마이크 녹음 → 서버 저장(/api/audio/record) → onSaved(url).
-// 기기 기본 마이크를 자동 사용(노트북=내장 마이크, 폰=폰 마이크). HTTPS(또는 localhost)
-// 에서만 동작. 재녹음은 버튼을 다시 눌러 새로 녹음(이전 음성 URL 을 덮어씀).
-// 실패 사유(권한 거부·미지원·저장 실패 등)는 버튼 바로 아래 인라인으로 보여준다.
+// 마이크 녹음 → 즉시 로컬 재생(blob URL)으로 onLocal → 백그라운드 업로드 후 onSaved(원격 URL).
+// 기기 기본 마이크 자동 사용(노트북=내장, 폰=폰 마이크). HTTPS(또는 localhost)에서만 동작.
+// 첫 녹음이 무음으로 실패하던 문제 → getUserMedia 후 짧게 마이크를 깨운(워밍업) 뒤 녹음 시작.
+const WARMUP_MS = 350; // 마이크가 실제로 소리를 내보내기 시작할 때까지 대기
+
 function pickMime(): string {
   if (typeof MediaRecorder === "undefined") return "";
   const cands = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"];
@@ -25,6 +26,7 @@ export default function SceneRecorder({
   sceneIndex,
   hasAudio,
   disabled,
+  onLocal,
   onSaved,
   onError,
 }: {
@@ -32,21 +34,31 @@ export default function SceneRecorder({
   sceneIndex: number;
   hasAudio: boolean;
   disabled?: boolean;
-  onSaved: (url: string) => void;
+  onLocal?: (localUrl: string) => void; // 녹음 직후 즉시 재생용(로컬 blob URL)
+  onSaved: (url: string) => void; // 업로드 완료 후 영구 URL
   onError?: (msg: string) => void;
 }) {
-  const [state, setState] = useState<"idle" | "recording" | "uploading">("idle");
+  const [state, setState] = useState<"idle" | "preparing" | "recording" | "uploading">("idle");
   const [err, setErr] = useState<string | null>(null);
   const recRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
+  const localUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    // 언마운트 시 마이크 해제 + 로컬 URL 회수.
+    return () => {
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      if (localUrlRef.current) URL.revokeObjectURL(localUrlRef.current);
+    };
+  }, []);
 
   function fail(msg: string) {
     setErr(msg);
     onError?.(msg);
   }
 
-  function cleanup() {
+  function releaseMic() {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     recRef.current = null;
@@ -60,9 +72,13 @@ export default function SceneRecorder({
       fail("이 브라우저는 녹음을 지원하지 않아요 (HTTPS·다른 브라우저 확인).");
       return;
     }
+    setState("preparing");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
+      // 마이크 워밍업 — 첫 녹음이 무음으로 시작하는 것 방지.
+      await new Promise((r) => setTimeout(r, WARMUP_MS));
+      if (!streamRef.current) return; // 그 사이 취소됨
       const mime = pickMime();
       const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
       chunksRef.current = [];
@@ -72,19 +88,19 @@ export default function SceneRecorder({
       rec.onerror = () => fail("녹음 중 오류가 났어요 (다시 시도).");
       rec.onstop = () => void finish(rec.mimeType || mime || "audio/webm");
       recRef.current = rec;
-      rec.start(1000); // 1초마다 데이터 청크 — 일부 브라우저에서 데이터 누락 방지
+      rec.start(1000); // 1초마다 청크 — 데이터 누락 방지
       setState("recording");
     } catch (e) {
       fail(
         e instanceof Error && /denied|permission|notallowed/i.test(e.name + e.message)
-          ? "마이크 권한이 거부됐어요. 브라우저 주소창의 🔒 → 마이크 허용 후 다시 시도."
+          ? "마이크 권한이 거부됐어요. 주소창 🔒 → 마이크 허용 후 다시 시도."
           : e instanceof Error && /notfound|devices/i.test(e.name + e.message)
             ? "마이크를 찾지 못했어요 (기기 마이크 확인)."
             : e instanceof Error
               ? `마이크 접근 실패: ${e.message}`
               : "마이크 접근 실패"
       );
-      cleanup();
+      releaseMic();
       setState("idle");
     }
   }
@@ -94,17 +110,28 @@ export default function SceneRecorder({
     try {
       recRef.current?.stop();
     } catch {
-      cleanup();
+      releaseMic();
       setState("idle");
     }
   }
 
   async function finish(mime: string) {
+    const base = (mime.split(";")[0].trim() || "audio/webm").toLowerCase();
+    const blob = new Blob(chunksRef.current, { type: base });
+    releaseMic(); // 마이크는 바로 해제(녹음 데이터는 blob 에 있음)
+    if (blob.size === 0) {
+      fail("녹음된 소리가 없어요 (마이크 입력 확인 후 다시).");
+      setState("idle");
+      return;
+    }
+    // 1) 즉시 로컬 재생 — 업로드를 기다리지 않고 바로 들을 수 있다.
+    if (localUrlRef.current) URL.revokeObjectURL(localUrlRef.current);
+    const localUrl = URL.createObjectURL(blob);
+    localUrlRef.current = localUrl;
+    onLocal?.(localUrl);
+    // 2) 백그라운드 업로드 → 영구 URL 로 교체.
     setState("uploading");
     try {
-      const base = (mime.split(";")[0].trim() || "audio/webm").toLowerCase();
-      const blob = new Blob(chunksRef.current, { type: base });
-      if (blob.size === 0) throw new Error("녹음된 소리가 없어요 (마이크 입력 확인 후 다시).");
       const ext = base.includes("mp4") ? "m4a" : base.includes("ogg") ? "ogg" : "webm";
       const fd = new FormData();
       fd.append("projectId", projectId);
@@ -115,9 +142,8 @@ export default function SceneRecorder({
       if (!r.ok || !data.ok) throw new Error(data.error || `저장 실패 (HTTP ${r.status})`);
       onSaved(data.url as string);
     } catch (e) {
-      fail(e instanceof Error ? e.message : "녹음 저장 실패");
+      fail(e instanceof Error ? e.message : "녹음 저장 실패(로컬 재생은 가능, 다시 저장 필요).");
     } finally {
-      cleanup();
       setState("idle");
     }
   }
@@ -127,6 +153,10 @@ export default function SceneRecorder({
       {state === "uploading" ? (
         <span className="text-[11px] text-zinc-400 inline-flex items-center gap-1">
           <Spinner className="size-3.5" /> 저장 중…
+        </span>
+      ) : state === "preparing" ? (
+        <span className="text-[11px] text-zinc-400 inline-flex items-center gap-1">
+          <Spinner className="size-3.5" /> 준비 중…
         </span>
       ) : state === "recording" ? (
         <button
@@ -146,7 +176,7 @@ export default function SceneRecorder({
           🎙 {hasAudio ? "재녹음" : "녹음"}
         </button>
       )}
-      {err && <span className="max-w-[140px] text-right text-[10px] leading-tight text-red-600">{err}</span>}
+      {err && <span className="max-w-[150px] text-right text-[10px] leading-tight text-red-600">{err}</span>}
     </div>
   );
 }

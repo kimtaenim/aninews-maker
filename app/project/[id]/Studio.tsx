@@ -2945,6 +2945,7 @@ export default function Studio({
                             sceneIndex={i}
                             hasAudio={!!sc.audioUrl}
                             disabled={voiceBusy !== null || skipped}
+                            onLocal={(url) => applyRecordedAudio(i, url)}
                             onSaved={(url) => applyRecordedAudio(i, url)}
                             onError={(m) => setError(m)}
                           />
