@@ -101,7 +101,11 @@ export default function ScenePreview({
 
   return (
     <li className="grid gap-1.5">
-      <div className="relative aspect-[9/16] overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800 bg-black">
+      {/* 프레임을 컨테이너로 — 자막을 cqw(컨테이너폭 %)로 그려 1080폭 합성과 같은 비율. */}
+      <div
+        className="relative aspect-[9/16] overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800 bg-black"
+        style={{ containerType: "inline-size" }}
+      >
         {videoUrl ? (
           <video
             ref={videoRef}
@@ -115,11 +119,17 @@ export default function ScenePreview({
             영상 없음
           </div>
         )}
-        {/* 자막 오버레이 (현재 캡션). 박스는 폭 가득(문단형)이라 끝줄이 짧아도 안 비뚤어짐. */}
-        <div className={`absolute inset-x-2 ${st.alignClass}`} style={st.containerPos}>
+        {/* 자막 오버레이 (현재 캡션). 워커와 동일: 각진 박스·91%폭·비례 폰트/패딩. */}
+        <div className={`absolute inset-x-0 ${st.alignClass}`} style={st.containerPos}>
           <span
-            style={{ fontFamily: st.fontFamily }}
-            className={`inline-block rounded px-2 py-1 leading-snug ${st.weightClass} ${st.sizeClass} ${st.boxClass}`}
+            style={{
+              fontFamily: st.fontFamily,
+              fontSize: `${st.fontCqw}cqw`,
+              lineHeight: 1.3,
+              padding: `${st.fontCqw * 0.28}cqw ${st.fontCqw * 0.45}cqw`,
+              maxWidth: "91cqw",
+            }}
+            className={`inline-block ${st.weightClass} ${st.boxClass}`}
           >
             {lines.map((l, idx) => (
               <span key={idx} className="block line-clamp-3">

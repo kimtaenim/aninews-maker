@@ -192,6 +192,8 @@ export async function renderCaptionPng(text, sub, opts = {}) {
   const boxY =
     sub.position === "top"
       ? Math.round(H * 0.09)
+      : sub.position === "one-third"
+        ? Math.round(H / 3 - boxH / 2)
       : sub.position === "center"
         ? Math.round(H * 0.5 - boxH / 2)
         : sub.position === "two-thirds"

@@ -69,6 +69,7 @@ function toEdit(s: Scene): EditScene {
 // 자막 위치 = 이미지에서 비워둘 지점(자막 자리). 자막 패널과 4단계 픽커가 함께 쓴다.
 const SUBTITLE_POSITIONS = [
   ["top", "상단"],
+  ["one-third", "⅓"],
   ["center", "중앙"],
   ["two-thirds", "⅔"],
   ["three-quarters", "¾"],
