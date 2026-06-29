@@ -46,6 +46,16 @@
       }
     },
     {
+      "id": "pixel-retro",
+      "label": "비트맵 (레트로 픽셀아트)",
+      "imageBible": "Retro pixel-art bitmap style, 16-bit era video-game aesthetic. Low-resolution chunky square pixels with a visible pixel grid, hard aliased edges (NO anti-aliasing, no smooth gradients), a limited indexed color palette with ordered dithering, bold simple readable shapes, consistent pixel-sprite characters. Flat retro lighting, simple tiled backgrounds. 9:16 vertical composition. Keep on-image text minimal.",
+      "motionStyle": "Choppy low-framerate pixel animation, stepped sprite-like movement — deliberately not smooth (retro game feel). Hold frames between moves.",
+      "postFx": {
+        "frameSteppingFps": 8,
+        "_note": "compose 단계에서 낮은 fps 프레임 스테핑으로 레트로 픽셀 손맛."
+      }
+    },
+    {
       "id": "custom",
       "label": "직접 입력",
       "imageBible": "Describe your own art style, characters and color palette here. (직접 입력 — 아래 프롬프트 칸에 원하는 스타일을 영어로 작성하세요.) 9:16 vertical composition.",
