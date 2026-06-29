@@ -23,11 +23,12 @@ function parseLines(raw: string): string[] | null {
 export async function translateNarrations(
   projectId: string,
   narrations: string[],
-  targetLanguage = "English"
+  targetLanguage = "English",
+  sourceLanguage = "Korean"
 ): Promise<{ translations: string[]; costUsd: number }> {
   const client = getAnthropic();
   const system =
-    `Translate each Korean subtitle line into natural, concise ${targetLanguage} suitable for ` +
+    `Translate each ${sourceLanguage} subtitle line into natural, concise ${targetLanguage} suitable for ` +
     "on-screen video captions and voiceover (short, punchy). Keep the same order and the same " +
     'number of lines. Return ONLY JSON: {"lines":["...", "..."]}';
   const userMsg = JSON.stringify({ lines: narrations });

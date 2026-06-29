@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getProject, createProject, saveProject } from "@/lib/projectStore";
 import { getSessionEmail } from "@/lib/auth";
 import { translateNarrations } from "@/lib/translate";
-import { getLang } from "@/lib/languages";
+import { resolveLang, KOREAN } from "@/lib/languages";
 import { estimateDuration } from "@/lib/scenes";
 import type { SourceMaterial } from "@/lib/source";
 import type { Scene } from "@/lib/types";
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
   if (!projectId) {
     return NextResponse.json({ ok: false, error: "projectId 필요" }, { status: 400 });
   }
-  const lang = getLang(body.lang ?? "");
+  const lang = resolveLang(body.lang ?? "");
   if (!lang) {
     return NextResponse.json({ ok: false, error: "지원하지 않는 언어" }, { status: 422 });
   }
@@ -38,17 +38,26 @@ export async function POST(req: NextRequest) {
   }
   if (source.scenes.length === 0) {
     return NextResponse.json(
-      { ok: false, error: "스크립트가 없어요 (먼저 한국어판을 만들어주세요)" },
+      { ok: false, error: "스크립트가 없어요 (먼저 스크립트를 만들어주세요)" },
+      { status: 422 }
+    );
+  }
+  // 소스 언어(빈 lang = 한국어 원본). 같은 언어로는 만들 수 없다.
+  const srcLang = resolveLang(source.lang) ?? KOREAN;
+  if (lang.code === srcLang.code) {
+    return NextResponse.json(
+      { ok: false, error: `이미 ${lang.label}판이에요` },
       { status: 422 }
     );
   }
 
   try {
-    // 1) 나레이션 번역
+    // 1) 나레이션 번역(소스 언어 → 대상 언어)
     const { translations } = await translateNarrations(
       source.id,
       source.scenes.map((s) => s.narration),
-      lang.english
+      lang.english,
+      srcLang.english
     );
 
     // 2) 소스 material 로 새 프로젝트 골격 생성

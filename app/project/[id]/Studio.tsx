@@ -15,7 +15,7 @@ import {
 import { upload } from "@vercel/blob/client";
 import { estimateDuration } from "@/lib/scenes";
 import type { SourceMaterial } from "@/lib/source";
-import { TARGET_LANGUAGES, getLang } from "@/lib/languages";
+import { resolveLang, otherLanguages } from "@/lib/languages";
 import Spinner from "@/components/Spinner";
 import ScenePreview from "./ScenePreview";
 import MiniAudio from "./MiniAudio";
@@ -244,7 +244,7 @@ export default function Studio({
   const [versionError, setVersionError] = useState<string | null>(null);
   // 합성/표시용 이 프로젝트의 언어 라벨. 원본은 한국어판, 다국어판은 그 언어판.
   const composeLangLabel = initial.lang
-    ? `${getLang(initial.lang)?.label ?? initial.lang}판`
+    ? `${resolveLang(initial.lang)?.label ?? initial.lang}판`
     : "한국어판";
 
   // ── 보이스오버 엔진(프로젝트별) — env 기본값을 덮어쓴다 ───────────────────────
@@ -3062,17 +3062,17 @@ export default function Studio({
         </section>
       )}
 
-      {/* 다른 언어판 만들기 — 번역한 새 프로젝트(별도 라이브러리 항목)를 만든다. */}
-      {!project.lang && hasScenes && (
+      {/* 다른 언어판 만들기 — 어느 언어판에서든 현재 언어를 뺀 다른 언어로 새 프로젝트 생성(대칭). */}
+      {hasScenes && (
         <section className="mt-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 p-5">
           <h2 className="text-sm font-semibold">🌐 다른 언어판 만들기</h2>
           <p className="mt-1 text-[11px] text-zinc-400">
             고른 언어로 나레이션을 번역한 <span className="font-medium">새 프로젝트</span>를
             만듭니다. 이미지 프롬프트·모션·스타일은 가져오고, 영상·음성은 새 프로젝트에서
-            따로 생성해요(라이브러리에 별도 저장).
+            따로 생성해요(라이브러리에 별도 저장). 현재 <span className="font-medium">{composeLangLabel}</span>에서 만들 수 있는 언어:
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
-            {TARGET_LANGUAGES.map((L) => (
+            {otherLanguages(project.lang).map((L) => (
               <button
                 key={L.code}
                 type="button"
