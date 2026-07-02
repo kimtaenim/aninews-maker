@@ -1023,6 +1023,7 @@ export default function Studio({
     setError(null);
     setBusy(action);
     try {
+      await flushScenes(); // 미저장 편집 먼저 저장 — 뒤늦은 자동저장이 방금 만든 프롬프트를 덮어쓰지 않게
       const data = await call("/api/script/image-prompts", {
         projectId: project.id,
         scenes: targets,
@@ -1047,6 +1048,7 @@ export default function Studio({
     setError(null);
     setBusy(action);
     try {
+      await flushScenes(); // 미저장 편집 먼저 저장 — 뒤늦은 자동저장이 방금 만든 모션을 덮어쓰지 않게
       const data = await call("/api/script/motions", {
         projectId: project.id,
         scenes: targets,
