@@ -33,14 +33,15 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { prompts, costUsd } = await generateImagePrompts({
+    const { prompts, costUsd, raw } = await generateImagePrompts({
       projectId,
       scenes,
       styleBible: project.styleBible,
     });
     if (prompts.size === 0) {
+      const snippet = (raw || "(모델이 빈 응답을 보냈어요)").replace(/\s+/g, " ").slice(0, 200);
       return NextResponse.json(
-        { ok: false, error: "프롬프트 생성 결과가 비었어요 — 다시 시도해주세요." },
+        { ok: false, error: `프롬프트 생성 결과가 비었어요 — 다시 시도. [모델응답: ${snippet}]` },
         { status: 502 }
       );
     }

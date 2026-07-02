@@ -56,9 +56,9 @@ export async function generateImagePrompts(args: {
   projectId: string;
   scenes: SceneInput[];
   styleBible: string;
-}): Promise<{ prompts: Map<number, string>; costUsd: number }> {
+}): Promise<{ prompts: Map<number, string>; costUsd: number; raw: string }> {
   const scenes = (args.scenes ?? []).filter((s) => s?.narration?.trim());
-  if (scenes.length === 0) return { prompts: new Map(), costUsd: 0 };
+  if (scenes.length === 0) return { prompts: new Map(), costUsd: 0, raw: "" };
 
   const client = getAnthropic();
   const system =
@@ -68,7 +68,8 @@ export async function generateImagePrompts(args: {
     "avoid protests, raised fists, marching crowds, violence, weapons, blood, political slogans/symbols, real public figures. " +
     "Write ONE natural scene as plain prose and compose it freely — camera angle, framing and subject size are " +
     "entirely up to you (하나의 자연스러운 장면을 자유롭게 묘사 — 카메라·프레이밍·인물 크기는 자유). " +
-    "Keep on-image text minimal. One scene = one concise Korean prompt. " +
+    "Keep on-image text minimal. Keep EACH prompt SHORT — one concise Korean sentence, roughly under 60 Korean " +
+    "characters; describe only the essentials, do NOT over-describe (각 프롬프트는 한 문장·60자 내외로 짧게). " +
     'Output ONLY JSON: {"items":[{"index":0,"prompt":"..."}]} with the SAME indices, one per scene.';
   // 모델이 임의 인덱스를 0-based 로 다시 매기는 일이 있어, 입력은 0..N-1 위치로 주고
   // 결과를 위치→원래 index 로 되매핑한다.
@@ -83,18 +84,22 @@ export async function generateImagePrompts(args: {
 
   const r = await client.messages.create({
     model: MODELS.sonnet,
-    max_tokens: 2000,
+    max_tokens: 4000, // 씬이 많으면 2000 에서 JSON 이 잘려 파싱 실패 → 여유 상향
     system,
     messages: [{ role: "user", content: userMsg }],
   });
   const costUsd = await recordCostBestEffort(args.projectId, r, "image-prompt");
-  const ordered = parseItemsOrdered(textOf(r.content), "prompt");
+  const raw = textOf(r.content);
+  const ordered = parseItemsOrdered(raw, "prompt");
   const prompts = new Map<number, string>();
   scenes.forEach((s, pos) => {
     const v = ordered[pos];
     if (v) prompts.set(s.index, v);
   });
-  return { prompts, costUsd };
+  if (prompts.size === 0) {
+    console.warn("[image-prompts] 파싱 0개 — 모델 원문 앞부분:", raw.slice(0, 500));
+  }
+  return { prompts, costUsd, raw };
 }
 
 // 5단계 — 씬별 영문 모션 프롬프트. 카메라 워크 + 조명 변화 + (선택) 인물의 가벼운
