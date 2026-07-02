@@ -38,6 +38,12 @@ export async function POST(req: NextRequest) {
       scenes,
       styleBible: project.styleBible,
     });
+    if (prompts.size === 0) {
+      return NextResponse.json(
+        { ok: false, error: "프롬프트 생성 결과가 비었어요 — 다시 시도해주세요." },
+        { status: 502 }
+      );
+    }
     // 생성된 프롬프트 + 보낸 나레이션을 해당 씬에 저장(나머지 필드·단계 상태 보존).
     const narrMap = new Map(scenes.map((s) => [s.index, s.narration.trim()]));
     project.scenes = project.scenes.map((sc) => {

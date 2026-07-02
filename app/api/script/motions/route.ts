@@ -33,6 +33,12 @@ export async function POST(req: NextRequest) {
 
   try {
     const { motions, costUsd } = await generateMotions({ projectId, scenes });
+    if (motions.size === 0) {
+      return NextResponse.json(
+        { ok: false, error: "모션 생성 결과가 비었어요 — 다시 시도해주세요." },
+        { status: 502 }
+      );
+    }
     const narrMap = new Map(scenes.map((s) => [s.index, s.narration.trim()]));
     project.scenes = project.scenes.map((sc) => {
       const motion = motions.get(sc.index);

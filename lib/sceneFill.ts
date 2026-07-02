@@ -21,22 +21,17 @@ function textOf(content: Array<{ type: string; text?: string }>): string {
     .trim();
 }
 
-function parseItems(raw: string, key: string): Map<number, string> {
-  const out = new Map<number, string>();
+// items 배열을 "순서대로" 파싱한다 — 모델이 index 필드를 빠뜨리거나 엉뚱하게(1-based·
+// 원래 씬번호 등) 매겨도, 응답 순서 = 입력 순서로 안전하게 매핑하기 위함.
+function parseItemsOrdered(raw: string, key: string): string[] {
   try {
     const m = raw.match(/\{[\s\S]*\}/);
-    const parsed = (m ? JSON.parse(m[0]) : {}) as {
-      items?: Array<{ index?: number; [k: string]: unknown }>;
-    };
-    for (const it of parsed.items ?? []) {
-      if (typeof it.index === "number" && typeof it[key] === "string") {
-        out.set(it.index, (it[key] as string).trim());
-      }
-    }
+    const parsed = (m ? JSON.parse(m[0]) : {}) as { items?: Array<Record<string, unknown>> };
+    const items = Array.isArray(parsed.items) ? parsed.items : [];
+    return items.map((it) => (typeof it?.[key] === "string" ? (it[key] as string).trim() : ""));
   } catch {
-    /* 파싱 실패 시 빈 맵 */
+    return []; // 파싱 실패 → 빈 배열
   }
-  return out;
 }
 
 async function recordCostBestEffort(projectId: string, r: { usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number | null; cache_creation_input_tokens?: number | null } }, kind: string): Promise<number> {
@@ -93,10 +88,10 @@ export async function generateImagePrompts(args: {
     messages: [{ role: "user", content: userMsg }],
   });
   const costUsd = await recordCostBestEffort(args.projectId, r, "image-prompt");
-  const byPos = parseItems(textOf(r.content), "prompt");
+  const ordered = parseItemsOrdered(textOf(r.content), "prompt");
   const prompts = new Map<number, string>();
   scenes.forEach((s, pos) => {
-    const v = byPos.get(pos);
+    const v = ordered[pos];
     if (v) prompts.set(s.index, v);
   });
   return { prompts, costUsd };
@@ -141,10 +136,10 @@ export async function generateMotions(args: {
     messages: [{ role: "user", content: userMsg }],
   });
   const costUsd = await recordCostBestEffort(args.projectId, r, "motion");
-  const byPos = parseItems(textOf(r.content), "motion");
+  const ordered = parseItemsOrdered(textOf(r.content), "motion");
   const motions = new Map<number, string>();
   scenes.forEach((s, pos) => {
-    const v = byPos.get(pos);
+    const v = ordered[pos];
     if (v) motions.set(s.index, v);
   });
   return { motions, costUsd };
