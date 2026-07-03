@@ -7,6 +7,7 @@
 
 import { getAnthropic, MODELS } from "./anthropic";
 import { anthropicCostUsd, recordCost } from "./cost";
+import type { SourceMaterial } from "./source";
 
 function parseJson(raw: string): { reply?: unknown; style_bible?: unknown } | null {
   const m = raw.match(/\{[\s\S]*\}/);
@@ -78,4 +79,77 @@ export async function runKeyframeChat(args: {
       : "스타일을 갱신했어요.";
 
   return { reply, styleBible, costUsd };
+}
+
+// 1단계 소스 대화 — 사용자 요청대로 소스 자료(제목·본문)를 다듬는다. 강조·재작성·복수
+// 소스 조합·톤/길이 조정 등. 좋은 모델(opus)로 양질의 컨텐츠를 뽑는다. 현재 자료를 항상
+// 최신 상태로 넘기고, 갱신된 자료 + 한국어 요약 답변을 돌려준다.
+function textOf(content: Array<{ type: string; text?: string }>): string {
+  return (content.filter((b) => b.type === "text") as Array<{ text: string }>)
+    .map((b) => b.text)
+    .join("")
+    .trim();
+}
+
+export async function runSourceChat(args: {
+  projectId: string;
+  material: SourceMaterial;
+  userMessage: string;
+}): Promise<{ reply: string; material: SourceMaterial; costUsd: number }> {
+  const { projectId, material, userMessage } = args;
+  const client = getAnthropic();
+
+  const system =
+    "You help a user refine the SOURCE material for a short-form Korean news video, BEFORE the script is " +
+    "written. You are given the current title and body (Korean). Apply the user's request — rewrite parts, " +
+    "emphasize a section, adjust tone/length, integrate or combine facts from multiple sources, fix errors — " +
+    "and return the FULL updated material. Keep the body as ONE coherent Korean narrative (no markdown, no " +
+    "bullet lists, no '소스1/2' labels). Preserve important facts and numbers unless asked to change them. " +
+    "Aim for high-quality, engaging, accurate content. Also write a short Korean reply summarizing what changed. " +
+    'Return ONLY JSON: {"reply":"...","title":"...","body":"..."}';
+
+  const userMsg =
+    `현재 소스 제목: ${material.title}\n\n현재 소스 본문:\n${material.body}\n\n요청: ${userMessage}`;
+
+  const r = await client.messages.create({
+    model: MODELS.opus,
+    max_tokens: 8000,
+    system,
+    messages: [{ role: "user", content: userMsg }],
+  });
+
+  const raw = textOf(r.content);
+
+  const costUsd = anthropicCostUsd({
+    inputTokens: r.usage.input_tokens,
+    outputTokens: r.usage.output_tokens,
+    cacheReadTokens: r.usage.cache_read_input_tokens ?? undefined,
+    cacheWriteTokens: r.usage.cache_creation_input_tokens ?? undefined,
+    model: MODELS.opus,
+  });
+  await recordCost({
+    projectId,
+    vendor: "anthropic",
+    model: MODELS.opus,
+    costUsd,
+    meta: { kind: "source-chat" },
+  }).catch(() => {});
+
+  let parsed: { reply?: unknown; title?: unknown; body?: unknown } = {};
+  try {
+    const m = raw.match(/\{[\s\S]*\}/);
+    parsed = JSON.parse(m ? m[0] : raw);
+  } catch {
+    /* 파싱 실패 → 기존 자료 유지, 원문을 답변으로 */
+  }
+  const title =
+    typeof parsed.title === "string" && parsed.title.trim() ? parsed.title.trim() : material.title;
+  const body =
+    typeof parsed.body === "string" && parsed.body.trim() ? parsed.body.trim() : material.body;
+  const reply =
+    typeof parsed.reply === "string" && parsed.reply.trim()
+      ? parsed.reply.trim()
+      : "반영했어요. 본문을 확인해 주세요.";
+
+  return { reply, material: { ...material, title, body }, costUsd };
 }

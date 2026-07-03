@@ -124,7 +124,7 @@ export default function Studio({
   // 진행 중인 액션 → 어느 단계인지 매핑. 에러를 그 단계 패널에 표시하기 위함.
   function actionToStep(action: string): StepKind | null {
     const a = action.startsWith("approve-") ? action.slice(8) : action;
-    if (a === "source") return "source";
+    if (a.startsWith("source")) return "source";
     if (a === "script" || a === "save") return "script";
     if (a.startsWith("keyframe")) return "keyframe";
     if (a.startsWith("scene") || a.startsWith("images")) return "images";
@@ -565,6 +565,9 @@ export default function Studio({
   // 키프레임 StepChat (대화 미세조정)
   const [chat, setChat] = useState(initial.steps.keyframe.chat);
   const [chatInput, setChatInput] = useState("");
+  // 1단계 소스 대화 (소스 자료를 대화로 다듬기/조합)
+  const [sourceChat, setSourceChat] = useState(initial.steps.source.chat);
+  const [sourceChatInput, setSourceChatInput] = useState("");
   const imagesStatus = project.steps.images.status;
   const imagesApproved = imagesStatus === "approved";
 
@@ -1206,6 +1209,37 @@ export default function Studio({
     }
   }
 
+  // 1단계 소스 대화: 요청대로 소스 자료를 다듬는다(강조·조합·톤/길이). 서버가 material 갱신.
+  async function sendSourceChat() {
+    const msg = sourceChatInput.trim();
+    if (!msg || busy !== null) return;
+    setError(null);
+    setBusy("source-chat");
+    try {
+      const data = await call("/api/stepchat", {
+        projectId: project.id,
+        step: "source",
+        userMessage: msg,
+      });
+      setSourceChat(data.chat as typeof sourceChat);
+      setProject((p) => ({
+        ...p,
+        steps: {
+          ...p.steps,
+          source: {
+            ...p.steps.source,
+            params: { ...p.steps.source.params, material: data.material },
+          },
+        },
+      }));
+      setSourceChatInput("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "소스 대화 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   // 씬 한 장 생성/리롤. 성공하면 project.scenes 갱신 + 비용 라벨 저장.
   // 반환: 성공 여부 (전체 생성 루프가 중단 판단에 사용)
   async function generateOneScene(sceneIndex: number): Promise<boolean> {
@@ -1705,9 +1739,59 @@ export default function Studio({
             {material.sourceName && (
               <p className="text-xs text-zinc-500 mt-0.5">{material.sourceName}</p>
             )}
-            <p className="mt-2 text-zinc-600 dark:text-zinc-400 whitespace-pre-wrap line-clamp-6">
+            <p className="mt-2 max-h-64 overflow-y-auto whitespace-pre-wrap rounded-lg bg-zinc-50 dark:bg-zinc-900 p-2.5 text-zinc-600 dark:text-zinc-400">
               {material.body}
             </p>
+          </div>
+        )}
+        {/* 소스 대화 — 승인 전 소스를 대화로 다듬기/조합 (양질 모델) */}
+        {material && !sourceApproved && (
+          <div className="mt-4 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
+            <p className="text-xs font-semibold text-zinc-600 dark:text-zinc-300">소스 다듬기 (AI 대화)</p>
+            <p className="mt-0.5 text-[11px] text-zinc-400">
+              예: “이 부분을 강조해줘”, “두 소식을 하나로 합쳐줘”, “더 짧고 쉽게”, “핵심 수치만 남겨줘”. 반영되면 위 본문이 바뀝니다.
+            </p>
+            {sourceChat.length > 0 && (
+              <ul className="mt-2 grid gap-1.5 max-h-48 overflow-y-auto">
+                {sourceChat.map((t, i) => (
+                  <li key={i} className={t.role === "user" ? "text-right" : ""}>
+                    <span
+                      className={
+                        "inline-block rounded-lg px-2.5 py-1.5 text-xs " +
+                        (t.role === "user"
+                          ? "bg-accent text-white"
+                          : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200")
+                      }
+                    >
+                      {t.text}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="mt-2 flex gap-2">
+              <input
+                value={sourceChatInput}
+                onChange={(e) => setSourceChatInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    sendSourceChat();
+                  }
+                }}
+                placeholder="소스 수정 요청…"
+                disabled={busy !== null}
+                className="flex-1 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-accent disabled:opacity-50"
+              />
+              <button
+                type="button"
+                onClick={sendSourceChat}
+                disabled={busy !== null || !sourceChatInput.trim()}
+                className="shrink-0 rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white text-sm font-medium px-4"
+              >
+                {busy === "source-chat" ? <Busy>…</Busy> : "보내기"}
+              </button>
+            </div>
           </div>
         )}
         {!sourceApproved && (
