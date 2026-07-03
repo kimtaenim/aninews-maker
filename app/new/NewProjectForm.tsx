@@ -35,6 +35,7 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
   const [wiki, setWiki] = useState("");
   const [wikiResults, setWikiResults] = useState<WikiSearchResult[] | null>(null);
   const [wikiSearching, setWikiSearching] = useState(false);
+  const [wikiSelected, setWikiSelected] = useState<Set<string>>(new Set()); // 다중 선택한 문서 url
 
   // 트렌드(구글 트렌드 실시간 급상승) — 기본 한국어. 키워드 클릭 → 위키 검색으로.
   const [trendLang, setTrendLang] = useState("ko");
@@ -274,6 +275,30 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
     }
   }
 
+  // 선택한 위키 문서 여러 개를 하나의 주제로 종합해 생성.
+  async function submitWikiMulti() {
+    const inputs = [...wikiSelected];
+    if (inputs.length === 0) {
+      setError("문서를 1개 이상 선택해주세요");
+      return;
+    }
+    setError(null);
+    setLoading(true);
+    try {
+      const r = await fetch("/api/source/from-wiki", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ inputs }),
+      });
+      const data = await r.json();
+      if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      router.push(`/project/${data.projectId}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "생성 실패");
+      setLoading(false);
+    }
+  }
+
   async function submit() {
     if (mode === "file") return submitFiles();
     if (mode === "wiki") return searchWiki();
@@ -293,11 +318,12 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
       }
       payload = { urls: links };
     } else if (mode === "url") {
-      if (!url.trim()) {
+      const urls = url.split(/[\s,]+/).map((u) => u.trim()).filter(Boolean);
+      if (urls.length === 0) {
         setError("URL을 입력해주세요");
         return;
       }
-      payload = { url };
+      payload = { urls };
     } else {
       if (!text.trim()) {
         setError("텍스트를 입력해주세요");
@@ -532,14 +558,19 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
       )}
 
       {mode === "url" && (
-        <input
-          type="url"
-          inputMode="url"
-          placeholder="https://news.example.com/article/123"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          className={inputCls}
-        />
+        <div className="grid gap-1">
+          <textarea
+            inputMode="url"
+            rows={3}
+            placeholder={"https://news.example.com/article/123\n여러 개는 한 줄에 하나씩 (여러 기사를 하나로 종합)"}
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            className={inputCls + " resize-y"}
+          />
+          <p className="text-[11px] text-zinc-400">
+            URL을 여러 개 넣으면 그 기사들을 <span className="font-medium">하나의 주제로 종합</span>합니다.
+          </p>
+        </div>
       )}
 
       {mode === "trend" && (
@@ -615,6 +646,7 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
               onChange={(e) => {
                 setWiki(e.target.value);
                 setWikiResults(null);
+                setWikiSelected(new Set());
               }}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
@@ -640,38 +672,65 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
             </button>
           </div>
           <p className="text-[11px] text-zinc-400">
-            한·영 위키에서 관련 문서를 찾아 보여드려요. 하나 고르면 그 문서로 영상을
-            만듭니다. (위키 주소를 바로 넣어도 됩니다.)
+            한·영 위키에서 관련 문서를 찾아 보여드려요. <span className="font-medium">여러 개
+            골라</span> 하나의 주제로 종합할 수 있어요. (위키 주소를 바로 넣어도 됩니다.)
           </p>
 
           {wikiResults && wikiResults.length > 0 && (
-            <ul className="grid gap-1.5 max-h-96 overflow-y-auto pr-1">
-              {wikiResults.map((r) => (
-                <li key={r.url}>
-                  <button
-                    type="button"
-                    onClick={() => void submitWikiUrl(r.url)}
-                    disabled={loading}
-                    className="w-full text-left rounded-xl border border-zinc-200 dark:border-zinc-800 p-3 hover:border-accent hover:bg-accent/5 disabled:opacity-50 transition-colors"
-                  >
-                    <p className="text-sm font-medium leading-snug">
-                      <span className="mr-1.5 rounded bg-accent/10 px-1.5 py-0.5 text-[10px] text-accent align-middle">
-                        {r.langLabel}
-                      </span>
-                      {r.title}
-                    </p>
-                    {r.snippet && (
-                      <p className="mt-1 text-xs text-zinc-500 line-clamp-2">{r.snippet}</p>
-                    )}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          {loading && (
-            <p className="inline-flex items-center gap-1.5 text-xs text-accent">
-              <Spinner /> 선택한 문서로 만드는 중…
-            </p>
+            <>
+              <ul className="grid gap-1.5 max-h-96 overflow-y-auto pr-1">
+                {wikiResults.map((r) => {
+                  const sel = wikiSelected.has(r.url);
+                  return (
+                    <li key={r.url}>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setWikiSelected((prev) => {
+                            const n = new Set(prev);
+                            if (n.has(r.url)) n.delete(r.url);
+                            else n.add(r.url);
+                            return n;
+                          })
+                        }
+                        disabled={loading}
+                        className={
+                          "w-full text-left rounded-xl border p-3 transition-colors disabled:opacity-50 " +
+                          (sel
+                            ? "border-accent bg-accent/10"
+                            : "border-zinc-200 dark:border-zinc-800 hover:border-accent hover:bg-accent/5")
+                        }
+                      >
+                        <p className="text-sm font-medium leading-snug">
+                          {sel && <span className="mr-1 text-accent">✓</span>}
+                          <span className="mr-1.5 rounded bg-accent/10 px-1.5 py-0.5 text-[10px] text-accent align-middle">
+                            {r.langLabel}
+                          </span>
+                          {r.title}
+                        </p>
+                        {r.snippet && (
+                          <p className="mt-1 text-xs text-zinc-500 line-clamp-2">{r.snippet}</p>
+                        )}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+              <button
+                type="button"
+                onClick={() => void submitWikiMulti()}
+                disabled={loading || wikiSelected.size === 0}
+                className="rounded-xl bg-accent hover:bg-accent-strong disabled:opacity-40 text-white text-sm font-medium py-2.5"
+              >
+                {loading ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Spinner /> 만드는 중…
+                  </span>
+                ) : (
+                  `선택한 ${wikiSelected.size || ""}개 문서로 만들기${wikiSelected.size >= 2 ? " (종합)" : ""}`
+                )}
+              </button>
+            </>
           )}
         </div>
       )}
