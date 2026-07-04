@@ -286,6 +286,20 @@ export default function Studio({
   );
   // 제작 크레딧 이름 — 마지막 2씬에 "제작 : {이름}"을 워터마크 옆에 1.5배로.
   const [wmCredit, setWmCredit] = useState(initial.credit ?? "");
+  // 제목 클릭 편집
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleInput, setTitleInput] = useState(initial.title);
+  async function saveTitle() {
+    const t = titleInput.trim();
+    setEditingTitle(false);
+    if (!t || t === project.title) return;
+    try {
+      await call("/api/project/title", { projectId: project.id, title: t });
+      setProject((p) => ({ ...p, title: t }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "제목 변경 실패");
+    }
+  }
   async function saveWatermark(
     text: string,
     position: "tl" | "tr" | "bl" | "br",
@@ -1728,7 +1742,37 @@ export default function Studio({
   return (
     <>
       <main className="px-4 py-8 pb-24 md:max-w-2xl md:mx-auto">
-      <h1 className="text-lg font-semibold tracking-tight">{project.title}</h1>
+      {editingTitle ? (
+        <input
+          autoFocus
+          value={titleInput}
+          onChange={(e) => setTitleInput(e.target.value)}
+          onBlur={saveTitle}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              saveTitle();
+            } else if (e.key === "Escape") {
+              setTitleInput(project.title);
+              setEditingTitle(false);
+            }
+          }}
+          maxLength={200}
+          className="w-full rounded-lg border border-accent bg-white dark:bg-zinc-950 px-2 py-1 text-lg font-semibold tracking-tight outline-none"
+        />
+      ) : (
+        <h1
+          className="text-lg font-semibold tracking-tight cursor-text hover:opacity-70"
+          title="클릭해서 제목 수정"
+          onClick={() => {
+            setTitleInput(project.title);
+            setEditingTitle(true);
+          }}
+        >
+          {project.title}{" "}
+          <span className="align-middle text-xs font-normal text-zinc-400">✎</span>
+        </h1>
+      )}
       <p className="mt-1 text-xs text-zinc-500">project: {project.id}</p>
 
       {/* 스텝퍼 */}
