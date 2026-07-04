@@ -8,7 +8,7 @@ import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { segmentCaptions } from "./captions.mjs";
-import { renderCaptionPng, renderWatermarkPng } from "./subtitle-image.mjs";
+import { renderCaptionPng, renderWatermarkPng, renderCreditPng } from "./subtitle-image.mjs";
 
 const W = 1080;
 const H = 1920;
@@ -91,6 +91,15 @@ export async function composeProject(projectId, lang) {
       await writeFile(wmPath, wmPng);
       await log(`워터마크 "${project.watermark.text}" (${project.watermark.position})`);
     }
+    // 제작 크레딧 — 마지막 2씬에만. 워터마크 위치 기준 옆에 1.5배로. (워터마크 유무와 무관)
+    let creditPath = null;
+    const creditName = (project.credit ?? "").trim();
+    if (creditName) {
+      const cPng = await renderCreditPng(creditName, project.watermark ?? { position: "br" }, { W, H });
+      creditPath = join(dir, "credit.png");
+      await writeFile(creditPath, cPng);
+      await log(`제작 크레딧 "${creditName}" (마지막 2씬)`);
+    }
 
     const sceneFiles = [];
     for (let i = 0; i < scenes.length; i++) {
@@ -157,6 +166,11 @@ export async function composeProject(projectId, lang) {
         enable: `between(t,${spans[j][0].toFixed(3)},${spans[j][1].toFixed(3)})`,
       }));
       if (wmPath) overlays.push({ inIdx: 2 + capPaths.length, enable: null });
+      // 제작 크레딧: 마지막 2씬에만. 입력 순서는 (자막들 → 워터마크 → 크레딧).
+      const showCredit = creditPath && i >= scenes.length - 2;
+      if (showCredit) {
+        overlays.push({ inIdx: 2 + capPaths.length + (wmPath ? 1 : 0), enable: null });
+      }
 
       let filter;
       if (overlays.length === 0) {
@@ -180,6 +194,7 @@ export async function composeProject(projectId, lang) {
       // 출력 -t 가 전체 길이를 제한하므로 입력은 무한 루프로 둬도 안전(v6 검증됨).
       for (const cp of capPaths) args.push("-loop", "1", "-framerate", String(FPS), "-i", cp);
       if (wmPath) args.push("-loop", "1", "-framerate", String(FPS), "-i", wmPath);
+      if (showCredit) args.push("-loop", "1", "-framerate", String(FPS), "-i", creditPath);
       args.push(
         "-filter_complex", filter,
         "-map", "[v]", "-map", "1:a",

@@ -284,15 +284,23 @@ export default function Studio({
   const [wmPos, setWmPos] = useState<"tl" | "tr" | "bl" | "br">(
     initial.watermark?.position ?? "br"
   );
-  async function saveWatermark(text: string, position: "tl" | "tr" | "bl" | "br") {
+  // 제작 크레딧 이름 — 마지막 2씬에 "제작 : {이름}"을 워터마크 옆에 1.5배로.
+  const [wmCredit, setWmCredit] = useState(initial.credit ?? "");
+  async function saveWatermark(
+    text: string,
+    position: "tl" | "tr" | "bl" | "br",
+    credit: string
+  ) {
     try {
       await call("/api/project/watermark", {
         projectId: project.id,
         watermark: { text, position },
+        credit,
       });
       setProject((p) => ({
         ...p,
         watermark: text.trim() ? { text: text.trim(), position } : undefined,
+        credit: credit.trim() || undefined,
       }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "워터마크 저장 실패");
@@ -3274,7 +3282,7 @@ export default function Studio({
               type="text"
               value={wmText}
               onChange={(e) => setWmText(e.target.value)}
-              onBlur={() => saveWatermark(wmText, wmPos)}
+              onBlur={() => saveWatermark(wmText, wmPos, wmCredit)}
               placeholder="예: @내채널 / 출처표기 (비우면 없음)"
               maxLength={60}
               className="flex-1 min-w-[160px] rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2.5 py-1.5 text-sm outline-none focus:border-accent"
@@ -3284,7 +3292,7 @@ export default function Studio({
               onChange={(e) => {
                 const p = e.target.value as "tl" | "tr" | "bl" | "br";
                 setWmPos(p);
-                saveWatermark(wmText, p);
+                saveWatermark(wmText, p, wmCredit);
               }}
               className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1.5 text-xs outline-none focus:border-accent"
             >
@@ -3294,8 +3302,20 @@ export default function Studio({
               <option value="br">우하</option>
             </select>
           </div>
+          {/* 제작 크레딧 — 마지막 2씬에만 워터마크 옆에 "제작 : 이름" (1.5배 크기) */}
+          <input
+            type="text"
+            value={wmCredit}
+            onChange={(e) => setWmCredit(e.target.value)}
+            onBlur={() => saveWatermark(wmText, wmPos, wmCredit)}
+            placeholder="제작 크레딧 이름 (예: 홍길동) — 마지막 2씬에만"
+            maxLength={60}
+            className="mt-1.5 w-full rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2.5 py-1.5 text-sm outline-none focus:border-accent"
+          />
           <p className="mt-1 text-[10px] text-zinc-400">
-            입력 후 칸 밖을 누르면 저장됩니다. 영상 모서리에 작은 반투명 글씨로 들어가요.
+            입력 후 칸 밖을 누르면 저장됩니다. 워터마크는 모든 씬 모서리에 작게. 제작 크레딧은
+            <span className="font-medium"> 마지막 2씬</span>에만 워터마크 위치 옆(하단이면 위, 상단이면 아래)에
+            정렬 맞춰 <span className="font-medium">1.5배</span>로 “제작 : 이름” 표시됩니다.
           </p>
 
           {errorStep === "compose" && error && (

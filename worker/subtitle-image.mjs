@@ -248,3 +248,40 @@ export async function renderWatermarkPng(wm, opts = {}) {
   ctx.fillText(text, x, y);
   return canvas.encode("png");
 }
+
+// 제작 크레딧 "제작 : {name}" — 마지막 2씬에만. 워터마크(wm) 위치를 기준으로 바로 옆에:
+//  - 하단(bl/br): 워터마크 바로 위 / 상단(tl/tr): 바로 아래.
+//  - 오른쪽(r): 오른쪽 정렬 / 왼쪽(l): 왼쪽 정렬(워터마크와 같은 모서리 여백에 맞춤).
+// 시그니처보다 뒤에 나오는 만큼 폰트는 워터마크의 1.5배.
+export async function renderCreditPng(name, wm, opts = {}) {
+  const W = opts.W ?? 1080;
+  const H = opts.H ?? 1920;
+  const canvas = createCanvas(W, H);
+  const ctx = canvas.getContext("2d");
+  const nm = (name ?? "").trim();
+  if (!nm) return canvas.encode("png");
+  const text = `제작 : ${nm}`;
+
+  const wmSize = Math.round(W * 0.033); // 워터마크 기준 크기
+  const size = Math.round(wmSize * 1.5); // 1.5배
+  ctx.font = `600 ${size}px "${SANS_FAMILY}"${LATIN_FALLBACK}`;
+  ctx.textBaseline = "top";
+  const tw = ctx.measureText(text).width;
+  const th = Math.round(size * 1.2);
+  const wmTh = Math.round(wmSize * 1.2);
+  const margin = Math.round(W * 0.03);
+  const gap = Math.round(wmSize * 0.5);
+
+  const pos = wm?.position || "br";
+  const x = pos.includes("l") ? margin : Math.round(W - margin - tw); // 좌/우 정렬
+  const wmY = pos.startsWith("t") ? margin : Math.round(H - margin - wmTh);
+  const y = pos.startsWith("t")
+    ? wmY + wmTh + gap // 상단 워터마크 → 바로 아래
+    : wmY - gap - th; // 하단 워터마크 → 바로 위
+
+  ctx.fillStyle = "rgba(0,0,0,0.5)";
+  ctx.fillText(text, x + 2, y + 2);
+  ctx.fillStyle = "rgba(255,255,255,0.92)";
+  ctx.fillText(text, x, y);
+  return canvas.encode("png");
+}

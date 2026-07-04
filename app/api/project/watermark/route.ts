@@ -9,7 +9,7 @@ const POS = ["tl", "tr", "bl", "br"];
 // 워터마크 저장. body: { projectId, watermark: { text, position } }
 // text 가 비면 워터마크 제거.
 export async function POST(req: NextRequest) {
-  let body: { projectId?: string; watermark?: Partial<Watermark> };
+  let body: { projectId?: string; watermark?: Partial<Watermark>; credit?: string };
   try {
     body = await req.json();
   } catch {
@@ -36,7 +36,16 @@ export async function POST(req: NextRequest) {
         : project.watermark?.position ?? "br",
     };
   }
+  // 제작 크레딧 이름(마지막 2씬). body 에 credit 이 있으면 갱신(빈 문자열=제거).
+  if (body.credit !== undefined) {
+    const credit = body.credit.trim().slice(0, 60);
+    project.credit = credit || undefined;
+  }
   project.updatedAt = Date.now();
   await saveProject(project);
-  return NextResponse.json({ ok: true, watermark: project.watermark ?? null });
+  return NextResponse.json({
+    ok: true,
+    watermark: project.watermark ?? null,
+    credit: project.credit ?? null,
+  });
 }
