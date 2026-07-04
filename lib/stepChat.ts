@@ -153,3 +153,70 @@ export async function runSourceChat(args: {
 
   return { reply, material: { ...material, title, body }, costUsd };
 }
+
+// 2단계 스크립트 대화 — 씬 나레이션들을 대화로 수정한다(재작성·분할/병합·추가/삭제·
+// 순서·톤/훅). 좋은 모델(opus). 현재 나레이션 목록을 넘기고, 갱신된 나레이션 배열 +
+// 한국어 요약 답변을 돌려준다. 이미지 프롬프트·모션은 여기서 만들지 않는다(다음 단계).
+export async function runScriptChat(args: {
+  projectId: string;
+  narrations: string[];
+  userMessage: string;
+}): Promise<{ reply: string; narrations: string[]; costUsd: number }> {
+  const { projectId, narrations, userMessage } = args;
+  const client = getAnthropic();
+
+  const system =
+    "You help a user refine the SCRIPT of a short-form Korean news video. The script is a list of scene " +
+    "narrations (Korean, spoken). Apply the user's request — reword, shorten or expand, split or merge scenes, " +
+    "add or remove a scene, reorder, sharpen the hook, adjust tone — and return the FULL updated list of scene " +
+    "narrations. Each narration is natural Korean speech (one or two short sentences) that works for both " +
+    "voiceover and on-screen subtitles. Keep 5-9 scenes unless the user asks otherwise. Do NOT write image " +
+    "prompts or motion — narration only. Also write a short Korean reply summarizing what changed. " +
+    'Return ONLY JSON: {"reply":"...","scenes":["나레이션1","나레이션2", ...]}';
+
+  const userMsg =
+    "현재 씬 나레이션:\n" +
+    narrations.map((n, i) => `${i + 1}. ${n}`).join("\n") +
+    `\n\n요청: ${userMessage}`;
+
+  const r = await client.messages.create({
+    model: MODELS.opus,
+    max_tokens: 8000,
+    system,
+    messages: [{ role: "user", content: userMsg }],
+  });
+
+  const raw = textOf(r.content);
+  const costUsd = anthropicCostUsd({
+    inputTokens: r.usage.input_tokens,
+    outputTokens: r.usage.output_tokens,
+    cacheReadTokens: r.usage.cache_read_input_tokens ?? undefined,
+    cacheWriteTokens: r.usage.cache_creation_input_tokens ?? undefined,
+    model: MODELS.opus,
+  });
+  await recordCost({
+    projectId,
+    vendor: "anthropic",
+    model: MODELS.opus,
+    costUsd,
+    meta: { kind: "script-chat" },
+  }).catch(() => {});
+
+  let parsed: { reply?: unknown; scenes?: unknown } = {};
+  try {
+    const m = raw.match(/\{[\s\S]*\}/);
+    parsed = JSON.parse(m ? m[0] : raw);
+  } catch {
+    /* 파싱 실패 → 기존 유지 */
+  }
+  const nextList = Array.isArray(parsed.scenes)
+    ? parsed.scenes.map((x) => (typeof x === "string" ? x.trim() : "")).filter(Boolean)
+    : [];
+  const next = nextList.length > 0 ? nextList : narrations;
+  const reply =
+    typeof parsed.reply === "string" && parsed.reply.trim()
+      ? parsed.reply.trim()
+      : "반영했어요. 씬을 확인해 주세요.";
+
+  return { reply, narrations: next, costUsd };
+}

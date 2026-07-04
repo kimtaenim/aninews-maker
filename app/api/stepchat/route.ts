@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProject, saveProject } from "@/lib/projectStore";
-import { runKeyframeChat, runSourceChat } from "@/lib/stepChat";
+import { runKeyframeChat, runSourceChat, runScriptChat } from "@/lib/stepChat";
 import { getStyleProfile } from "@/lib/styleProfiles";
-import type { StepKind } from "@/lib/types";
+import type { StepKind, Scene } from "@/lib/types";
 import type { SourceMaterial } from "@/lib/source";
+import { estimateDuration } from "@/lib/scenes";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -26,9 +27,9 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
-  if (body.step !== "keyframe" && body.step !== "source") {
+  if (body.step !== "keyframe" && body.step !== "source" && body.step !== "script") {
     return NextResponse.json(
-      { ok: false, error: "현재는 소스·키프레임 단계만 대화 지원" },
+      { ok: false, error: "현재는 소스·스크립트·키프레임 단계만 대화 지원" },
       { status: 400 }
     );
   }
@@ -59,6 +60,62 @@ export async function POST(req: NextRequest) {
     } catch (e) {
       return NextResponse.json(
         { ok: false, error: e instanceof Error ? e.message : "소스 대화 실패" },
+        { status: 500 }
+      );
+    }
+  }
+
+  // 2단계 스크립트 대화 — 씬 나레이션을 대화로 수정. 새 나레이션으로 씬을 재구성하되,
+  // 같은 index 의 기존 산출물(프롬프트·이미지·영상·음성 등)은 carry 하고, 나레이션이
+  // 바뀐 씬의 음성대본 미러(ttsScript)는 비운다(자막→음성 단방향).
+  if (body.step === "script") {
+    if (project.scenes.length === 0) {
+      return NextResponse.json({ ok: false, error: "스크립트가 아직 없어요 (먼저 생성)" }, { status: 422 });
+    }
+    try {
+      const { reply, narrations } = await runScriptChat({
+        projectId,
+        narrations: project.scenes.map((s) => s.narration),
+        userMessage,
+      });
+      const prev = project.scenes;
+      const scenes: Scene[] = narrations
+        .map((n, index): Scene => {
+          const carry = prev[index];
+          const narration = n.trim();
+          return {
+            ...(carry ?? {}),
+            index,
+            narration,
+            imagePrompt: carry?.imagePrompt ?? "",
+            motion: carry?.motion ?? "",
+            durationSec: carry?.durationSec ?? estimateDuration(narration),
+            status: "generated",
+            ttsScript:
+              carry?.ttsScript &&
+              carry.ttsScript !== carry.narration &&
+              (carry.narration ?? "").trim() === narration
+                ? carry.ttsScript
+                : undefined,
+          };
+        })
+        .filter((s) => s.narration);
+      if (scenes.length === 0) {
+        return NextResponse.json({ ok: false, error: "결과 스크립트가 비었어요 — 다시 시도" }, { status: 502 });
+      }
+      const now = Date.now();
+      project.scenes = scenes;
+      project.steps.script.chat.push(
+        { role: "user", text: userMessage, ts: now },
+        { role: "assistant", text: reply, ts: now }
+      );
+      project.steps.script.updatedAt = now;
+      project.updatedAt = now;
+      await saveProject(project);
+      return NextResponse.json({ ok: true, reply, scenes, chat: project.steps.script.chat });
+    } catch (e) {
+      return NextResponse.json(
+        { ok: false, error: e instanceof Error ? e.message : "스크립트 대화 실패" },
         { status: 500 }
       );
     }

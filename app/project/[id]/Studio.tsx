@@ -125,7 +125,7 @@ export default function Studio({
   function actionToStep(action: string): StepKind | null {
     const a = action.startsWith("approve-") ? action.slice(8) : action;
     if (a.startsWith("source")) return "source";
-    if (a === "script" || a === "save") return "script";
+    if (a.startsWith("script") || a === "save") return "script";
     if (a.startsWith("keyframe")) return "keyframe";
     if (a.startsWith("scene") || a.startsWith("images")) return "images";
     if (a.startsWith("video")) return "videos";
@@ -568,6 +568,9 @@ export default function Studio({
   // 1단계 소스 대화 (소스 자료를 대화로 다듬기/조합)
   const [sourceChat, setSourceChat] = useState(initial.steps.source.chat);
   const [sourceChatInput, setSourceChatInput] = useState("");
+  // 2단계 스크립트 대화 (씬 나레이션을 대화로 수정)
+  const [scriptChat, setScriptChat] = useState(initial.steps.script.chat);
+  const [scriptChatInput, setScriptChatInput] = useState("");
   const imagesStatus = project.steps.images.status;
   const imagesApproved = imagesStatus === "approved";
 
@@ -1235,6 +1238,29 @@ export default function Studio({
       setSourceChatInput("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "소스 대화 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // 2단계 스크립트 대화: 씬 나레이션을 대화로 수정. 서버가 새 씬 배열을 돌려주면 반영.
+  async function sendScriptChat() {
+    const msg = scriptChatInput.trim();
+    if (!msg || busy !== null) return;
+    setError(null);
+    setBusy("script-chat");
+    try {
+      await flushScenes(); // 미저장 나레이션 편집을 먼저 서버에 반영(대화가 최신 기준으로)
+      const data = await call("/api/stepchat", {
+        projectId: project.id,
+        step: "script",
+        userMessage: msg,
+      });
+      applySavedScenes(data.scenes as Scene[]); // project.scenes + 편집 버퍼 동기화
+      setScriptChat(data.chat as typeof scriptChat);
+      setScriptChatInput("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "스크립트 대화 실패");
     } finally {
       setBusy(null);
     }
@@ -1963,6 +1989,56 @@ export default function Studio({
             <p className="mt-2 text-[11px] text-zinc-400">
               고치면 자동 저장됩니다(따로 저장 안 눌러도 됨). 길이는 4~7초로 자동 보정됩니다.
             </p>
+
+            {/* 스크립트 대화 — 대화로 씬 나레이션 수정(강조·분할/병합·추가/삭제·톤) */}
+            <div className="mt-4 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
+              <p className="text-xs font-semibold text-zinc-600 dark:text-zinc-300">스크립트 다듬기 (AI 대화)</p>
+              <p className="mt-0.5 text-[11px] text-zinc-400">
+                예: “3번 씬을 더 짧게”, “2·3번을 하나로 합쳐줘”, “도입을 더 강한 훅으로”, “마지막에 요약 씬 추가”, “전체를 더 쉽게”. 반영되면 위 씬들이 바뀝니다.
+              </p>
+              {scriptChat.length > 0 && (
+                <ul className="mt-2 grid gap-1.5 max-h-48 overflow-y-auto">
+                  {scriptChat.map((t, i) => (
+                    <li key={i} className={t.role === "user" ? "text-right" : ""}>
+                      <span
+                        className={
+                          "inline-block rounded-lg px-2.5 py-1.5 text-xs " +
+                          (t.role === "user"
+                            ? "bg-accent text-white"
+                            : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200")
+                        }
+                      >
+                        {t.text}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="mt-2 flex gap-2">
+                <input
+                  value={scriptChatInput}
+                  onChange={(e) => setScriptChatInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      sendScriptChat();
+                    }
+                  }}
+                  placeholder="스크립트 수정 요청…"
+                  disabled={busy !== null}
+                  className="flex-1 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-accent disabled:opacity-50"
+                />
+                <button
+                  type="button"
+                  onClick={sendScriptChat}
+                  disabled={busy !== null || !scriptChatInput.trim()}
+                  className="shrink-0 rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white text-sm font-medium px-4"
+                >
+                  {busy === "script-chat" ? <Busy>…</Busy> : "보내기"}
+                </button>
+              </div>
+            </div>
+
             {/* 승인 = 다음 단계 잠금 해제. 눈에 띄게 전체 폭으로. */}
             {!scriptApproved ? (
               <button
