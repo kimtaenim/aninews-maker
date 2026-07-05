@@ -153,6 +153,19 @@ function wrapGreedyNoOrphan(ctx, text, maxW, maxLines = 3) {
 // 한글 폰트를 못 찾았는지 외부에서 확인용.
 export const hasKoreanFont = () => SANS_FAMILY !== "sans-serif";
 
+// 렌더용 캔버스 재사용 — 캡션마다 1080×1920(≈8MB) 캔버스를 새로 만들면 메모리 할당
+// churn 이 커져 워커가 OOM 날 수 있다. 워커는 한 번에 하나씩(순차) 렌더하고 encode 를
+// 기다린 뒤 다음으로 넘어가므로, 하나를 지워가며 재사용해도 안전하다.
+let _canvas = null;
+function getCanvas(W, H) {
+  if (!_canvas || _canvas.width !== W || _canvas.height !== H) {
+    _canvas = createCanvas(W, H);
+  }
+  const ctx = _canvas.getContext("2d");
+  ctx.clearRect(0, 0, W, H); // 이전 렌더 잔상 제거(투명 초기화)
+  return { canvas: _canvas, ctx };
+}
+
 export async function renderCaptionPng(text, sub, opts = {}) {
   // 한글 폰트가 없으면 canvas 가 한글 셰이핑에서 멈출 수 있으니, 얼지 말고 명확히 실패.
   if (!opts.allowNoFont && familyFor(sub) === "sans-serif") {
@@ -162,8 +175,7 @@ export async function renderCaptionPng(text, sub, opts = {}) {
   }
   const W = opts.W ?? 1080;
   const H = opts.H ?? 1920;
-  const canvas = createCanvas(W, H);
-  const ctx = canvas.getContext("2d");
+  const { canvas, ctx } = getCanvas(W, H);
   if (opts.debugBg) {
     ctx.fillStyle = "#7a7a7a";
     ctx.fillRect(0, 0, W, H);
@@ -222,8 +234,7 @@ export async function renderCaptionPng(text, sub, opts = {}) {
 export async function renderWatermarkPng(wm, opts = {}) {
   const W = opts.W ?? 1080;
   const H = opts.H ?? 1920;
-  const canvas = createCanvas(W, H);
-  const ctx = canvas.getContext("2d");
+  const { canvas, ctx } = getCanvas(W, H);
   if (opts.debugBg) {
     ctx.fillStyle = "#7a7a7a";
     ctx.fillRect(0, 0, W, H);
@@ -256,8 +267,7 @@ export async function renderWatermarkPng(wm, opts = {}) {
 export async function renderCreditPng(name, wm, opts = {}) {
   const W = opts.W ?? 1080;
   const H = opts.H ?? 1920;
-  const canvas = createCanvas(W, H);
-  const ctx = canvas.getContext("2d");
+  const { canvas, ctx } = getCanvas(W, H);
   const nm = (name ?? "").trim();
   if (!nm) return canvas.encode("png");
   const text = `제작 : ${nm}`;
