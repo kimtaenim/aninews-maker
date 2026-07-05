@@ -301,6 +301,14 @@ export default function Studio({
       setError(e instanceof Error ? e.message : "제목 변경 실패");
     }
   }
+
+  // 6단계 자막 클릭 → 2단계 그 씬으로 스크롤 + 나레이션 포커스(거기서 수정·행갈이).
+  function goToScriptScene(i: number) {
+    const el = document.getElementById(`script-scene-${i}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    (el.querySelector("textarea") as HTMLTextAreaElement | null)?.focus();
+  }
   async function saveWatermark(
     text: string,
     position: "tl" | "tr" | "bl" | "br",
@@ -1922,7 +1930,8 @@ export default function Studio({
               {scenes.map((sc, i) => (
                 <li
                   key={i}
-                  className="rounded-xl bg-zinc-50 dark:bg-zinc-900 p-3 grid gap-2"
+                  id={`script-scene-${i}`}
+                  className="rounded-xl bg-zinc-50 dark:bg-zinc-900 p-3 grid gap-2 scroll-mt-4"
                 >
                   <div className="flex items-center justify-between text-xs text-zinc-500">
                     <span className="font-medium">씬 {i + 1}</span>
@@ -3149,10 +3158,16 @@ export default function Studio({
                   >
                     <div className="flex items-center gap-3">
                       <span className="shrink-0 text-[11px] text-zinc-500 w-10">씬 {i + 1}</span>
-                      <p className="min-w-0 flex-1 truncate text-[11px] text-zinc-500">
+                      <button
+                        type="button"
+                        onClick={() => goToScriptScene(i)}
+                        title="클릭하면 스크립트 단계로 올라가 이 자막을 수정할 수 있어요 (행갈이 포함)"
+                        className="min-w-0 flex-1 truncate text-left text-[11px] text-zinc-500 hover:text-accent hover:underline"
+                      >
                         <span className="text-zinc-400">📝 자막 </span>
                         {skipped ? <span className="text-amber-600">건너뜀</span> : sc.narration}
-                      </p>
+                        <span className="ml-1 text-zinc-300">✎</span>
+                      </button>
                       <div className="shrink-0 grid justify-items-end gap-0.5">
                         <div className="flex items-center gap-1">
                           <SceneRecorder
