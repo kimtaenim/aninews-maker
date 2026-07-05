@@ -83,8 +83,9 @@ const CAMERA_MOVES = [
   ["orbit", "⟳ 120° 오비트", "120-degree orbit around the subject, smooth steady arc — camera moves while the subject and objects stay still."],
   ["zoom-in", "＋ 줌인", "Slow zoom in (push-in) toward the subject — camera only; the subject and objects barely move."],
   ["zoom-out", "－ 줌아웃", "Slow zoom out (pull-back) revealing more of the scene — camera only; the subject and objects barely move."],
-  ["pan", "↔ 팬", "Slow horizontal pan across the scene — camera only; the subject and objects stay mostly still."],
-  ["dolly", "🎥 달리인", "Slow dolly in toward the subject — camera only; the subject and objects stay still."],
+  ["pan-h", "↔ 수평 팬", "Slow horizontal pan (left to right) across the scene — camera only; the subject and objects stay mostly still."],
+  ["pan-v", "↕ 수직 팬", "Slow vertical pan/tilt (up and down) across the scene — camera only; the subject and objects stay mostly still."],
+  ["dolly-zoom", "🎥 달리 줌", "Dolly zoom (vertigo / Hitchcock effect): the camera dollies in while zooming out (or dollies out while zooming in) so the subject stays the SAME size while the background perspective stretches dramatically. Camera only; the subject stays still."],
   ["static", "■ 고정", "Locked-off static camera, no camera movement — only very subtle ambient motion; the subject stays still."],
 ] as const;
 
