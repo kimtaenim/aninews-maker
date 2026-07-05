@@ -4,7 +4,10 @@
 import { getProject, saveProject, logProgress, resetProgress } from "./store.mjs";
 import { put } from "@vercel/blob";
 import { spawn } from "node:child_process";
-import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { createReadStream, createWriteStream } from "node:fs";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { segmentCaptions } from "./captions.mjs";
@@ -55,7 +58,12 @@ function probeDuration(file) {
 async function download(url, dest) {
   const r = await fetch(url);
   if (!r.ok) throw new Error(`다운로드 실패 ${r.status} ${url.slice(0, 80)}`);
-  await writeFile(dest, Buffer.from(await r.arrayBuffer()));
+  // 스트리밍 저장 — 영상 전체를 메모리(Buffer)에 올리지 않는다(OOM 방지).
+  if (r.body) {
+    await pipeline(Readable.fromWeb(r.body), createWriteStream(dest));
+  } else {
+    await writeFile(dest, Buffer.from(await r.arrayBuffer()));
+  }
 }
 
 export async function composeProject(projectId, lang) {
@@ -223,10 +231,10 @@ export async function composeProject(projectId, lang) {
     ]);
 
     await log("Blob 업로드…");
-    const bytes = await readFile(finalPath);
+    // 스트리밍 업로드 — 최종 영상을 통째로 메모리에 읽지 않는다(OOM 방지).
     const { url } = await put(
       `project/${projectId}/final-${lang}-${Date.now()}.mp4`,
-      bytes,
+      createReadStream(finalPath),
       { access: "public", contentType: "video/mp4", addRandomSuffix: false }
     );
 
