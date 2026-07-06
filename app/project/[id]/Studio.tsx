@@ -116,10 +116,10 @@ const IMG_CHIP_GROUPS = [
   },
   {
     key: "bright",
-    label: "밝기",
+    label: "배경 밝기",
     chips: [
-      ["bright", "밝게", "bright high-key lighting"],
-      ["dark", "어둡게", "dark low-key moody lighting"],
+      ["bright", "배경 밝게", "bright high-key background; keep the subject clearly lit"],
+      ["dark", "배경 어둡게", "dark low-key moody background, but keep the subject clearly lit and visible"],
     ],
   },
   {
