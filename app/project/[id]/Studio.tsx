@@ -93,15 +93,26 @@ const CAMERA_MOVES = [
 // 프롬프트 끝에 [스타일: …] 지시로 붙는다. [id, 버튼라벨, 프롬프트 조각(영문)].
 const IMG_CHIP_GROUPS = [
   {
-    key: "angle",
+    // 수직/기본 앵글 — 하나만(위↔아래·정면은 서로 배타).
+    key: "vangle",
     label: "앵글",
     chips: [
       ["top-down", "위→아래", "high-angle top-down view"],
       ["bottom-up", "아래→위", "low-angle view looking up"],
       ["front", "정면", "straight-on front view at eye level"],
-      ["diagonal", "대각선", "diagonal three-quarter angle"],
-      ["extreme", "극단 퍼스", "extreme wide-angle perspective with dramatic foreshortening"],
     ],
+  },
+  {
+    // 대각선 — 독립 토글(다른 앵글과 조합 가능).
+    key: "diagonal",
+    label: "대각선",
+    chips: [["diagonal", "대각선", "diagonal three-quarter angle"]],
+  },
+  {
+    // 극단 퍼스 — 독립 토글(다른 앵글과 조합 가능).
+    key: "persp",
+    label: "퍼스",
+    chips: [["extreme", "극단 퍼스", "extreme wide-angle perspective with dramatic foreshortening"]],
   },
   {
     key: "bright",
@@ -2813,31 +2824,28 @@ export default function Studio({
                               </label>
                             </div>
                           )}
-                          <span className="text-[10px] text-zinc-400">스타일 칩 (누르면 프롬프트에 반영 · 그룹당 하나)</span>
-                          <div className="grid gap-1">
-                            {IMG_CHIP_GROUPS.map((g) => (
-                              <div key={g.key} className="flex flex-wrap items-center gap-1">
-                                <span className="w-8 shrink-0 text-[10px] text-zinc-400">{g.label}</span>
-                                {g.chips.map(([id, label]) => {
-                                  const on = imgChips[i]?.[g.key] === id;
-                                  return (
-                                    <button
-                                      key={id}
-                                      type="button"
-                                      onClick={() => toggleImgChip(i, g.key, id)}
-                                      disabled={busy !== null}
-                                      className={`text-[10px] rounded-md border px-1.5 py-0.5 disabled:opacity-40 ${
-                                        on
-                                          ? "border-accent bg-accent/10 text-accent"
-                                          : "border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-900"
-                                      }`}
-                                    >
-                                      {label}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            ))}
+                          <span className="text-[10px] text-zinc-400">스타일 칩 (누르면 프롬프트에 반영 · 같은 종류는 하나만)</span>
+                          <div className="flex flex-wrap gap-1">
+                            {IMG_CHIP_GROUPS.flatMap((g) =>
+                              g.chips.map(([id, label]) => {
+                                const on = imgChips[i]?.[g.key] === id;
+                                return (
+                                  <button
+                                    key={g.key + id}
+                                    type="button"
+                                    onClick={() => toggleImgChip(i, g.key, id)}
+                                    disabled={busy !== null}
+                                    className={`text-[10px] rounded-md border px-1.5 py-0.5 disabled:opacity-40 ${
+                                      on
+                                        ? "border-accent bg-accent/10 text-accent"
+                                        : "border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+                                    }`}
+                                  >
+                                    {label}
+                                  </button>
+                                );
+                              })
+                            )}
                           </div>
                           <span className="text-[10px] text-zinc-400">이미지 프롬프트 (한글)</span>
                           <textarea
