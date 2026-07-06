@@ -115,6 +115,15 @@ const IMG_CHIP_GROUPS = [
     chips: [["extreme", "극단 퍼스", "extreme wide-angle perspective with dramatic foreshortening"]],
   },
   {
+    // 인물 방향 — 앞모습/옆모습 하나만.
+    key: "facing",
+    label: "인물 방향",
+    chips: [
+      ["front-view", "앞모습", "the person faces the camera, front view of the body and face"],
+      ["side-view", "옆모습", "the person shown from the side, profile view"],
+    ],
+  },
+  {
     key: "bright",
     label: "배경 밝기",
     chips: [
