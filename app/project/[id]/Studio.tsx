@@ -89,6 +89,46 @@ const CAMERA_MOVES = [
   ["static", "■ 고정", "Locked-off static camera, no camera movement — only very subtle ambient motion; the subject stays still."],
 ] as const;
 
+// 4단계 이미지 스타일 칩 — 그룹별로 하나만 선택(그룹 간에는 자유 조합). 고르면 씬 이미지
+// 프롬프트 끝에 [스타일: …] 지시로 붙는다. [id, 버튼라벨, 프롬프트 조각(영문)].
+const IMG_CHIP_GROUPS = [
+  {
+    key: "angle",
+    label: "앵글",
+    chips: [
+      ["top-down", "위→아래", "high-angle top-down view"],
+      ["bottom-up", "아래→위", "low-angle view looking up"],
+      ["front", "정면", "straight-on front view at eye level"],
+      ["diagonal", "대각선", "diagonal three-quarter angle"],
+      ["extreme", "극단 퍼스", "extreme wide-angle perspective with dramatic foreshortening"],
+    ],
+  },
+  {
+    key: "bright",
+    label: "밝기",
+    chips: [
+      ["bright", "밝게", "bright high-key lighting"],
+      ["dark", "어둡게", "dark low-key moody lighting"],
+    ],
+  },
+  {
+    key: "sat",
+    label: "채도",
+    chips: [
+      ["vivid", "채도↑", "vivid highly saturated colors"],
+      ["muted", "채도↓", "muted desaturated colors"],
+    ],
+  },
+  {
+    key: "detail",
+    label: "디테일",
+    chips: [
+      ["minimal", "미니멀", "minimal clean simple composition"],
+      ["ornate", "장식적", "richly detailed ornate decorative"],
+    ],
+  },
+] as const;
+
 export default function Studio({
   project: initial,
   styleProfiles,
@@ -235,6 +275,8 @@ export default function Studio({
   const [motionScale, setMotionScale] = useState<Record<number, "subtle" | "large">>({});
   // 씬별 선택한 카메라 워크(하이라이트용). 고르면 그 씬 모션 프롬프트를 프리셋으로 채운다.
   const [cameraMove, setCameraMove] = useState<Record<number, string>>({});
+  // 4단계 스타일 칩 — 씬별 { 그룹키: 선택 칩id }. 그룹당 하나만. 프롬프트 [스타일: …] 반영.
+  const [imgChips, setImgChips] = useState<Record<number, Record<string, string>>>({});
 
   // 자막 설정 (프로젝트 일괄)
   const [sub, setSub] = useState<SubtitleSettings>(initial.subtitle ?? DEFAULT_SUBTITLE);
@@ -1517,6 +1559,31 @@ export default function Studio({
     patchScene(sceneIndex, { motion: move[2] }); // 버퍼 갱신 + 자동저장
   }
 
+  // 스타일 칩 선택을 씬 이미지 프롬프트 끝의 [스타일: …] 로 반영(기존 꼬리는 교체).
+  function applyImgChips(sceneIndex: number, chips: Record<string, string>) {
+    const frags: string[] = [];
+    for (const g of IMG_CHIP_GROUPS) {
+      const sel = chips[g.key];
+      if (!sel) continue;
+      const chip = g.chips.find((c) => c[0] === sel);
+      if (chip) frags.push(chip[2]);
+    }
+    const directive = frags.join(", ");
+    const base = (scenes[sceneIndex]?.imagePrompt ?? "")
+      .replace(/\s*\[스타일:[^\]]*\]\s*$/, "")
+      .trimEnd();
+    const next = directive ? `${base}${base ? "\n" : ""}[스타일: ${directive}]` : base;
+    patchScene(sceneIndex, { imagePrompt: next });
+  }
+  // 칩 토글 — 그룹 내에선 하나만(다시 누르면 해제, 다른 칩 누르면 교체). 그룹 간엔 조합.
+  function toggleImgChip(sceneIndex: number, groupKey: string, chipId: string) {
+    const cur = { ...(imgChips[sceneIndex] ?? {}) };
+    if (cur[groupKey] === chipId) delete cur[groupKey];
+    else cur[groupKey] = chipId;
+    setImgChips((prev) => ({ ...prev, [sceneIndex]: cur }));
+    applyImgChips(sceneIndex, cur);
+  }
+
   async function generateVideo(sceneIndex: number) {
     setError(null);
     setBusy(`video-${sceneIndex}`);
@@ -2746,6 +2813,32 @@ export default function Studio({
                               </label>
                             </div>
                           )}
+                          <span className="text-[10px] text-zinc-400">스타일 칩 (누르면 프롬프트에 반영 · 그룹당 하나)</span>
+                          <div className="grid gap-1">
+                            {IMG_CHIP_GROUPS.map((g) => (
+                              <div key={g.key} className="flex flex-wrap items-center gap-1">
+                                <span className="w-8 shrink-0 text-[10px] text-zinc-400">{g.label}</span>
+                                {g.chips.map(([id, label]) => {
+                                  const on = imgChips[i]?.[g.key] === id;
+                                  return (
+                                    <button
+                                      key={id}
+                                      type="button"
+                                      onClick={() => toggleImgChip(i, g.key, id)}
+                                      disabled={busy !== null}
+                                      className={`text-[10px] rounded-md border px-1.5 py-0.5 disabled:opacity-40 ${
+                                        on
+                                          ? "border-accent bg-accent/10 text-accent"
+                                          : "border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+                                      }`}
+                                    >
+                                      {label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            ))}
+                          </div>
                           <span className="text-[10px] text-zinc-400">이미지 프롬프트 (한글)</span>
                           <textarea
                             value={ed?.imagePrompt ?? ""}
