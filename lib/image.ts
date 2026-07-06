@@ -91,34 +91,42 @@ export async function generateKeyframes(args: {
     : "";
   const prompt = `${refClause}${styleBible}\n\n${narrationContext(narration)}Scene: ${scenePrompt}\n\n${NO_TEXT}\n\n${edgeSafe(subtitlePosition)}`;
 
-  const result = referenceImageUrl
-    ? await client.images.edit({
-        model: IMAGE_MODEL,
-        image: await fetchRefFile(referenceImageUrl, "참조"),
-        prompt,
-        size: IMAGE_SIZE,
-        quality,
-        n: count,
-      })
-    : await client.images.generate({
-        model: IMAGE_MODEL,
-        prompt,
-        size: IMAGE_SIZE,
-        quality,
-        n: count,
-      });
+  // gpt-image 는 n=count 한 번 호출해도 모더레이션·부분반환·n 제한으로 요청보다 적게
+  // 돌려줄 때가 있다(예: 3장 요청에 2장). 부족하면 단건(n=1)으로 보충해 목표 장수를 맞춘다.
+  const genN = async (n: number) =>
+    referenceImageUrl
+      ? client.images.edit({
+          model: IMAGE_MODEL,
+          image: await fetchRefFile(referenceImageUrl, "참조"),
+          prompt,
+          size: IMAGE_SIZE,
+          quality,
+          n,
+        })
+      : client.images.generate({ model: IMAGE_MODEL, prompt, size: IMAGE_SIZE, quality, n });
 
-  const items = result.data ?? [];
-  if (items.length === 0) throw new Error("이미지 생성 실패 — 응답에 이미지가 없어요");
+  const first = await genN(count);
+  const b64s: string[] = (first.data ?? [])
+    .map((it) => it.b64_json)
+    .filter((b): b is string => typeof b === "string" && b.length > 0);
+  // 부족분 보충 — 최대 count 번 추가 시도(무한 방지). 추가도 실패하면 있는 것만 쓴다.
+  for (let t = 0; b64s.length < count && t < count; t++) {
+    try {
+      const more = await genN(1);
+      const b = more.data?.[0]?.b64_json;
+      if (b) b64s.push(b);
+    } catch {
+      break;
+    }
+  }
+  if (b64s.length === 0) throw new Error("이미지 생성 실패 — 응답에 이미지가 없어요");
 
   const ts = Date.now();
   const urls: string[] = [];
-  for (let i = 0; i < items.length; i++) {
-    const b64 = items[i].b64_json;
-    if (!b64) continue;
+  for (let i = 0; i < b64s.length; i++) {
     const { url } = await uploadAsset(
       `project/${projectId}/keyframe-${ts}-${i}.png`,
-      Buffer.from(b64, "base64"),
+      Buffer.from(b64s[i], "base64"),
       "image/png"
     );
     urls.push(url);
