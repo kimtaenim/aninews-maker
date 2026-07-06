@@ -2824,7 +2824,7 @@ export default function Studio({
                               </label>
                             </div>
                           )}
-                          <span className="text-[10px] text-zinc-400">스타일 칩 (누르면 프롬프트에 반영 · 같은 종류는 하나만)</span>
+                          <span className="text-[10px] text-zinc-400">스타일 칩 (누르면 프롬프트에 반영 · 중복 선택 가능)</span>
                           <div className="flex flex-wrap gap-1">
                             {IMG_CHIP_GROUPS.flatMap((g) =>
                               g.chips.map(([id, label]) => {
