@@ -966,8 +966,14 @@ export default function Studio({
       }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "승인 실패");
-    } finally {
       setBusy(null);
+      return;
+    }
+    setBusy(null);
+    // 승인 직후 아직 씬이 없으면 스크립트를 자동 생성 — 2단계에서 한 번 더 안 눌러도 되게.
+    // (이미 스크립트가 있으면 덮어쓰지 않는다.)
+    if (project.scenes.length === 0) {
+      await generateScript();
     }
   }
 
