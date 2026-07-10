@@ -7,6 +7,7 @@
 
 import { getAnthropic, MODELS } from "./anthropic";
 import { anthropicCostUsd, recordCost } from "./cost";
+import { stripMarks } from "./emphasis";
 
 function parseLines(raw: string): string[] | null {
   const m = raw.match(/\{[\s\S]*\}/);
@@ -31,7 +32,8 @@ export async function translateNarrations(
     `Translate each ${sourceLanguage} subtitle line into natural, concise ${targetLanguage} suitable for ` +
     "on-screen video captions and voiceover (short, punchy). Keep the same order and the same " +
     'number of lines. Return ONLY JSON: {"lines":["...", "..."]}';
-  const userMsg = JSON.stringify({ lines: narrations });
+  // 강조 마커([[..]])는 번역 대상이 아니다 — 떼고 보낸다(다국어 자막엔 강조 미적용).
+  const userMsg = JSON.stringify({ lines: narrations.map(stripMarks) });
 
   const r = await client.messages.create({
     model: MODELS.haiku,

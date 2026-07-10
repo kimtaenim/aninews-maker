@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { resolveSubtitleStyle } from "@/lib/subtitle";
 import { segmentCaptions } from "@/lib/captions";
+import { splitRuns, stripMarks } from "@/lib/emphasis";
 import type { SubtitleSettings } from "@/lib/types";
 
 // 씬 미리보기 — 영상 + 음성 동기 재생 + 자막(캡션) 오버레이.
@@ -50,7 +51,7 @@ export default function ScenePreview({
   const primaryCaps = sub.lang === "en" ? enCaps : koCaps;
   function capEnds(duration: number): number[] {
     const MIN_CAP = 1.2;
-    const weights = primaryCaps.map((c) => Math.max(1, c.replace(/\s/g, "").length));
+    const weights = primaryCaps.map((c) => Math.max(1, stripMarks(c).replace(/\s/g, "").length));
     const wSum = weights.reduce((a, b) => a + b, 0) || 1;
     const ends: number[] = [];
     let acc = 0;
@@ -133,7 +134,18 @@ export default function ScenePreview({
           >
             {lines.map((l, idx) => (
               <span key={idx} className="block line-clamp-3">
-                {l}
+                {splitRuns(l).map((r, k) =>
+                  r.em ? (
+                    <span
+                      key={k}
+                      style={{ fontSize: "1.3em", fontWeight: 700, color: st.emColor }}
+                    >
+                      {r.t}
+                    </span>
+                  ) : (
+                    <span key={k}>{r.t}</span>
+                  )
+                )}
               </span>
             ))}
           </span>

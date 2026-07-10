@@ -20,6 +20,8 @@ export interface SubtitleStyle {
   // 세로 위치(인라인). 워커 boxY 와 동일: 중간 위치(⅓·중앙·⅔·¾)는 박스 "중심"을 그
   // 지점에(transform 으로 앵커), 상단은 위 9%, 하단은 바닥에서 10%.
   containerPos: { top?: string; bottom?: string; transform?: string };
+  // 강조([[..]]) 색 — 워커 emColor 와 동일(밝은 박스=진한 앰버 / 어두운 박스=골드).
+  emColor: string;
 }
 
 // 워커(subtitle-image.mjs)와 동일 비율: fontPx 56/68/84 @ W=1080.
@@ -38,6 +40,7 @@ export function resolveSubtitleStyle(s: SubtitleSettings): SubtitleStyle {
     boxClass: s.box === "light" ? "bg-white/85 text-zinc-900" : "bg-black/60 text-white",
     alignClass: s.align === "left" ? "text-left" : "text-center",
     fontCqw: fontCqwFor(s.size),
+    emColor: s.box === "light" ? "#b45309" : "#ffd24a",
     containerPos:
       s.position === "top"
         ? { top: "9%" }

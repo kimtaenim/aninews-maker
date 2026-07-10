@@ -7,10 +7,14 @@ const BUDGET = { small: 28, medium: 23, large: 18 };
 // 천 단위 콤마·소수점을 분할에서 잠시 빼두기 위한 보호 센티넬(본문에 안 나오는 제어문자).
 const NUM_COMMA = String.fromCharCode(1);
 const NUM_DOT = String.fromCharCode(2); // 소수점(0.7) — 문장 끝 마침표로 오인 방지
+// 강조 마크업 [[ ]] 도 센티넬로 보호(CJK 분할 시 마커 쪼개짐·폭 오차 방지). 끝에 복원.
+const EMPH_OPEN_S = String.fromCharCode(3);
+const EMPH_CLOSE_S = String.fromCharCode(4);
 
 function estWidth(s) {
   let w = 0;
   for (const ch of s) {
+    if (ch === EMPH_OPEN_S || ch === EMPH_CLOSE_S) continue; // 마커는 폭 0
     w += /[ᄀ-ᇿ⺀-꓏가-힣豈-﫿︰-﹏＀-￯]/.test(ch) ? 1 : ch === " " ? 0.4 : 0.5;
   }
   return w;
@@ -41,8 +45,12 @@ function hardWrap(s, budget) {
 function segmentLine(line, budget) {
   const t = line.replace(/\s+/g, " ").trim();
   if (!t) return [];
-  // 천 단위 콤마(숫자 사이)는 절 경계가 아니다 → 센티넬로 보호 후 분할, 끝에 복원.
+  // 천 단위 콤마·소수점·강조 마커([[ ]])는 절/문장 경계가 아니다 → 센티넬로 보호 후 분할, 끝에 복원.
   const safe = t
+    .split("[[")
+    .join(EMPH_OPEN_S)
+    .split("]]")
+    .join(EMPH_CLOSE_S)
     .replace(/(\d),(?=\d)/g, "$1" + NUM_COMMA)
     .replace(/(\d)\.(?=\d)/g, "$1" + NUM_DOT);
   // 1차: 문장부호(.!?…)에서만 끊는다. 콤마(나열·절)로는 안 끊어 "사과, 배"를 보존.
@@ -76,7 +84,19 @@ function segmentLine(line, budget) {
   }
   if (cur) caps.push(cur);
   return caps
-    .map((c) => c.split(NUM_COMMA).join(",").split(NUM_DOT).join(".").replace(/[,、]\s*$/, "").trim())
+    .map((c) =>
+      c
+        .split(NUM_COMMA)
+        .join(",")
+        .split(NUM_DOT)
+        .join(".")
+        .split(EMPH_OPEN_S)
+        .join("[[")
+        .split(EMPH_CLOSE_S)
+        .join("]]")
+        .replace(/[,、]\s*$/, "")
+        .trim()
+    )
     .filter(Boolean);
 }
 

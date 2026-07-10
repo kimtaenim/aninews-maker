@@ -3,6 +3,7 @@
 // 나눠 순차 표시한다(captionsFor). 합성(compose.mjs)과 동일 코드를 쓴다.
 import { createCanvas, GlobalFonts } from "@napi-rs/canvas";
 import { existsSync } from "node:fs";
+import { splitRuns, stripMarks } from "./emphasis.mjs";
 
 // 산세리프/세리프 각각 따로 등록해서, 자막 설정(font)에 맞게 쓴다.
 const SANS_PATHS = [
@@ -146,6 +147,92 @@ function wrapGreedyNoOrphan(ctx, text, maxW, maxLines = 3) {
   return lines.slice(0, maxLines);
 }
 
+// 강조([[..]]) 런을 반영한 그리디 줄바꿈. 각 문자를 자기 폰트(base/em)로 측정하고,
+// 넘치면 wrapGreedyNoOrphan 과 같은 규칙(공백에서 끊고, 닫는 구두점은 앞줄에)으로 줄을
+// 나눈다. 반환: 줄 배열, 각 줄 = { segs:[{t,em,w}], width, size }(size=그 줄의 대표 크기).
+function wrapRuns(ctx, runs, maxW, baseFont, emFont, baseSize, emSize, maxLines = 3) {
+  // 문자 스트림(+em). 공백 정규화.
+  const chars = [];
+  for (const r of runs) {
+    const norm = (r.t ?? "").replace(/\s+/g, " ");
+    for (const c of norm) chars.push({ c, em: !!r.em });
+  }
+  while (chars.length && chars[0].c === " ") chars.shift();
+  while (chars.length && chars[chars.length - 1].c === " ") chars.pop();
+  if (!chars.length) return [];
+
+  // [{c,em}] 묶음의 폭 — 같은 em 끼리 이어 측정.
+  const widthOf = (arr) => {
+    let w = 0;
+    let i = 0;
+    while (i < arr.length) {
+      const em = arr[i].em;
+      let s = "";
+      while (i < arr.length && arr[i].em === em) {
+        s += arr[i].c;
+        i++;
+      }
+      ctx.font = em ? emFont : baseFont;
+      w += ctx.measureText(s).width;
+    }
+    return w;
+  };
+
+  const rawLines = [];
+  let cur = [];
+  for (const ch of chars) {
+    if (cur.length === 0 && ch.c === " ") continue; // 줄 앞 공백 무시
+    if (cur.length === 0 || widthOf(cur.concat(ch)) <= maxW) {
+      cur.push(ch);
+      continue;
+    }
+    if (NO_LINE_START.test(ch.c)) {
+      cur.push(ch); // 닫는 구두점은 현재 줄에
+      continue;
+    }
+    if (ch.c === " ") {
+      rawLines.push(cur);
+      cur = [];
+      continue;
+    }
+    let sp = -1;
+    for (let k = cur.length - 1; k >= 0; k--)
+      if (cur[k].c === " ") {
+        sp = k;
+        break;
+      }
+    if (sp > 0) {
+      rawLines.push(cur.slice(0, sp));
+      cur = cur.slice(sp + 1);
+      cur.push(ch);
+    } else {
+      rawLines.push(cur);
+      cur = [ch];
+    }
+  }
+  if (cur.length) rawLines.push(cur);
+
+  return rawLines.slice(0, maxLines).map((arr) => {
+    while (arr.length && arr[arr.length - 1].c === " ") arr.pop();
+    const segs = [];
+    let i = 0;
+    let anyEm = false;
+    while (i < arr.length) {
+      const em = arr[i].em;
+      let s = "";
+      while (i < arr.length && arr[i].em === em) {
+        s += arr[i].c;
+        i++;
+      }
+      ctx.font = em ? emFont : baseFont;
+      segs.push({ t: s, em, w: ctx.measureText(s).width });
+      if (em) anyEm = true;
+    }
+    const width = segs.reduce((a, b) => a + b.w, 0);
+    return { segs, width, size: anyEm ? Math.max(baseSize, emSize) : baseSize };
+  });
+}
+
 // 캡션 분할은 captions.mjs(segmentCaptions)가 담당 — 미리보기와 동일 알고리즘.
 
 // 캡션 한 개 → 전체 프레임(투명) PNG 버퍼. ffmpeg 에서 overlay=0:0 로 얹는다.
@@ -181,22 +268,44 @@ export async function renderCaptionPng(text, sub, opts = {}) {
     ctx.fillRect(0, 0, W, H);
   }
   const size = opts.sizePx ?? fontPx(sub.size);
-  ctx.font = `${sub.weight === "bold" ? 700 : 500} ${size}px "${familyFor(sub)}"${LATIN_FALLBACK}`;
+  const fam = familyFor(sub);
+  const baseWeight = sub.weight === "bold" ? 700 : 500;
+  const baseFont = `${baseWeight} ${size}px "${fam}"${LATIN_FALLBACK}`;
+  const emSize = Math.round(size * 1.3); // 강조어는 1.3배 크게
+  const emFont = `700 ${emSize}px "${fam}"${LATIN_FALLBACK}`;
+  ctx.font = baseFont;
   ctx.textBaseline = "alphabetic";
 
   const padX = Math.round(size * 0.45);
   const padY = Math.round(size * 0.28);
-  const lineH = Math.round(size * 1.3);
   const maxBoxW = Math.round(W * 0.91); // 미리보기 컨테이너 폭에 해당(여백 ~4.5%)
   const wrapW = maxBoxW - padX * 2;
 
-  const lines = wrapGreedyNoOrphan(ctx, text, wrapW, 3);
-  const lineWidths = lines.map((l) => ctx.measureText(l).width);
-  const textW = Math.max(...lineWidths, 0);
-  // 미리보기처럼: 여러 줄(줄바꿈 발생)이면 박스는 고정 폭, 한 줄이면 글자에 맞춤.
-  // → 끝줄이 짧아도 박스가 일정해 왼쪽 정렬이어도 비뚤어 보이지 않는다.
-  const boxW = lines.length >= 2 ? maxBoxW : Math.round(textW + padX * 2);
-  const boxH = Math.round(lines.length * lineH + padY * 2);
+  const lightBox = sub.box === "light";
+  const normColor = lightBox ? "#18181b" : "#ffffff";
+  const emColor = lightBox ? "#b45309" : "#ffd24a"; // 강조색: 밝은 박스=진한 앰버 / 어두운 박스=골드
+
+  // 강조 마커([[..]])가 없으면 기존 경로(문자열·단일 폰트) 그대로 — 결과 픽셀 동일.
+  // 있을 때만 런(run) 렌더로 분기해 그 조각만 크게·강조색으로 그린다.
+  const runs = splitRuns(text);
+  const anyEm = runs.some((r) => r.em);
+
+  // linesMeta[i] = { text? | segs?, width, size } — size 는 그 줄의 대표 글자 크기(줄높이 계산용).
+  let linesMeta;
+  if (!anyEm) {
+    ctx.font = baseFont;
+    const strs = wrapGreedyNoOrphan(ctx, stripMarks(text), wrapW, 3);
+    linesMeta = strs.map((l) => ({ text: l, width: ctx.measureText(l).width, size }));
+  } else {
+    linesMeta = wrapRuns(ctx, runs, wrapW, baseFont, emFont, size, emSize, 3);
+  }
+  if (!linesMeta.length) return canvas.encode("png");
+
+  const textW = Math.max(...linesMeta.map((l) => l.width), 0);
+  // 미리보기처럼: 여러 줄이면 박스 고정 폭, 한 줄이면 글자에 맞춤(끝줄 짧아도 안 비뚤어짐).
+  const boxW = linesMeta.length >= 2 ? maxBoxW : Math.round(textW + padX * 2);
+  const lineHs = linesMeta.map((l) => Math.round(l.size * 1.3));
+  const boxH = Math.round(lineHs.reduce((a, b) => a + b, 0) + padY * 2);
 
   const left = sub.align === "left";
   const boxX = left ? Math.round(W * 0.045) : Math.round((W - boxW) / 2);
@@ -214,16 +323,28 @@ export async function renderCaptionPng(text, sub, opts = {}) {
             ? Math.round(H * 0.75 - boxH / 2)
             : Math.round(H - H * 0.1 - boxH);
 
-  const lightBox = sub.box === "light";
   ctx.fillStyle = lightBox ? "rgba(255,255,255,0.85)" : "rgba(0,0,0,0.6)";
   ctx.fillRect(boxX, boxY, boxW, boxH);
 
-  // 왼쪽 정렬=박스 안 왼쪽, 가운데 정렬=박스 안 가운데. (박스 위치도 정렬따라)
-  ctx.fillStyle = lightBox ? "#18181b" : "#ffffff";
-  lines.forEach((l, i) => {
-    const tx = left ? boxX + padX : boxX + Math.round((boxW - lineWidths[i]) / 2);
-    const ty = boxY + padY + i * lineH + Math.round(size * 0.8);
-    ctx.fillText(l, tx, ty);
+  // 줄마다: 세로로 그 줄 높이만큼 누적, 베이스라인은 줄 상단 + size*0.8(기존과 동일 정렬).
+  // 강조 세그먼트는 큰 폰트·강조색으로 alphabetic 베이스라인에 맞춰 그린다(아래 정렬).
+  let yTop = boxY + padY;
+  linesMeta.forEach((l, i) => {
+    const baseline = yTop + Math.round(l.size * 0.8);
+    let tx = left ? boxX + padX : boxX + Math.round((boxW - l.width) / 2);
+    if (l.text != null) {
+      ctx.font = baseFont;
+      ctx.fillStyle = normColor;
+      ctx.fillText(l.text, tx, baseline);
+    } else {
+      for (const seg of l.segs) {
+        ctx.font = seg.em ? emFont : baseFont;
+        ctx.fillStyle = seg.em ? emColor : normColor;
+        ctx.fillText(seg.t, tx, baseline);
+        tx += seg.w;
+      }
+    }
+    yTop += lineHs[i];
   });
 
   return canvas.encode("png");

@@ -14,6 +14,7 @@ import {
 } from "@/lib/types";
 import { upload } from "@vercel/blob/client";
 import { estimateDuration } from "@/lib/scenes";
+import { stripMarks } from "@/lib/emphasis";
 import type { SourceMaterial } from "@/lib/source";
 import { resolveLang, otherLanguages } from "@/lib/languages";
 import Spinner from "@/components/Spinner";
@@ -722,6 +723,34 @@ export default function Studio({
     }
     setDirty(true);
   }
+  // 나레이션 편집기(2단계) 참조 — 강조 버튼이 현재 선택 영역을 [[..]] 로 감싼다.
+  const narrRefs = useRef<Record<number, HTMLTextAreaElement | null>>({});
+
+  // 선택한 부분을 강조 마크업 [[..]] 로 토글. 이미 감싸져 있으면 해제.
+  // 강조한 조각은 미리보기·최종 자막에서 크게·강조색으로 나온다(음성엔 영향 없음).
+  function wrapEmphasis(i: number) {
+    const el = narrRefs.current[i];
+    if (!el) return;
+    const s = el.selectionStart ?? 0;
+    const e = el.selectionEnd ?? 0;
+    if (s === e) return; // 선택 없음
+    const v = el.value;
+    const sel = v.slice(s, e);
+    const wrapped = sel.length > 4 && sel.startsWith("[[") && sel.endsWith("]]");
+    const inner = wrapped ? sel.slice(2, -2) : "[[" + sel + "]]";
+    const next = v.slice(0, s) + inner + v.slice(e);
+    patchScene(i, { narration: next });
+    const ns = wrapped ? s : s + 2;
+    const ne = wrapped ? e - 4 : e + 2;
+    requestAnimationFrame(() => {
+      const el2 = narrRefs.current[i];
+      if (el2) {
+        el2.focus();
+        el2.setSelectionRange(ns, ne);
+      }
+    });
+  }
+
   function addScene() {
     setScenes((prev) => [
       ...prev,
@@ -2061,14 +2090,30 @@ export default function Studio({
                   <label className="grid gap-1">
                     <span className="text-[11px] text-zinc-500">나레이션</span>
                     <textarea
+                      ref={(el) => {
+                        narrRefs.current[i] = el;
+                      }}
                       value={sc.narration}
                       onChange={(e) => patchScene(i, { narration: e.target.value })}
                       rows={2}
                       className={fieldCls + " resize-y"}
                     />
                   </label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onMouseDown={(ev) => ev.preventDefault()}
+                      onClick={() => wrapEmphasis(i)}
+                      className="text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+                    >
+                      ✦ 강조
+                    </button>
+                    <span className="text-[10px] text-zinc-400">
+                      크게 강조할 부분을 선택하고 누르세요 — 미리보기·최종 자막에 반영(음성엔 영향 없음)
+                    </span>
+                  </div>
                   <p className="text-[10px] text-zinc-400">
-                    길이 ~{estimateDuration(sc.narration)}초 (글자수 기준 자동). 이미지
+                    길이 ~{estimateDuration(stripMarks(sc.narration))}초 (글자수 기준 자동). 이미지
                     프롬프트·모션은 3~5단계에서 생성합니다.
                     <br />
                     <span className="text-zinc-500">⏎ 자막을 끊고 싶은 곳에서 줄바꿈(Enter)</span>{" "}

@@ -11,6 +11,7 @@ import { pipeline } from "node:stream/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { segmentCaptions } from "./captions.mjs";
+import { stripMarks } from "./emphasis.mjs";
 import { renderCaptionPng, renderWatermarkPng, renderCreditPng } from "./subtitle-image.mjs";
 
 const W = 1080;
@@ -148,7 +149,7 @@ export async function composeProject(projectId, lang) {
       // 말 속도를 따라간다. 너무 짧으면 못 읽으니 캡션당 최소 1.2초 보장. 최소시간 합이
       // 음성보다 길면(짧은 음성에 캡션 多) 그만큼 장면을 늘린다. 미리보기와 동일 공식.
       const MIN_CAP = 1.2;
-      const weights = caps.map((c) => Math.max(1, c.replace(/\s/g, "").length));
+      const weights = caps.map((c) => Math.max(1, stripMarks(c).replace(/\s/g, "").length));
       const wSum = weights.reduce((a, b) => a + b, 0) || 1;
       const durs = weights.map((w) => Math.max(MIN_CAP, (audioLen * w) / wSum));
       const capTotal = durs.reduce((a, b) => a + b, 0);

@@ -5,6 +5,7 @@ import { canStart } from "@/lib/stepMachine";
 import { uploadAsset } from "@/lib/blob";
 import { formatKrw, recordCost } from "@/lib/cost";
 import { getLang, isTargetLang, dubNarration, dubAudioUrl } from "@/lib/languages";
+import { stripMarks } from "@/lib/emphasis";
 
 export const runtime = "nodejs";
 export const maxDuration = 60; // TTS 는 동기·짧음
@@ -61,7 +62,8 @@ export async function POST(req: NextRequest) {
   const base = isDub
     ? dubNarration(scene, lang)
     : scene?.ttsScript?.trim() || scene?.narration;
-  const text = (body.text ?? base ?? "").trim();
+  // 강조 마커([[..]])는 자막 전용 — 음성 합성 텍스트에서는 뗀다(발음/합성에 안 새게).
+  const text = stripMarks((body.text ?? base ?? "").trim());
   if (!text) {
     return NextResponse.json(
       {
