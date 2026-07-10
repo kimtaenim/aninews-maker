@@ -13,8 +13,9 @@ export type SubSize = "small" | "medium" | "large";
 // 글씨 크기(작게56/보통68/크게84)에 맞춘 캡션 1개 가로 용량(≈2줄). 작을수록 더 잘게.
 const BUDGET: Record<SubSize, number> = { small: 28, medium: 23, large: 18 };
 
-// 천 단위 콤마를 분할에서 잠시 빼두기 위한 보호 센티넬(본문에 안 나오는 제어문자).
+// 천 단위 콤마·소수점을 분할에서 잠시 빼두기 위한 보호 센티넬(본문에 안 나오는 제어문자).
 const NUM_COMMA = String.fromCharCode(1);
+const NUM_DOT = String.fromCharCode(2); // 소수점(0.7) — 문장 끝 마침표로 오인 방지
 
 function estWidth(s: string): number {
   let w = 0;
@@ -53,8 +54,10 @@ function hardWrap(s: string, budget: number): string[] {
 function segmentLine(line: string, budget: number): string[] {
   const t = line.replace(/\s+/g, " ").trim();
   if (!t) return [];
-  // 천 단위 콤마(숫자 사이)는 절 경계가 아니다 → 센티넬로 보호 후 분할, 끝에 복원.
-  const safe = t.replace(/(\d),(?=\d)/g, "$1" + NUM_COMMA);
+  // 천 단위 콤마(1,000)·소수점(0.7)은 절/문장 경계가 아니다 → 센티넬로 보호 후 분할, 끝에 복원.
+  const safe = t
+    .replace(/(\d),(?=\d)/g, "$1" + NUM_COMMA)
+    .replace(/(\d)\.(?=\d)/g, "$1" + NUM_DOT);
 
   // 1차: 문장부호(.!?…)에서만 끊는다. 콤마(나열·절)로는 안 끊어 "사과, 배"를 보존.
   const sentences = (safe.match(/[^.!?…]+[.!?…]?/g) ?? [safe])
@@ -89,7 +92,9 @@ function segmentLine(line: string, budget: number): string[] {
   if (cur) caps.push(cur);
   // 보호했던 숫자 콤마 복원, 끝의 절 쉼표는 떼고, 양끝 공백 정리.
   return caps
-    .map((c) => c.split(NUM_COMMA).join(",").replace(/[,、]\s*$/, "").trim())
+    .map((c) =>
+      c.split(NUM_COMMA).join(",").split(NUM_DOT).join(".").replace(/[,、]\s*$/, "").trim()
+    )
     .filter(Boolean);
 }
 

@@ -4,8 +4,9 @@
 // 천 단위 콤마(숫자 사이, 예: 1,000)는 절 경계가 아니므로 끊지 않는다.
 const BUDGET = { small: 28, medium: 23, large: 18 };
 
-// 천 단위 콤마를 분할에서 잠시 빼두기 위한 보호 센티넬(본문에 안 나오는 제어문자).
+// 천 단위 콤마·소수점을 분할에서 잠시 빼두기 위한 보호 센티넬(본문에 안 나오는 제어문자).
 const NUM_COMMA = String.fromCharCode(1);
+const NUM_DOT = String.fromCharCode(2); // 소수점(0.7) — 문장 끝 마침표로 오인 방지
 
 function estWidth(s) {
   let w = 0;
@@ -41,7 +42,9 @@ function segmentLine(line, budget) {
   const t = line.replace(/\s+/g, " ").trim();
   if (!t) return [];
   // 천 단위 콤마(숫자 사이)는 절 경계가 아니다 → 센티넬로 보호 후 분할, 끝에 복원.
-  const safe = t.replace(/(\d),(?=\d)/g, "$1" + NUM_COMMA);
+  const safe = t
+    .replace(/(\d),(?=\d)/g, "$1" + NUM_COMMA)
+    .replace(/(\d)\.(?=\d)/g, "$1" + NUM_DOT);
   // 1차: 문장부호(.!?…)에서만 끊는다. 콤마(나열·절)로는 안 끊어 "사과, 배"를 보존.
   const sentences = (safe.match(/[^.!?…]+[.!?…]?/g) ?? [safe])
     .map((u) => u.trim())
@@ -73,7 +76,7 @@ function segmentLine(line, budget) {
   }
   if (cur) caps.push(cur);
   return caps
-    .map((c) => c.split(NUM_COMMA).join(",").replace(/[,、]\s*$/, "").trim())
+    .map((c) => c.split(NUM_COMMA).join(",").split(NUM_DOT).join(".").replace(/[,、]\s*$/, "").trim())
     .filter(Boolean);
 }
 
