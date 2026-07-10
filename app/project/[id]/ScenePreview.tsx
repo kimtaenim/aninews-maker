@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { resolveSubtitleStyle } from "@/lib/subtitle";
 import { segmentCaptions } from "@/lib/captions";
 import { splitRuns, stripMarks } from "@/lib/emphasis";
+import { resolveCaptionRecipe, CAPTION_STYLES } from "@/lib/captionPresets";
 import type { SubtitleSettings } from "@/lib/types";
 
 // 씬 미리보기 — 영상 + 음성 동기 재생 + 자막(캡션) 오버레이.
@@ -16,6 +17,8 @@ export default function ScenePreview({
   subtitle,
   subtitleEn,
   sub,
+  captionStyle,
+  onCaptionStyle,
 }: {
   index: number;
   videoUrl?: string;
@@ -23,8 +26,15 @@ export default function ScenePreview({
   subtitle: string;
   subtitleEn?: string;
   sub: SubtitleSettings;
+  captionStyle?: string;
+  onCaptionStyle?: (id: string) => void;
 }) {
   const st = resolveSubtitleStyle(sub);
+  const recipe = resolveCaptionRecipe(sub, captionStyle);
+  const fontFamily =
+    recipe.font === "serif"
+      ? "var(--font-noto-serif-kr), 'Noto Serif KR', serif"
+      : "var(--font-noto-sans-kr), sans-serif";
   const koCaps = useMemo(() => segmentCaptions(subtitle, sub.size), [subtitle, sub.size]);
   const enCaps = useMemo(
     () => segmentCaptions(subtitleEn || subtitle, sub.size),
@@ -124,13 +134,25 @@ export default function ScenePreview({
         <div className={`absolute inset-x-0 ${st.alignClass}`} style={st.containerPos}>
           <span
             style={{
-              fontFamily: st.fontFamily,
+              fontFamily,
               fontSize: `${st.fontCqw}cqw`,
               lineHeight: 1.3,
               padding: `${st.fontCqw * 0.28}cqw ${st.fontCqw * 0.45}cqw`,
               maxWidth: "91cqw",
+              fontWeight: recipe.weight,
+              color: recipe.textColor,
+              background: recipe.box === "solid" ? recipe.boxFill : "transparent",
+              borderRadius:
+                recipe.box === "solid" && recipe.radiusRel
+                  ? recipe.radiusRel >= 1
+                    ? "9999px"
+                    : `${st.fontCqw * recipe.radiusRel}cqw`
+                  : undefined,
+              textShadow: recipe.outline
+                ? "0 0.15cqw 0.4cqw rgba(0,0,0,0.9), 0 0 0.25cqw rgba(0,0,0,0.95)"
+                : undefined,
             }}
-            className={`inline-block ${st.weightClass} ${st.boxClass}`}
+            className="inline-block"
           >
             {lines.map((l, idx) => (
               <span key={idx} className="block line-clamp-3">
@@ -138,7 +160,7 @@ export default function ScenePreview({
                   r.em ? (
                     <span
                       key={k}
-                      style={{ fontSize: "1.3em", fontWeight: 700, color: st.emColor }}
+                      style={{ fontSize: "1.3em", fontWeight: 700, color: recipe.emColor }}
                     >
                       {r.t}
                     </span>
@@ -173,6 +195,30 @@ export default function ScenePreview({
           {playing ? "■ 정지" : "▶ 재생"}
         </button>
       </div>
+
+      {/* 자막 스타일 프리셋 — 이 씬 캡션의 룩(위 미리보기·최종 합성에 반영). */}
+      {onCaptionStyle && (
+        <div className="flex flex-wrap gap-1">
+          {CAPTION_STYLES.map(([id, label]) => {
+            const active = (captionStyle ?? "") === id;
+            return (
+              <button
+                key={id || "default"}
+                type="button"
+                onClick={() => onCaptionStyle(id)}
+                className={
+                  "text-[10px] rounded-md border px-1.5 py-0.5 transition-colors " +
+                  (active
+                    ? "border-accent bg-accent/10 text-accent font-medium"
+                    : "border-zinc-300 dark:border-zinc-700 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900")
+                }
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      )}
       {!audioUrl && (
         <span className="text-[10px] text-zinc-400">음성 없음(6단계에서 생성)</span>
       )}

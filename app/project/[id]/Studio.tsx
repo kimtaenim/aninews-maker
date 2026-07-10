@@ -890,6 +890,7 @@ export default function Studio({
       imageUrl?: string | null;
       videoSource?: VideoSourceMode;
       videoUrl?: string | null;
+      captionStyle?: string | null;
     }
   ) {
     const data = await call("/api/scene/source", {
@@ -915,6 +916,16 @@ export default function Studio({
           : s
       )
     );
+  }
+
+  // 씬별 자막 스타일 프리셋 저장 → project.scenes 갱신(미리보기·최종 합성에 반영).
+  async function setCaptionStyle(i: number, id: string) {
+    setError(null);
+    try {
+      await patchSceneSource(i, { captionStyle: id || null });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "자막 스타일 저장 실패");
+    }
   }
 
   async function setImageMode(i: number, mode: ImageSourceMode) {
@@ -3446,6 +3457,8 @@ export default function Studio({
                   subtitle={sc.narration}
                   subtitleEn={sc.narrationEn}
                   sub={sub}
+                  captionStyle={sc.captionStyle}
+                  onCaptionStyle={(id) => setCaptionStyle(i, id)}
                 />
               ) : null
             )}

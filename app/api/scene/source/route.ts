@@ -19,6 +19,7 @@ type Body = {
   videoSource?: VideoSourceMode;
   videoUrl?: string | null;
   skipped?: boolean; // 씬 건너뛰기 토글
+  captionStyle?: string | null; // 자막 스타일 프리셋 id ("" 또는 null = 기본)
   keyframeReferenceUrl?: string | null;
 };
 
@@ -69,6 +70,7 @@ export async function POST(req: NextRequest) {
     if (scene.imageUrl) scene.status = "generated";
   }
   if (body.skipped !== undefined) scene.skipped = body.skipped || undefined;
+  if (body.captionStyle !== undefined) scene.captionStyle = clear(body.captionStyle);
   if (body.videoSource !== undefined) scene.videoSource = body.videoSource;
   // 업로드한 영상을 그대로 산출물로 — 진행 중 폴링 잔재(videoJobId) 제거.
   if (body.videoUrl !== undefined) {

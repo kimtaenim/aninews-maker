@@ -4,6 +4,7 @@
 import { createCanvas, GlobalFonts } from "@napi-rs/canvas";
 import { existsSync } from "node:fs";
 import { splitRuns, stripMarks } from "./emphasis.mjs";
+import { resolveCaptionRecipe } from "./caption-presets.mjs";
 
 // 산세리프/세리프 각각 따로 등록해서, 자막 설정(font)에 맞게 쓴다.
 const SANS_PATHS = [
@@ -233,6 +234,17 @@ function wrapRuns(ctx, runs, maxW, baseFont, emFont, baseSize, emSize, maxLines 
   });
 }
 
+// 둥근 모서리 사각형 path (ctx.roundRect 미지원 환경 대비 수동).
+function roundRectPath(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
 // 캡션 분할은 captions.mjs(segmentCaptions)가 담당 — 미리보기와 동일 알고리즘.
 
 // 캡션 한 개 → 전체 프레임(투명) PNG 버퍼. ffmpeg 에서 overlay=0:0 로 얹는다.
@@ -255,7 +267,7 @@ function getCanvas(W, H) {
 
 export async function renderCaptionPng(text, sub, opts = {}) {
   // 한글 폰트가 없으면 canvas 가 한글 셰이핑에서 멈출 수 있으니, 얼지 말고 명확히 실패.
-  if (!opts.allowNoFont && familyFor(sub) === "sans-serif") {
+  if (!opts.allowNoFont && SANS_FAMILY === "sans-serif") {
     throw new Error(
       "자막용 한글 폰트를 못 찾았어요 (워커에 fonts-noto-cjk 설치/경로 확인 필요)"
     );
@@ -267,10 +279,11 @@ export async function renderCaptionPng(text, sub, opts = {}) {
     ctx.fillStyle = "#7a7a7a";
     ctx.fillRect(0, 0, W, H);
   }
+  // 씬별 자막 스타일 프리셋 — 폰트·박스·색·모서리·외곽선을 결정(위치·크기·정렬은 sub).
+  const recipe = resolveCaptionRecipe(sub, opts.preset);
   const size = opts.sizePx ?? fontPx(sub.size);
-  const fam = familyFor(sub);
-  const baseWeight = sub.weight === "bold" ? 700 : 500;
-  const baseFont = `${baseWeight} ${size}px "${fam}"${LATIN_FALLBACK}`;
+  const fam = recipe.font === "serif" ? SERIF_FAMILY : SANS_FAMILY;
+  const baseFont = `${recipe.weight} ${size}px "${fam}"${LATIN_FALLBACK}`;
   const emSize = Math.round(size * 1.3); // 강조어는 1.3배 크게
   const emFont = `700 ${emSize}px "${fam}"${LATIN_FALLBACK}`;
   ctx.font = baseFont;
@@ -281,9 +294,8 @@ export async function renderCaptionPng(text, sub, opts = {}) {
   const maxBoxW = Math.round(W * 0.91); // 미리보기 컨테이너 폭에 해당(여백 ~4.5%)
   const wrapW = maxBoxW - padX * 2;
 
-  const lightBox = sub.box === "light";
-  const normColor = lightBox ? "#18181b" : "#ffffff";
-  const emColor = lightBox ? "#b45309" : "#ffd24a"; // 강조색: 밝은 박스=진한 앰버 / 어두운 박스=골드
+  const normColor = recipe.textColor;
+  const emColor = recipe.emColor;
 
   // 강조 마커([[..]])가 없으면 기존 경로(문자열·단일 폰트) 그대로 — 결과 픽셀 동일.
   // 있을 때만 런(run) 렌더로 분기해 그 조각만 크게·강조색으로 그린다.
@@ -323,8 +335,30 @@ export async function renderCaptionPng(text, sub, opts = {}) {
             ? Math.round(H * 0.75 - boxH / 2)
             : Math.round(H - H * 0.1 - boxH);
 
-  ctx.fillStyle = lightBox ? "rgba(255,255,255,0.85)" : "rgba(0,0,0,0.6)";
-  ctx.fillRect(boxX, boxY, boxW, boxH);
+  // 박스: solid 면 채우고(모서리 radiusRel×size, 알약이면 높이 절반까지 클램프), none 이면 안 그림.
+  if (recipe.box === "solid") {
+    ctx.fillStyle = recipe.boxFill;
+    const r = Math.min((recipe.radiusRel || 0) * size, boxH / 2, boxW / 2);
+    if (r > 0.5) {
+      roundRectPath(ctx, boxX, boxY, boxW, boxH, r);
+      ctx.fill();
+    } else {
+      ctx.fillRect(boxX, boxY, boxW, boxH);
+    }
+  }
+
+  // 외곽선(박스 없을 때 가독성) — 글자마다 fill 전에 어두운 stroke 를 깐다.
+  ctx.lineJoin = "round";
+  const draw = (t, x, y, font, color, sz) => {
+    ctx.font = font;
+    if (recipe.outline) {
+      ctx.lineWidth = Math.max(2, Math.round(sz * 0.14));
+      ctx.strokeStyle = "rgba(0,0,0,0.9)";
+      ctx.strokeText(t, x, y);
+    }
+    ctx.fillStyle = color;
+    ctx.fillText(t, x, y);
+  };
 
   // 줄마다: 세로로 그 줄 높이만큼 누적, 베이스라인은 줄 상단 + size*0.8(기존과 동일 정렬).
   // 강조 세그먼트는 큰 폰트·강조색으로 alphabetic 베이스라인에 맞춰 그린다(아래 정렬).
@@ -333,14 +367,10 @@ export async function renderCaptionPng(text, sub, opts = {}) {
     const baseline = yTop + Math.round(l.size * 0.8);
     let tx = left ? boxX + padX : boxX + Math.round((boxW - l.width) / 2);
     if (l.text != null) {
-      ctx.font = baseFont;
-      ctx.fillStyle = normColor;
-      ctx.fillText(l.text, tx, baseline);
+      draw(l.text, tx, baseline, baseFont, normColor, size);
     } else {
       for (const seg of l.segs) {
-        ctx.font = seg.em ? emFont : baseFont;
-        ctx.fillStyle = seg.em ? emColor : normColor;
-        ctx.fillText(seg.t, tx, baseline);
+        draw(seg.t, tx, baseline, seg.em ? emFont : baseFont, seg.em ? emColor : normColor, seg.em ? emSize : size);
         tx += seg.w;
       }
     }

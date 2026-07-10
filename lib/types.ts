@@ -68,6 +68,7 @@ export interface Scene {
   audioUrl?: string; // 씬별 TTS 클립 (한국어)
   audioUrlEn?: string; // [레거시] 영어 더빙 클립 — 신규는 dub.en.audioUrl(읽기 폴백용 유지)
   ttsTimestamps?: TtsWord[]; // 자막 타이밍 (TTS 타임스탬프 기준)
+  captionStyle?: string; // 자막 스타일 프리셋 id (lib/captionPresets). 비면 기본.
   skipped?: boolean; // 건너뛴 씬 — 이미지/영상/음성 생성·합성·완료판정에서 제외
 }
 

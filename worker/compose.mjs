@@ -140,7 +140,7 @@ export async function composeProject(projectId, lang) {
       // 각 캡션을 미리보기와 같은 디자인의 전체프레임 투명 PNG로 렌더.
       const capPaths = [];
       for (let j = 0; j < caps.length; j++) {
-        const png = await renderCaptionPng(caps[j], sub, { W, H });
+        const png = await renderCaptionPng(caps[j], sub, { W, H, preset: s.captionStyle });
         const cp = join(dir, `cap${i}_${j}.png`);
         await writeFile(cp, png);
         capPaths.push(cp);
