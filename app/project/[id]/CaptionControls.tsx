@@ -22,36 +22,41 @@ export default function CaptionControls({
 }) {
   const toks = wordTokens(narration ?? "");
   const anyWord = toks.some((t) => !t.space);
-  const anyEm = toks.some((t) => !t.space && t.em);
 
   return (
     <div className="grid gap-1.5">
-      <div className="flex flex-wrap items-center gap-1">
-        <span className="mr-1 text-[10px] text-zinc-400">강조</span>
+      {/* 자막을 문장 그대로 보여주고, 단어를 눌러 강조 토글(강조=골드·굵게 인라인 표시). */}
+      <div className="rounded-md border border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-900/40 px-2 py-1.5 text-[13px] leading-relaxed">
+        <span className="mr-1 select-none text-[10px] text-zinc-400">강조 (단어 클릭)</span>{" "}
         {anyWord ? (
           toks.map((t, i) =>
-            t.space ? null : (
-              <button
+            t.space ? (
+              <span key={i}>{t.text}</span>
+            ) : (
+              <span
                 key={i}
-                type="button"
-                disabled={disabled}
-                onClick={() => onNarration(toggleWordEmphasis(narration, i))}
+                role="button"
+                tabIndex={disabled ? -1 : 0}
+                onClick={() => !disabled && onNarration(toggleWordEmphasis(narration, i))}
+                onKeyDown={(e) => {
+                  if (!disabled && (e.key === "Enter" || e.key === " ")) {
+                    e.preventDefault();
+                    onNarration(toggleWordEmphasis(narration, i));
+                  }
+                }}
                 className={
-                  "rounded px-1.5 py-0.5 text-[12px] border transition-colors disabled:opacity-40 " +
+                  "cursor-pointer rounded-sm " +
                   (t.em
-                    ? "border-amber-400 bg-amber-100 text-amber-900 dark:border-amber-500/60 dark:bg-amber-900/40 dark:text-amber-200 font-medium"
-                    : "border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900")
+                    ? "font-bold text-amber-600 dark:text-amber-400"
+                    : "text-zinc-700 dark:text-zinc-300 hover:bg-amber-100/70 dark:hover:bg-amber-900/30")
                 }
               >
                 {t.text}
-              </button>
+              </span>
             )
           )
         ) : (
-          <span className="text-[10px] text-zinc-400">나레이션을 입력하면 단어가 여기 나와요</span>
-        )}
-        {anyWord && !anyEm && (
-          <span className="ml-1 text-[10px] text-zinc-400">← 크게 강조할 단어를 누르세요</span>
+          <span className="text-[10px] text-zinc-400">나레이션을 입력하면 여기서 단어를 눌러 강조할 수 있어요</span>
         )}
       </div>
 
