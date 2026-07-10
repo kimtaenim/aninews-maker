@@ -19,6 +19,7 @@ import type { SourceMaterial } from "@/lib/source";
 import { resolveLang, otherLanguages } from "@/lib/languages";
 import Spinner from "@/components/Spinner";
 import ScenePreview from "./ScenePreview";
+import CaptionControls from "./CaptionControls";
 import MiniAudio from "./MiniAudio";
 import SceneRecorder from "./SceneRecorder";
 import AutoTextarea from "./AutoTextarea";
@@ -709,46 +710,23 @@ export default function Studio({
   const [newNarration, setNewNarration] = useState("");
 
   function patchScene(i: number, patch: Partial<EditScene>) {
-    setScenes((prev) => prev.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
-    // 자막(narration)을 바꾸면 그 씬의 음성대본 오버라이드를 비워 자막을 따라가게 한다
-    // (단방향: 자막→음성). 안 그러면 화면에 옛 오버라이드가 남아 자막 변경이 음성에
-    // 반영되지 않는다. 백엔드(/api/script/scenes)도 같은 규칙으로 ttsScript 를 비운다.
+    // 자막(narration)의 "말"이 바뀌면 그 씬의 음성대본 오버라이드를 비워 자막을 따라가게
+    // 한다(단방향: 자막→음성). 단, 강조 마커([[ ]])만 바뀐 경우는 발음이 그대로이므로
+    // 오버라이드를 유지한다(stripMarks 로 비교). 백엔드도 같은 규칙.
     if (patch.narration !== undefined) {
-      setTtsScripts((prev) => {
-        if (!(i in prev)) return prev;
-        const next = { ...prev };
-        delete next[i];
-        return next;
-      });
-    }
-    setDirty(true);
-  }
-  // 나레이션 편집기(2단계) 참조 — 강조 버튼이 현재 선택 영역을 [[..]] 로 감싼다.
-  const narrRefs = useRef<Record<number, HTMLTextAreaElement | null>>({});
-
-  // 선택한 부분을 강조 마크업 [[..]] 로 토글. 이미 감싸져 있으면 해제.
-  // 강조한 조각은 미리보기·최종 자막에서 크게·강조색으로 나온다(음성엔 영향 없음).
-  function wrapEmphasis(i: number) {
-    const el = narrRefs.current[i];
-    if (!el) return;
-    const s = el.selectionStart ?? 0;
-    const e = el.selectionEnd ?? 0;
-    if (s === e) return; // 선택 없음
-    const v = el.value;
-    const sel = v.slice(s, e);
-    const wrapped = sel.length > 4 && sel.startsWith("[[") && sel.endsWith("]]");
-    const inner = wrapped ? sel.slice(2, -2) : "[[" + sel + "]]";
-    const next = v.slice(0, s) + inner + v.slice(e);
-    patchScene(i, { narration: next });
-    const ns = wrapped ? s : s + 2;
-    const ne = wrapped ? e - 4 : e + 2;
-    requestAnimationFrame(() => {
-      const el2 = narrRefs.current[i];
-      if (el2) {
-        el2.focus();
-        el2.setSelectionRange(ns, ne);
+      const before = stripMarks(scenes[i]?.narration ?? "");
+      const after = stripMarks(patch.narration ?? "");
+      if (before !== after) {
+        setTtsScripts((prev) => {
+          if (!(i in prev)) return prev;
+          const next = { ...prev };
+          delete next[i];
+          return next;
+        });
       }
-    });
+    }
+    setScenes((prev) => prev.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
+    setDirty(true);
   }
 
   function addScene() {
@@ -891,6 +869,7 @@ export default function Studio({
       videoSource?: VideoSourceMode;
       videoUrl?: string | null;
       captionStyle?: string | null;
+      narration?: string;
     }
   ) {
     const data = await call("/api/scene/source", {
@@ -908,6 +887,8 @@ export default function Studio({
         i === sceneIndex
           ? {
               ...s,
+              // 미리보기에서 자막 강조를 편집하면 나레이션도 동기화(2단계 버퍼와 lockstep).
+              narration: saved.narration,
               imageSource: saved.imageSource ?? "generate",
               referenceImageUrl: saved.referenceImageUrl,
               paletteHint: saved.paletteHint,
@@ -916,6 +897,16 @@ export default function Studio({
           : s
       )
     );
+  }
+
+  // 미리보기에서 자막(강조) 저장 — 나레이션만 갱신. 음성대본은 안 건드림(강조는 발음 무관).
+  async function saveSceneNarration(i: number, next: string) {
+    setError(null);
+    try {
+      await patchSceneSource(i, { narration: next });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "자막 저장 실패");
+    }
   }
 
   // 씬별 자막 스타일 프리셋 저장 → project.scenes 갱신(미리보기·최종 합성에 반영).
@@ -2101,28 +2092,19 @@ export default function Studio({
                   <label className="grid gap-1">
                     <span className="text-[11px] text-zinc-500">나레이션</span>
                     <textarea
-                      ref={(el) => {
-                        narrRefs.current[i] = el;
-                      }}
                       value={sc.narration}
                       onChange={(e) => patchScene(i, { narration: e.target.value })}
                       rows={2}
                       className={fieldCls + " resize-y"}
                     />
                   </label>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onMouseDown={(ev) => ev.preventDefault()}
-                      onClick={() => wrapEmphasis(i)}
-                      className="text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-900"
-                    >
-                      ✦ 강조
-                    </button>
-                    <span className="text-[10px] text-zinc-400">
-                      크게 강조할 부분을 선택하고 누르세요 — 미리보기·최종 자막에 반영(음성엔 영향 없음)
-                    </span>
-                  </div>
+                  {/* 자막 강조(단어 클릭)·스타일 — 미리보기 단계와 동일 컨트롤 */}
+                  <CaptionControls
+                    narration={sc.narration}
+                    captionStyle={project.scenes[i]?.captionStyle}
+                    onNarration={(n) => patchScene(i, { narration: n })}
+                    onStyle={(id) => setCaptionStyle(i, id)}
+                  />
                   <p className="text-[10px] text-zinc-400">
                     길이 ~{estimateDuration(stripMarks(sc.narration))}초 (글자수 기준 자동). 이미지
                     프롬프트·모션은 3~5단계에서 생성합니다.
@@ -3459,6 +3441,7 @@ export default function Studio({
                   sub={sub}
                   captionStyle={sc.captionStyle}
                   onCaptionStyle={(id) => setCaptionStyle(i, id)}
+                  onNarration={(n) => saveSceneNarration(i, n)}
                 />
               ) : null
             )}

@@ -4,7 +4,8 @@ import { useMemo, useRef, useState } from "react";
 import { resolveSubtitleStyle } from "@/lib/subtitle";
 import { segmentCaptions } from "@/lib/captions";
 import { splitRuns, stripMarks } from "@/lib/emphasis";
-import { resolveCaptionRecipe, CAPTION_STYLES } from "@/lib/captionPresets";
+import { resolveCaptionRecipe } from "@/lib/captionPresets";
+import CaptionControls from "./CaptionControls";
 import type { SubtitleSettings } from "@/lib/types";
 
 // 씬 미리보기 — 영상 + 음성 동기 재생 + 자막(캡션) 오버레이.
@@ -19,6 +20,7 @@ export default function ScenePreview({
   sub,
   captionStyle,
   onCaptionStyle,
+  onNarration,
 }: {
   index: number;
   videoUrl?: string;
@@ -28,6 +30,7 @@ export default function ScenePreview({
   sub: SubtitleSettings;
   captionStyle?: string;
   onCaptionStyle?: (id: string) => void;
+  onNarration?: (next: string) => void;
 }) {
   const st = resolveSubtitleStyle(sub);
   const recipe = resolveCaptionRecipe(sub, captionStyle);
@@ -196,28 +199,14 @@ export default function ScenePreview({
         </button>
       </div>
 
-      {/* 자막 스타일 프리셋 — 이 씬 캡션의 룩(위 미리보기·최종 합성에 반영). */}
-      {onCaptionStyle && (
-        <div className="flex flex-wrap gap-1">
-          {CAPTION_STYLES.map(([id, label]) => {
-            const active = (captionStyle ?? "") === id;
-            return (
-              <button
-                key={id || "default"}
-                type="button"
-                onClick={() => onCaptionStyle(id)}
-                className={
-                  "text-[10px] rounded-md border px-1.5 py-0.5 transition-colors " +
-                  (active
-                    ? "border-accent bg-accent/10 text-accent font-medium"
-                    : "border-zinc-300 dark:border-zinc-700 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900")
-                }
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
+      {/* 자막 편집 — 단어 클릭 강조 + 스타일 프리셋(위 미리보기·최종 합성에 즉시 반영). */}
+      {onCaptionStyle && onNarration && (
+        <CaptionControls
+          narration={subtitle}
+          captionStyle={captionStyle}
+          onNarration={onNarration}
+          onStyle={onCaptionStyle}
+        />
       )}
       {!audioUrl && (
         <span className="text-[10px] text-zinc-400">음성 없음(6단계에서 생성)</span>
