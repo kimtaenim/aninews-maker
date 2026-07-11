@@ -3,8 +3,12 @@
 // 나눠 순차 표시한다(captionsFor). 합성(compose.mjs)과 동일 코드를 쓴다.
 import { createCanvas, GlobalFonts } from "@napi-rs/canvas";
 import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { splitRuns, stripMarks } from "./emphasis.mjs";
 import { resolveCaptionRecipe } from "./caption-presets.mjs";
+
+// 리포에 번들한 손글씨 폰트(나눔펜, OFL). apt·경로 불확실성 없이 확실히 로드된다.
+const BUNDLED_HAND = fileURLToPath(new URL("./fonts/NanumPenScript-Regular.ttf", import.meta.url));
 
 // 산세리프/세리프 각각 따로 등록해서, 자막 설정(font)에 맞게 쓴다.
 const SANS_PATHS = [
@@ -46,10 +50,10 @@ function registerFirst(paths, family) {
 
 // 손글씨(펜) — 나눔 펜, 없으면 붓. 자막 스타일 프리셋 "손글씨"용.
 const HAND_PATHS = [
+  BUNDLED_HAND, // 리포 번들(최우선) — 항상 존재
   "/usr/share/fonts/truetype/nanum/NanumPen.ttf",
   "/usr/share/fonts/truetype/nanum/NanumBrush.ttf",
   "/usr/share/fonts/opentype/nanum/NanumPen.ttf",
-  "C:/Windows/Fonts/HYgsrb.ttf",
 ];
 
 const sansSrc = registerFirst(SANS_PATHS, "SubSans");
