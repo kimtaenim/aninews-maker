@@ -35,12 +35,12 @@ export function resolveCaptionRecipe(sub, presetId) {
         ...base,
         font: "serif",
         weight: 500,
-        box: "none",
-        boxFill: "transparent",
+        box: "solid",
+        boxFill: "rgba(0,0,0,0.5)",
         textColor: "#ffffff",
         emColor: "#ffd24a",
-        radiusRel: 0,
-        outline: true,
+        radiusRel: 0.14,
+        outline: false,
       };
     case "bubble":
       return {

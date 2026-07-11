@@ -59,18 +59,18 @@ export function resolveCaptionRecipe(sub: SubtitleSettings, presetId?: string): 
         radiusRel: 0.16,
         outline: false,
       };
-    // 감성명조 — 박스 없이 명조체 + 외곽선. 인용·감성 씬.
+    // 감성명조 — 명조체 + 반투명 어두운 박스(가독성). 인용·감성 씬.
     case "serif":
       return {
         ...base,
         font: "serif",
         weight: 500,
-        box: "none",
-        boxFill: "transparent",
+        box: "solid",
+        boxFill: "rgba(0,0,0,0.5)",
         textColor: "#ffffff",
         emColor: "#ffd24a",
-        radiusRel: 0,
-        outline: true,
+        radiusRel: 0.14,
+        outline: false,
       };
     // 말풍선 — 흰 알약형 박스 + 검은 글씨. 대사·코멘트.
     case "bubble":
