@@ -56,6 +56,13 @@
       }
     },
     {
+      "id": "realistic",
+      "label": "실사 (사진·영화)",
+      "imageBible": "Photorealistic cinematic photography of real people and real environments. Natural human faces and skin, realistic fabric and material textures, true-to-life lighting and soft shadows, shallow depth of field, subtle film grain, editorial/documentary photo look, high detail with sharp focus on the subject, consistent realistic character appearance across shots. 9:16 vertical composition. Keep on-image text minimal.",
+      "motionStyle": "Natural realistic motion, subtle handheld or smooth cinematic camera moves, gentle easing — like real footage.",
+      "postFx": {}
+    },
+    {
       "id": "custom",
       "label": "직접 입력",
       "imageBible": "Describe your own art style, characters and color palette here. (직접 입력 — 아래 프롬프트 칸에 원하는 스타일을 영어로 작성하세요.) 9:16 vertical composition.",
