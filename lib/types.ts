@@ -49,6 +49,7 @@ export type VideoSourceMode = "generate" | "upload";
 export interface Scene {
   index: number;
   narration: string; // 자막 + (기본)보이스오버 소스 (한국어). 자막 단계는 항상 이걸 쓴다.
+  speaker?: string; // [cliche] 대사 화자 ("A"|"B" 두 주인공). 캐릭터별 목소리 라우팅에 사용.
   ttsScript?: string; // 음성(TTS) 전용 오버라이드. 비면 narration 사용. 자막엔 영향 없음.
   narrationEn?: string; // [레거시] 영문 번역 — 신규는 dub.en.narration 사용(읽기 폴백용 유지)
   // 다국어 더빙 트랙. 언어코드(en/es/ja…) → { 번역문, 더빙 오디오 }. lib/languages.ts 참고.

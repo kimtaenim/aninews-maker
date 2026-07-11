@@ -79,3 +79,63 @@ export async function generateScript(
   }
   return { scenes, costUsd };
 }
+
+// ── 연애 클리셰 스크립트 (ani-cliché 모드) ───────────────────────────────────
+// 트로프(벽치기·심쿵…) → 두 주인공(A·B)의 미니 러브스토리 5~6씬(대사+화자). 뉴스 경로와
+// 완전히 분리된 함수라 뉴스 생성엔 영향 없음. 파서는 speaker 만 추가돼 공유(parseScenes).
+export async function generateClicheScript(args: {
+  projectId: string;
+  tropes: string[]; // 고른 클리셰(자유 입력 포함)
+  styleBible: string;
+  userPrompt?: string;
+}): Promise<{ scenes: Scene[]; costUsd: number }> {
+  const { projectId, tropes, styleBible, userPrompt } = args;
+  const client = getAnthropic();
+  const section = getPrompt("script_cliche");
+  const system = formatPrompt(section.system, { style_bible: styleBible });
+  const max_tokens = typeof section.max_tokens === "number" ? section.max_tokens : 4000;
+
+  const userMsg = [
+    userPrompt ? `추가 지시: ${userPrompt}\n` : "",
+    `연애 클리셰(트로프): ${tropes.filter(Boolean).join(", ") || "설렘 가득한 로맨스"}`,
+    "",
+    "위 클리셰들을 엮어 두 주인공(A·B)의 미니 러브스토리 5~6씬으로 만들어줘.",
+    '각 씬: narration(한국어, 그 인물이 말하는 짧고 오글거리는 클리셰 대사 한 줄 — 자막이자 대사),',
+    'speaker("A" 또는 "B"), image_prompt(영어, 글로시 웹툰 로맨스 비주얼), motion(영어, MV 카메라워크), duration_sec(3~6).',
+    '반드시 JSON 만: {"scenes":[{"narration":"...","speaker":"A","image_prompt":"...","motion":"...","duration_sec":4}]}',
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const r = await client.messages.create({
+    model: MODELS.sonnet,
+    max_tokens,
+    system,
+    messages: [{ role: "user", content: userMsg }],
+  });
+  const textBlocks = r.content.filter(
+    (b: { type: string }) => b.type === "text"
+  ) as Array<{ type: "text"; text: string }>;
+  const raw = textBlocks.map((b) => b.text).join("").trim();
+
+  const costUsd = anthropicCostUsd({
+    inputTokens: r.usage.input_tokens,
+    outputTokens: r.usage.output_tokens,
+    cacheReadTokens: r.usage.cache_read_input_tokens ?? undefined,
+    cacheWriteTokens: r.usage.cache_creation_input_tokens ?? undefined,
+    model: MODELS.sonnet,
+  });
+  await recordCost({
+    projectId,
+    vendor: "anthropic",
+    model: MODELS.sonnet,
+    costUsd,
+    meta: { kind: "script-cliche" },
+  });
+
+  const scenes = parseScenes(raw);
+  if (!scenes || scenes.length === 0) {
+    throw new Error("클리셰 씬 배열 파싱 실패 — Claude 응답에서 JSON 을 못 찾았어요");
+  }
+  return { scenes, costUsd };
+}

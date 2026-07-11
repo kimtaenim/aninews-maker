@@ -14,6 +14,7 @@ export const DURATION_MAX = 7;
 // 2단계는 나레이션만 생성한다 — image_prompt·motion 은 3·4·5단계에서 만든다(옵션).
 const RawScene = z.object({
   narration: z.string().min(1),
+  speaker: z.string().optional(), // [cliche] 대사 화자 A/B
   image_prompt: z.string().optional(),
   motion: z.string().optional(),
   duration_sec: z.number().optional(),
@@ -51,9 +52,11 @@ export function parseScenes(raw: string): Scene[] | null {
 
   return parsed.data.scenes.map((s, index) => {
     const narration = s.narration.trim();
+    const speaker = (s.speaker ?? "").trim();
     return {
       index,
       narration,
+      ...(speaker ? { speaker } : {}), // [cliche] 대사 화자
       // 2단계는 나레이션만 — 프롬프트·모션은 비워두고 3·4·5단계에서 생성.
       imagePrompt: (s.image_prompt ?? "").trim(),
       motion: (s.motion ?? "").trim(),
