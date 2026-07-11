@@ -10,6 +10,7 @@ import { toFile } from "openai";
 import { getOpenAI, IMAGE_MODEL, IMAGE_SIZE, type ImageQuality } from "./openai";
 import { uploadAsset } from "./blob";
 import { openaiImageCostUsd, recordCost } from "./cost";
+import { getStyleProfile } from "./styleProfiles";
 
 const REF_FETCH_TIMEOUT_MS = 30_000;
 
@@ -143,6 +144,56 @@ export async function generateKeyframes(args: {
   });
 
   return { urls, costUsd };
+}
+
+// 실사 변환 — 이미 만든 그림(일러스트)을 그대로 레퍼런스로 넣어 "구도·인물·배치는 유지,
+// 화풍만 실사(사진·영화)로" img2img 재렌더한다. 씬/키프레임 어느 이미지든 이 함수로 변환.
+export async function convertToRealistic(args: {
+  projectId: string;
+  imageUrl: string; // 변환할 원본 이미지(씬 또는 키프레임)
+  narration?: string; // 주제 이해용 컨텍스트(글자로 그리지 않음)
+  label: string; // Blob 경로용 라벨(예: "keyframe", "scene-3")
+  quality?: ImageQuality;
+  subtitlePosition?: string; // 비워둘 지점(자막 위치)
+}): Promise<{ url: string; costUsd: number }> {
+  const { projectId, imageUrl, narration, label, quality = "medium", subtitlePosition } = args;
+  const client = getOpenAI();
+  const realisticBible = getStyleProfile("realistic").imageBible;
+  const refFile = await fetchRefFile(imageUrl, "원본");
+
+  const prompt =
+    `${realisticBible}\n\n` +
+    "Re-render the SAME scene as the provided reference image in a PHOTOREALISTIC style. Keep the EXACT " +
+    "same composition, subject placement, poses, camera framing, and background layout — change ONLY the " +
+    "art style to realistic cinematic photography (real human faces and skin, real materials, natural " +
+    `lighting). Do not add or remove elements.\n\n${narrationContext(narration)}${NO_TEXT}\n\n${edgeSafe(subtitlePosition)}`;
+
+  const result = await client.images.edit({
+    model: IMAGE_MODEL,
+    image: refFile,
+    prompt,
+    size: IMAGE_SIZE,
+    quality,
+    n: 1,
+  });
+
+  const b64 = result.data?.[0]?.b64_json;
+  if (!b64) throw new Error("실사 변환 실패 — 응답에 이미지가 없어요");
+  const { url } = await uploadAsset(
+    `project/${projectId}/${label}-realistic-${Date.now()}.png`,
+    Buffer.from(b64, "base64"),
+    "image/png"
+  );
+
+  const costUsd = openaiImageCostUsd(IMAGE_MODEL, quality, 1);
+  await recordCost({
+    projectId,
+    vendor: "openai",
+    model: IMAGE_MODEL,
+    costUsd,
+    meta: { kind: "realistic-convert", label, quality },
+  });
+  return { url, costUsd };
 }
 
 // 4단계 — 씬별 이미지. 키프레임을 레퍼런스(images.edit)로 넣어 스타일·인물·

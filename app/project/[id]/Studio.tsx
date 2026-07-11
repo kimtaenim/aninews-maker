@@ -975,6 +975,30 @@ export default function Studio({
     }
   }
 
+  // 이미 만든 그림을 실사(사진·영화)로 변환 — 구도 유지, 화풍만. sceneIndex 0 = 키프레임.
+  async function convertRealistic(sceneIndex: number) {
+    setError(null);
+    setBusy(`convert-${sceneIndex}`);
+    try {
+      const data = await call("/api/image/convert", { projectId: project.id, sceneIndex });
+      const url = data.url as string;
+      setProject((p) =>
+        sceneIndex === 0
+          ? { ...p, keyframeUrl: url }
+          : {
+              ...p,
+              scenes: p.scenes.map((s, i) =>
+                i === sceneIndex ? { ...s, imageUrl: url, status: "generated" } : s
+              ),
+            }
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "실사 변환 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function setImageMode(i: number, mode: ImageSourceMode) {
     setError(null);
     try {
@@ -2636,6 +2660,15 @@ export default function Studio({
               alt="선택된 씬0 키프레임"
               className="w-48 aspect-[9/16] object-cover rounded-xl border-2 border-accent"
             />
+            <button
+              type="button"
+              onClick={() => convertRealistic(0)}
+              disabled={busy !== null}
+              title="이 키프레임을 구도 그대로 실사(사진)로 변환 — 이후 씬도 이걸 참조합니다"
+              className="mt-1.5 text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
+            >
+              {busy === "convert-0" ? <Busy>실사 변환…</Busy> : "✦ 실사로 변환"}
+            </button>
           </div>
         )}
 
@@ -2825,6 +2858,17 @@ export default function Studio({
                               className="shrink-0 text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
                             >
                               {sc.imageUrl ? "리롤" : "생성"}
+                            </button>
+                          )}
+                          {sc.imageUrl && !skipped && (
+                            <button
+                              type="button"
+                              onClick={() => convertRealistic(i)}
+                              disabled={busy !== null || uploading !== null}
+                              title="이 그림을 구도 그대로 실사(사진)로 변환"
+                              className="shrink-0 text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
+                            >
+                              {busy === `convert-${i}` ? <Busy>변환…</Busy> : "실사 변환"}
                             </button>
                           )}
                         </div>
