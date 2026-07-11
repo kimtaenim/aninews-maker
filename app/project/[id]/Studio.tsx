@@ -377,6 +377,35 @@ export default function Studio({
     }
   }
 
+  // 목소리 미리듣기 — 선택한 목소리로 짧은 샘플을 합성해 재생.
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+  async function previewVoice() {
+    setError(null);
+    setPreviewBusy(true);
+    try {
+      const r = await fetch("/api/tts/preview", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ provider: ttsProvider, voiceId }),
+      });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        throw new Error(d.error || `HTTP ${r.status}`);
+      }
+      const url = URL.createObjectURL(await r.blob());
+      previewAudioRef.current?.pause();
+      const audio = new Audio(url);
+      previewAudioRef.current = audio;
+      audio.onended = () => URL.revokeObjectURL(url);
+      await audio.play();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "미리듣기 실패");
+    } finally {
+      setPreviewBusy(false);
+    }
+  }
+
   // 워터마크 (최종 출력에 새김) — 텍스트 + 위치(4모서리)
   const [wmText, setWmText] = useState(initial.watermark?.text ?? "");
   const [wmPos, setWmPos] = useState<"tl" | "tr" | "bl" | "br">(
@@ -3394,6 +3423,15 @@ export default function Studio({
                 </option>
               ))}
           </select>
+          <button
+            type="button"
+            onClick={previewVoice}
+            disabled={previewBusy || busy !== null}
+            title="선택한 목소리로 짧은 샘플을 들려줍니다"
+            className="shrink-0 rounded-lg border border-zinc-300 dark:border-zinc-700 px-2.5 py-1.5 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
+          >
+            {previewBusy ? <Busy>듣는 중…</Busy> : "▶ 미리듣기"}
+          </button>
           <span className="text-[10px] text-zinc-400">★=내레이션 추천 · 바꾸면 음성 재생성</span>
         </div>
 
