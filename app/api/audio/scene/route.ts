@@ -89,7 +89,10 @@ export async function POST(req: NextRequest) {
       lang: voiceLang,
       provider: project.ttsProvider,
       // 프로젝트가 고른 목소리 — primary 트랙만. 더빙(다국어)은 언어별 env voice 사용.
-      voiceId: isDub ? undefined : project.voiceId,
+      // [cliche] 화자별 목소리가 있으면 그 씬 화자(speaker)의 목소리로, 없으면 프로젝트 voiceId.
+      voiceId: isDub
+        ? undefined
+        : (scene?.speaker && project.castVoices?.[scene.speaker]) || project.voiceId,
       speed: project.voiceSpeed ?? 1.2, // 기본 1.2배(미설정 프로젝트도 동일하게).
     });
     const { url } = await uploadAsset(

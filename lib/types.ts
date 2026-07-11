@@ -140,6 +140,7 @@ export interface Project {
   ttsEnabled: boolean;
   ttsProvider?: "elevenlabs" | "typecast"; // 보이스오버 엔진(프로젝트별). 없으면 env TTS_PROVIDER.
   voiceId?: string; // 보이스오버 목소리(프로젝트당 하나). config/voices.json 의 voice id. 없으면 env 기본.
+  castVoices?: Record<string, string>; // [cliche] 화자(speaker "A"/"B"…)별 목소리. 없으면 voiceId 폴백.
   voiceSpeed?: number; // 보이스오버 속도 배율(1.0 기본 / 1.2 빠르게). 음성 생성 시 적용.
   videoModelId: string; // config/video-models.json (기본 Seedance)
   subtitle?: SubtitleSettings; // 자막 디자인(일괄). 없으면 DEFAULT_SUBTITLE.

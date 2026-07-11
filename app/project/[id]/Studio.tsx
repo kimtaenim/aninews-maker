@@ -363,6 +363,8 @@ export default function Studio({
 
   // 보이스오버 목소리(프로젝트당 하나) — config/voices.json 목록에서 엔진에 맞는 걸 고름.
   const [voiceId, setVoiceId] = useState<string>(initial.voiceId ?? "");
+  // [cliche] 화자별 목소리 (speaker → voiceId).
+  const [castVoices, setCastVoices] = useState<Record<string, string>>(initial.castVoices ?? {});
   const [voices, setVoices] = useState<
     { id: string; name: string; provider: string; note?: string; narration?: boolean }[]
   >([]);
@@ -378,7 +380,23 @@ export default function Studio({
       alive = false;
     };
   }, []);
-  async function saveVoice(id: string) {
+  async function saveVoice(id: string, speaker?: string) {
+    if (speaker) {
+      // [cliche] 화자별 목소리 저장.
+      const prev = castVoices;
+      const next = { ...castVoices };
+      if (id) next[speaker] = id;
+      else delete next[speaker];
+      setCastVoices(next);
+      setProject((pr) => ({ ...pr, castVoices: Object.keys(next).length ? next : undefined }));
+      try {
+        await call("/api/project/voice", { projectId: project.id, voiceId: id, speaker });
+      } catch (e) {
+        setCastVoices(prev);
+        setError(e instanceof Error ? e.message : "목소리 저장 실패");
+      }
+      return;
+    }
     if (id === voiceId) return;
     const prev = voiceId;
     setVoiceId(id);
@@ -394,14 +412,14 @@ export default function Studio({
   // 목소리 미리듣기 — 선택한 목소리로 짧은 샘플을 합성해 재생.
   const [previewBusy, setPreviewBusy] = useState(false);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
-  async function previewVoice() {
+  async function previewVoice(vId?: string) {
     setError(null);
     setPreviewBusy(true);
     try {
       const r = await fetch("/api/tts/preview", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ provider: ttsProvider, voiceId }),
+        body: JSON.stringify({ provider: ttsProvider, voiceId: vId ?? voiceId }),
       });
       if (!r.ok) {
         const d = await r.json().catch(() => ({}));
@@ -3447,7 +3465,7 @@ export default function Studio({
           </select>
           <button
             type="button"
-            onClick={previewVoice}
+            onClick={() => previewVoice()}
             disabled={previewBusy || busy !== null}
             title="선택한 목소리로 짧은 샘플을 들려줍니다"
             className="shrink-0 rounded-lg border border-zinc-300 dark:border-zinc-700 px-2.5 py-1.5 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
@@ -3456,6 +3474,53 @@ export default function Studio({
           </button>
           <span className="text-[10px] text-zinc-400">★=내레이션 추천 · 바꾸면 음성 재생성</span>
         </div>
+
+        {/* [cliche] 캐릭터별 목소리 — 씬 화자(A/B…)마다 다른 목소리. 비우면 위 프로젝트 목소리. */}
+        {project.mode === "cliche" &&
+          (() => {
+            const speakers = [
+              ...new Set(project.scenes.map((s) => s.speaker).filter(Boolean)),
+            ] as string[];
+            return speakers.length ? (
+              <div className="mt-2 grid gap-1.5 rounded-lg border border-pink-200 dark:border-pink-900/50 bg-pink-50/40 dark:bg-pink-950/20 p-2">
+                <span className="text-[11px] font-medium text-pink-700 dark:text-pink-300">
+                  캐릭터별 목소리 (화자마다 다르게)
+                </span>
+                {speakers.map((sp) => (
+                  <div key={sp} className="flex flex-wrap items-center gap-2">
+                    <span className="w-8 text-[11px] text-zinc-500">{sp}</span>
+                    <select
+                      value={castVoices[sp] ?? ""}
+                      onChange={(e) => saveVoice(e.target.value, sp)}
+                      disabled={busy !== null}
+                      className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1.5 text-xs outline-none focus:border-pink-500 disabled:opacity-50"
+                    >
+                      <option value="">기본 목소리 따름</option>
+                      {voices
+                        .filter((v) => v.provider === ttsProvider)
+                        .map((v) => (
+                          <option key={v.id} value={v.id}>
+                            {v.narration ? "★ " : ""}
+                            {v.name}
+                            {v.note ? ` · ${v.note}` : ""}
+                          </option>
+                        ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => previewVoice(castVoices[sp])}
+                      disabled={previewBusy || busy !== null}
+                      title="이 화자 목소리 미리듣기"
+                      className="shrink-0 rounded-lg border border-zinc-300 dark:border-zinc-700 px-2.5 py-1.5 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
+                    >
+                      ▶
+                    </button>
+                  </div>
+                ))}
+                <span className="text-[10px] text-zinc-400">비우면 위 프로젝트 목소리를 씁니다.</span>
+              </div>
+            ) : null;
+          })()}
 
         {/* 음성 속도 — 생성 시 적용. 바꾼 뒤엔 음성을 다시 생성해야 반영된다. */}
         <div className="mt-2 flex flex-wrap items-center gap-2">
