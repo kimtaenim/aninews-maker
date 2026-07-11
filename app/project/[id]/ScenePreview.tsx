@@ -35,7 +35,9 @@ export default function ScenePreview({
   const fontFamily =
     recipe.font === "serif"
       ? "var(--font-noto-serif-kr), 'Noto Serif KR', serif"
-      : "var(--font-noto-sans-kr), sans-serif";
+      : recipe.font === "hand"
+        ? "var(--font-nanum-pen), 'Nanum Pen Script', cursive"
+        : "var(--font-noto-sans-kr), sans-serif";
   const koCaps = useMemo(() => segmentCaptions(subtitle, sub.size), [subtitle, sub.size]);
   const enCaps = useMemo(
     () => segmentCaptions(subtitleEn || subtitle, sub.size),

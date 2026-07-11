@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono, Noto_Sans_KR, Noto_Serif_KR } from "next/font/google";
+import { Geist, Geist_Mono, Noto_Sans_KR, Noto_Serif_KR, Nanum_Pen_Script } from "next/font/google";
 import "./globals.css";
 import Header from "@/components/Header";
 
@@ -31,6 +31,15 @@ const notoSerifKr = Noto_Serif_KR({
   variable: "--font-noto-serif-kr",
 });
 
+// 자막 손글씨 옵션용(나눔 펜) — 미리보기가 워커의 NanumPen 과 같은 글꼴로 보이게.
+const nanumPen = Nanum_Pen_Script({
+  weight: "400",
+  subsets: ["latin"],
+  display: "swap",
+  preload: false,
+  variable: "--font-nanum-pen",
+});
+
 export const metadata: Metadata = {
   title: "AI인 뉴스영상",
   description: "RSS·URL·텍스트 → 스크립트 → 이미지 → 영상 → 합성 숏폼 생성기",
@@ -51,7 +60,7 @@ export default function RootLayout({
   return (
     <html
       lang="ko"
-      className={`${geistSans.variable} ${geistMono.variable} ${notoSansKr.variable} ${notoSerifKr.variable} antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${notoSansKr.variable} ${notoSerifKr.variable} ${nanumPen.variable} antialiased`}
     >
       <body className="min-h-dvh flex flex-col bg-zinc-50 text-zinc-900 dark:bg-black dark:text-zinc-100">
         <Header />

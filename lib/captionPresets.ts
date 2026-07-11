@@ -10,7 +10,7 @@
 import type { SubtitleSettings } from "./types";
 
 export interface CaptionRecipe {
-  font: "sans" | "serif";
+  font: "sans" | "serif" | "hand";
   weight: 500 | 700;
   box: "solid" | "none";
   boxFill: string; // 박스 배경 (canvas fillStyle · CSS background 공용 색 문자열)
@@ -26,6 +26,7 @@ export const CAPTION_STYLES = [
   ["accent", "강조박스"],
   ["serif", "감성명조"],
   ["bubble", "말풍선"],
+  ["hand", "손글씨"],
 ] as const;
 
 // 기본(프리셋 없음): 프로젝트 자막 설정 그대로 — 기존 렌더와 픽셀 동일.
@@ -83,6 +84,19 @@ export function resolveCaptionRecipe(sub: SubtitleSettings, presetId?: string): 
         textColor: "#18181b",
         emColor: "#c1121f",
         radiusRel: 1.2,
+        outline: false,
+      };
+    // 손글씨 — 나눔 펜 손글씨 + 반투명 어두운 박스(펜글씨가 얇아 가독성 보강). 감성·코멘트.
+    case "hand":
+      return {
+        ...base,
+        font: "hand",
+        weight: 500,
+        box: "solid",
+        boxFill: "rgba(0,0,0,0.5)",
+        textColor: "#ffffff",
+        emColor: "#ffd24a",
+        radiusRel: 0.16,
         outline: false,
       };
     default:

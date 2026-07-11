@@ -44,9 +44,18 @@ function registerFirst(paths, family) {
   return null;
 }
 
+// 손글씨(펜) — 나눔 펜, 없으면 붓. 자막 스타일 프리셋 "손글씨"용.
+const HAND_PATHS = [
+  "/usr/share/fonts/truetype/nanum/NanumPen.ttf",
+  "/usr/share/fonts/truetype/nanum/NanumBrush.ttf",
+  "/usr/share/fonts/opentype/nanum/NanumPen.ttf",
+  "C:/Windows/Fonts/HYgsrb.ttf",
+];
+
 const sansSrc = registerFirst(SANS_PATHS, "SubSans");
 const serifSrc = registerFirst(SERIF_PATHS, "SubSerif");
 const latinSrc = registerFirst(LATIN_PATHS, "SubLatin");
+const handSrc = registerFirst(HAND_PATHS, "SubHand");
 
 // 경로로 못 찾은 패밀리는 시스템 폰트(fontconfig)에서 찾는다.
 let _sysLoaded = false;
@@ -69,9 +78,14 @@ const SERIF_FAMILY =
   serifSrc ? "SubSerif" : sysFamily(/Noto Serif CJK|Noto Serif KR|Batang|Nanum Myeongjo/i) || SANS_FAMILY;
 const LATIN_FAMILY =
   latinSrc ? "SubLatin" : sysFamily(/Noto Sans(?! CJK)|DejaVu Sans|Liberation Sans|Arial/i) || null;
+// 손글씨 — 못 찾으면 세리프(그나마 표정 있음)로 폴백.
+const HAND_FAMILY =
+  handSrc ? "SubHand" : sysFamily(/Nanum ?Pen|Nanum ?Brush|Gaegu|Handwriting|Gungsuh/i) || SERIF_FAMILY;
 
 // 자막 설정의 폰트(serif/sans)에 맞는 패밀리.
 const familyFor = (sub) => (sub?.font === "serif" ? SERIF_FAMILY : SANS_FAMILY);
+// 프리셋 recipe.font(sans/serif/hand) → 패밀리.
+const familyOf = (f) => (f === "serif" ? SERIF_FAMILY : f === "hand" ? HAND_FAMILY : SANS_FAMILY);
 
 // 폰트 문자열 끝에 붙이는 라틴 폴백 — CJK 폰트가 못 그리는 베트남어 부호를 받친다.
 // (canvas 는 콤마 구분 패밀리에서 글자별로 폴백한다.)
@@ -79,7 +93,7 @@ const LATIN_FALLBACK = LATIN_FAMILY ? `, "${LATIN_FAMILY}"` : "";
 
 try {
   console.log(
-    `[worker] 자막 폰트 sans=${SANS_FAMILY}(${sansSrc ?? "sys"}) serif=${SERIF_FAMILY}(${serifSrc ?? "sys/fallback"}) latin=${LATIN_FAMILY ?? "없음(베트남어 자막 깨질 수 있음)"}(${latinSrc ?? "sys"})`
+    `[worker] 자막 폰트 sans=${SANS_FAMILY}(${sansSrc ?? "sys"}) serif=${SERIF_FAMILY}(${serifSrc ?? "sys/fallback"}) hand=${HAND_FAMILY}(${handSrc ?? "sys/fallback"}) latin=${LATIN_FAMILY ?? "없음(베트남어 자막 깨질 수 있음)"}(${latinSrc ?? "sys"})`
   );
 } catch {}
 
@@ -282,7 +296,7 @@ export async function renderCaptionPng(text, sub, opts = {}) {
   // 씬별 자막 스타일 프리셋 — 폰트·박스·색·모서리·외곽선을 결정(위치·크기·정렬은 sub).
   const recipe = resolveCaptionRecipe(sub, opts.preset);
   const size = opts.sizePx ?? fontPx(sub.size);
-  const fam = recipe.font === "serif" ? SERIF_FAMILY : SANS_FAMILY;
+  const fam = familyOf(recipe.font);
   const baseFont = `${recipe.weight} ${size}px "${fam}"${LATIN_FALLBACK}`;
   const emSize = Math.round(size * 1.3); // 강조어는 1.3배 크게
   const emFont = `700 ${emSize}px "${fam}"${LATIN_FALLBACK}`;

@@ -54,6 +54,18 @@ export function resolveCaptionRecipe(sub, presetId) {
         radiusRel: 1.2,
         outline: false,
       };
+    case "hand":
+      return {
+        ...base,
+        font: "hand",
+        weight: 500,
+        box: "solid",
+        boxFill: "rgba(0,0,0,0.5)",
+        textColor: "#ffffff",
+        emColor: "#ffd24a",
+        radiusRel: 0.16,
+        outline: false,
+      };
     default:
       return base;
   }
