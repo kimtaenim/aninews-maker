@@ -56,6 +56,13 @@
       }
     },
     {
+      "id": "webtoon-romance",
+      "label": "웹툰 미남미녀 (연애)",
+      "imageBible": "Glossy Korean webtoon / web-novel romance illustration. Idealized flower-boy and flower-girl characters (꽃미남·꽃미녀): large expressive glossy eyes, flawless smooth skin, sharp elegant features, stylish hair with individual flowing strands catching the light. Romantic soft rim lighting, cinematic bloom and gentle lens flare, vivid saturated palette, clean detailed line art, dramatic shallow depth of field. Consistent character design across shots. 9:16 vertical composition. This is CLEARLY a stylized webtoon illustration — NOT a photorealistic likeness of any real person.",
+      "motionStyle": "Stylish music-video motion — slow dramatic push-in on faces, hair and clothes fluttering in the wind, soft slow-motion, romantic camera drift and rack focus. Always cinematic and glossy.",
+      "postFx": {}
+    },
+    {
       "id": "realistic",
       "label": "실사 (사진·영화)",
       "imageBible": "Photorealistic cinematic photography of real people and real environments. Natural human faces and skin, realistic fabric and material textures, true-to-life lighting and soft shadows, shallow depth of field, subtle film grain, editorial/documentary photo look, high detail with sharp focus on the subject, consistent realistic character appearance across shots. 9:16 vertical composition. Keep on-image text minimal.",
