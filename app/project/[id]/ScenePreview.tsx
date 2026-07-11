@@ -20,7 +20,6 @@ export default function ScenePreview({
   sub,
   captionStyle,
   onCaptionStyle,
-  onNarration,
 }: {
   index: number;
   videoUrl?: string;
@@ -30,7 +29,6 @@ export default function ScenePreview({
   sub: SubtitleSettings;
   captionStyle?: string;
   onCaptionStyle?: (id: string) => void;
-  onNarration?: (next: string) => void;
 }) {
   const st = resolveSubtitleStyle(sub);
   const recipe = resolveCaptionRecipe(sub, captionStyle);
@@ -199,14 +197,9 @@ export default function ScenePreview({
         </button>
       </div>
 
-      {/* 자막 편집 — 단어 클릭 강조 + 스타일 프리셋(위 미리보기·최종 합성에 즉시 반영). */}
-      {onCaptionStyle && onNarration && (
-        <CaptionControls
-          narration={subtitle}
-          captionStyle={captionStyle}
-          onNarration={onNarration}
-          onStyle={onCaptionStyle}
-        />
+      {/* 자막 스타일 프리셋(위 미리보기·최종 합성에 즉시 반영). 강조는 2단계에서 [[ ]]로. */}
+      {onCaptionStyle && (
+        <CaptionControls captionStyle={captionStyle} onStyle={onCaptionStyle} />
       )}
       {!audioUrl && (
         <span className="text-[10px] text-zinc-400">음성 없음(6단계에서 생성)</span>

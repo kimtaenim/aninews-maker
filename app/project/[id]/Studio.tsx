@@ -734,6 +734,34 @@ export default function Studio({
     setDirty(true);
   }
 
+  // 나레이션 편집기(2단계) 참조 — 강조 버튼이 현재 선택 영역을 [[ ]] 로 감싼다.
+  const narrRefs = useRef<Record<number, HTMLTextAreaElement | null>>({});
+
+  // 선택한 부분을 강조 마크업 [[ ]] 로 토글(이미 감싸져 있으면 해제). 드래그로 원하는
+  // 만큼만(조사 빼고 등) 정확히 선택해 누르면 그 조각만 크게·강조색으로 나온다(음성 무관).
+  function wrapEmphasis(i: number) {
+    const el = narrRefs.current[i];
+    if (!el) return;
+    const s = el.selectionStart ?? 0;
+    const e = el.selectionEnd ?? 0;
+    if (s === e) return; // 선택 없음
+    const v = el.value;
+    const sel = v.slice(s, e);
+    const wrapped = sel.length > 4 && sel.startsWith("[[") && sel.endsWith("]]");
+    const inner = wrapped ? sel.slice(2, -2) : "[[" + sel + "]]";
+    const next = v.slice(0, s) + inner + v.slice(e);
+    patchScene(i, { narration: next });
+    const ns = wrapped ? s : s + 2;
+    const ne = wrapped ? e - 4 : e + 2;
+    requestAnimationFrame(() => {
+      const el2 = narrRefs.current[i];
+      if (el2) {
+        el2.focus();
+        el2.setSelectionRange(ns, ne);
+      }
+    });
+  }
+
   function addScene() {
     setScenes((prev) => [
       ...prev,
@@ -902,16 +930,6 @@ export default function Studio({
           : s
       )
     );
-  }
-
-  // 미리보기에서 자막(강조) 저장 — 나레이션만 갱신. 음성대본은 안 건드림(강조는 발음 무관).
-  async function saveSceneNarration(i: number, next: string) {
-    setError(null);
-    try {
-      await patchSceneSource(i, { narration: next });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "자막 저장 실패");
-    }
   }
 
   // 씬별 자막 스타일 프리셋 저장 → project.scenes 갱신(미리보기·최종 합성에 반영).
@@ -2097,25 +2115,36 @@ export default function Studio({
                   <label className="grid gap-1">
                     <span className="text-[11px] text-zinc-500">나레이션</span>
                     <textarea
+                      ref={(el) => {
+                        narrRefs.current[i] = el;
+                      }}
                       value={sc.narration}
                       onChange={(e) => patchScene(i, { narration: e.target.value })}
                       rows={2}
                       className={fieldCls + " resize-y"}
                     />
                   </label>
-                  {/* 자막 강조(단어 클릭)·스타일 — 미리보기 단계와 동일 컨트롤 */}
-                  <CaptionControls
-                    narration={sc.narration}
-                    captionStyle={project.scenes[i]?.captionStyle}
-                    onNarration={(n) => patchScene(i, { narration: n })}
-                    onStyle={(id) => setCaptionStyle(i, id)}
-                  />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onMouseDown={(ev) => ev.preventDefault()}
+                      onClick={() => wrapEmphasis(i)}
+                      className="shrink-0 rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 text-[11px] hover:bg-zinc-100 dark:hover:bg-zinc-900"
+                    >
+                      ✦ 강조
+                    </button>
+                    <CaptionControls
+                      captionStyle={project.scenes[i]?.captionStyle}
+                      onStyle={(id) => setCaptionStyle(i, id)}
+                    />
+                  </div>
                   <p className="text-[10px] text-zinc-400">
                     길이 ~{estimateDuration(stripMarks(sc.narration))}초 (글자수 기준 자동). 이미지
                     프롬프트·모션은 3~5단계에서 생성합니다.
                     <br />
-                    <span className="text-zinc-500">✦ 강조</span>는 위 단어를 누르거나, 나레이션에
-                    직접 <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">[[크게 강조할 말]]</code>
+                    <span className="text-zinc-500">✦ 강조</span> — 강조할 부분을 드래그로 선택하고 누르세요
+                    (조사는 빼고 원하는 만큼만 선택). 나레이션에 직접
+                    <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">[[크게 강조할 말]]</code>
                     처럼 감싸도 됩니다(음성엔 영향 없음).
                     <br />
                     <span className="text-zinc-500">⏎ 자막을 끊고 싶은 곳에서 줄바꿈(Enter)</span>{" "}
@@ -3454,7 +3483,6 @@ export default function Studio({
                   sub={sub}
                   captionStyle={sc.captionStyle}
                   onCaptionStyle={(id) => setCaptionStyle(i, id)}
-                  onNarration={(n) => saveSceneNarration(i, n)}
                 />
               ) : null
             )}
