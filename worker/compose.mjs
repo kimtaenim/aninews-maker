@@ -16,13 +16,13 @@ import { renderCaptionPng, renderWatermarkPng, renderCreditPng } from "./subtitl
 
 const W = 1080;
 const H = 1920;
-// 24fps — 30fps 대비 프레임 20%↓ 로 인코딩 시간 단축(느린 워커에서 씬 타임아웃 완화).
-// 자막 타이밍·미리보기는 FPS와 무관(글자수 비례)이라 영향 없음.
-const FPS = 24;
+// 30fps — v6 에서 검증된 값. 24fps 로 바꿨더니 -loop 자막 오버레이 체인이 데드락(매달림)나서
+// 복구. (인코딩 속도는 워커 인스턴스 상향으로 해결 — FPS 로 억지로 줄이지 않는다.)
+const FPS = 30;
 
-// 기본 타임아웃 600초 — 느린 워커에서 긴 씬(프레임 많음) 인코딩이 끝까지 돌 시간 확보.
-// (이전 150초는 살아서 인코딩 중인데도 긴 씬을 못 끝내 죽었다. hang 방지용 상한만 유지.)
-function run(cmd, args, timeoutMs = 600000) {
+// 기본 타임아웃 150초 — 정상 인코딩은 그 안에 끝난다(v6 검증). 그 이상은 데드락/매달림으로
+// 보고 죽여서 워커를 푼다(600초로 늘렸더니 매달린 잡이 10분씩 워커를 붙잡아 재시작 유발).
+function run(cmd, args, timeoutMs = 150000) {
   return new Promise((res, rej) => {
     const p = spawn(cmd, args);
     let err = "";
