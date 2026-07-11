@@ -576,6 +576,10 @@ export default function Studio({
   // 자막 디자인 패널(폰트·굵기·크기·위치·정렬·색). 미리보기와 7단계 양쪽에서 재사용.
   function renderSubtitlePanel() {
     return (
+      <div className="grid gap-2">
+        <p className="text-[10px] text-zinc-500">
+          📝 <span className="font-medium">자막</span> = 화면에 나오는 <span className="font-medium">글자</span> 디자인 (목소리·더빙과 별개)
+        </p>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 rounded-xl bg-zinc-50 dark:bg-zinc-900 p-3">
         {(
           [
@@ -604,6 +608,7 @@ export default function Studio({
             </select>
           </label>
         ))}
+      </div>
       </div>
     );
   }
@@ -3228,6 +3233,10 @@ export default function Studio({
             전체 생성
           </button>
         </div>
+        <p className="mt-1 text-[11px] text-zinc-400">
+          🔊 <span className="font-medium">목소리(보이스오버)</span> — 영상에 깔리는 소리입니다.
+          화면 <span className="font-medium">글자(자막)</span>와 별개예요.
+        </p>
 
         {/* TTS 엔진 선택(프로젝트별) — 한국어판·다국어 더빙 모두 이 엔진으로 나간다. */}
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -3456,10 +3465,10 @@ export default function Studio({
       {/* 다른 언어판 만들기 — 어느 언어판에서든 현재 언어를 뺀 다른 언어로 새 프로젝트 생성(대칭). */}
       {hasScenes && (
         <section className="mt-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 p-5">
-          <h2 className="text-sm font-semibold">🌐 다른 언어판 만들기</h2>
+          <h2 className="text-sm font-semibold">🌐 다른 언어판(더빙) 만들기</h2>
           <p className="mt-1 text-[11px] text-zinc-400">
-            고른 언어로 나레이션을 번역한 <span className="font-medium">새 프로젝트</span>를
-            만듭니다. 이미지 프롬프트·모션·스타일은 가져오고, 영상·음성은 새 프로젝트에서
+            🔊📝 <span className="font-medium">더빙판</span> = 고른 언어로 <span className="font-medium">목소리·자막을 모두</span> 바꾼
+            <span className="font-medium"> 새 프로젝트</span>. 이미지 프롬프트·모션·스타일은 가져오고, 영상·음성은 새 프로젝트에서
             따로 생성해요(라이브러리에 별도 저장). 현재 <span className="font-medium">{composeLangLabel}</span>에서 만들 수 있는 언어:
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
