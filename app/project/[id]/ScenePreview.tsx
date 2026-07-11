@@ -152,7 +152,7 @@ export default function ScenePreview({
                     : `${st.fontCqw * recipe.radiusRel}cqw`
                   : undefined,
               textShadow: recipe.outline
-                ? "0 0.15cqw 0.4cqw rgba(0,0,0,0.9), 0 0 0.25cqw rgba(0,0,0,0.95)"
+                ? "0 0 0.35cqw rgba(0,0,0,0.95), 0 0 0.7cqw rgba(0,0,0,0.85), 0 0.15cqw 0.3cqw rgba(0,0,0,0.9)"
                 : undefined,
             }}
             className="inline-block"

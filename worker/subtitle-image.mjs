@@ -347,14 +347,20 @@ export async function renderCaptionPng(text, sub, opts = {}) {
     }
   }
 
-  // 외곽선(박스 없을 때 가독성) — 글자마다 fill 전에 어두운 stroke 를 깐다.
+  // 외곽선(박스 없을 때 가독성) — 어두운 헤일로(그림자) + 굵은 stroke 로 어떤 배경에서도
+  // 뜨게 한다(감성명조 등 boxless 프리셋). 그림자는 stroke 에만 걸고 fill 은 크게 선명하게.
   ctx.lineJoin = "round";
   const draw = (t, x, y, font, color, sz) => {
     ctx.font = font;
     if (recipe.outline) {
-      ctx.lineWidth = Math.max(2, Math.round(sz * 0.14));
-      ctx.strokeStyle = "rgba(0,0,0,0.9)";
-      ctx.strokeText(t, x, y);
+      ctx.save();
+      ctx.shadowColor = "rgba(0,0,0,0.85)";
+      ctx.shadowBlur = Math.round(sz * 0.28);
+      ctx.lineWidth = Math.max(3, Math.round(sz * 0.18));
+      ctx.strokeStyle = "rgba(0,0,0,0.95)";
+      ctx.strokeText(t, x, y); // 헤일로 + 두꺼운 외곽선
+      ctx.strokeText(t, x, y); // 한 번 더 겹쳐 진하게
+      ctx.restore();
     }
     ctx.fillStyle = color;
     ctx.fillText(t, x, y);
