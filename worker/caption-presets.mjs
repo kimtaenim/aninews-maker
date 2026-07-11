@@ -66,6 +66,66 @@ export function resolveCaptionRecipe(sub, presetId) {
         radiusRel: 0.16,
         outline: false,
       };
+    case "impact":
+      return {
+        ...base,
+        font: "impact",
+        weight: 700,
+        box: "none",
+        boxFill: "transparent",
+        textColor: "#ffffff",
+        emColor: "#ffd24a",
+        radiusRel: 0,
+        outline: true,
+      };
+    case "romance":
+      return {
+        ...base,
+        font: "romance",
+        weight: 500,
+        box: "solid",
+        boxFill: "rgba(0,0,0,0.42)",
+        textColor: "#ffffff",
+        emColor: "#ffd24a",
+        radiusRel: 0.12,
+        outline: false,
+      };
+    case "brush":
+      return {
+        ...base,
+        font: "brush",
+        weight: 500,
+        box: "solid",
+        boxFill: "rgba(0,0,0,0.5)",
+        textColor: "#ffffff",
+        emColor: "#ffd24a",
+        radiusRel: 0.16,
+        outline: false,
+      };
+    case "jua":
+      return {
+        ...base,
+        font: "jua",
+        weight: 500,
+        box: "solid",
+        boxFill: "rgba(255,255,255,0.94)",
+        textColor: "#18181b",
+        emColor: "#c1121f",
+        radiusRel: 1.2,
+        outline: false,
+      };
+    case "retro":
+      return {
+        ...base,
+        font: "retro",
+        weight: 500,
+        box: "solid",
+        boxFill: "rgba(0,0,0,0.5)",
+        textColor: "#ffe9a8",
+        emColor: "#ff7aa8",
+        radiusRel: 0.16,
+        outline: false,
+      };
     default:
       return base;
   }

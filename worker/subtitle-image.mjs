@@ -61,6 +61,14 @@ const serifSrc = registerFirst(SERIF_PATHS, "SubSerif");
 const latinSrc = registerFirst(LATIN_PATHS, "SubLatin");
 const handSrc = registerFirst(HAND_PATHS, "SubHand");
 
+// ani-cliché 장식 글꼴 — 리포 번들(OFL). 화려한 자막 프리셋용. 로컬·도커 공통 경로.
+const bundled = (file) => fileURLToPath(new URL(`./fonts/${file}`, import.meta.url));
+const impactSrc = registerFirst([bundled("BlackHanSans-Regular.ttf")], "SubImpact");
+const romanceSrc = registerFirst([bundled("SongMyung-Regular.ttf")], "SubRomance");
+const brushSrc = registerFirst([bundled("NanumBrushScript-Regular.ttf")], "SubBrush");
+const juaSrc = registerFirst([bundled("Jua-Regular.ttf")], "SubJua");
+const retroSrc = registerFirst([bundled("KirangHaerang-Regular.ttf")], "SubKirang");
+
 // 경로로 못 찾은 패밀리는 시스템 폰트(fontconfig)에서 찾는다.
 let _sysLoaded = false;
 function sysFamily(re) {
@@ -85,11 +93,32 @@ const LATIN_FAMILY =
 // 손글씨 — 못 찾으면 세리프(그나마 표정 있음)로 폴백.
 const HAND_FAMILY =
   handSrc ? "SubHand" : sysFamily(/Nanum ?Pen|Nanum ?Brush|Gaegu|Handwriting|Gungsuh/i) || SERIF_FAMILY;
+// 장식 글꼴 패밀리 — 번들 실패 시 안전 폴백(sans/serif/hand).
+const IMPACT_FAMILY = impactSrc ? "SubImpact" : SANS_FAMILY;
+const ROMANCE_FAMILY = romanceSrc ? "SubRomance" : SERIF_FAMILY;
+const BRUSH_FAMILY = brushSrc ? "SubBrush" : HAND_FAMILY;
+const JUA_FAMILY = juaSrc ? "SubJua" : SANS_FAMILY;
+const KIRANG_FAMILY = retroSrc ? "SubKirang" : SERIF_FAMILY;
 
 // 자막 설정의 폰트(serif/sans)에 맞는 패밀리.
 const familyFor = (sub) => (sub?.font === "serif" ? SERIF_FAMILY : SANS_FAMILY);
-// 프리셋 recipe.font(sans/serif/hand) → 패밀리.
-const familyOf = (f) => (f === "serif" ? SERIF_FAMILY : f === "hand" ? HAND_FAMILY : SANS_FAMILY);
+// 프리셋 recipe.font → 패밀리 (sans/serif/hand + 장식체 impact/romance/brush/jua/retro).
+const familyOf = (f) =>
+  f === "serif"
+    ? SERIF_FAMILY
+    : f === "hand"
+      ? HAND_FAMILY
+      : f === "impact"
+        ? IMPACT_FAMILY
+        : f === "romance"
+          ? ROMANCE_FAMILY
+          : f === "brush"
+            ? BRUSH_FAMILY
+            : f === "jua"
+              ? JUA_FAMILY
+              : f === "retro"
+                ? KIRANG_FAMILY
+                : SANS_FAMILY;
 
 // 폰트 문자열 끝에 붙이는 라틴 폴백 — CJK 폰트가 못 그리는 베트남어 부호를 받친다.
 // (canvas 는 콤마 구분 패밀리에서 글자별로 폴백한다.)
@@ -97,7 +126,7 @@ const LATIN_FALLBACK = LATIN_FAMILY ? `, "${LATIN_FAMILY}"` : "";
 
 try {
   console.log(
-    `[worker] 자막 폰트 sans=${SANS_FAMILY}(${sansSrc ?? "sys"}) serif=${SERIF_FAMILY}(${serifSrc ?? "sys/fallback"}) hand=${HAND_FAMILY}(${handSrc ?? "sys/fallback"}) latin=${LATIN_FAMILY ?? "없음(베트남어 자막 깨질 수 있음)"}(${latinSrc ?? "sys"})`
+    `[worker] 자막 폰트 sans=${SANS_FAMILY}(${sansSrc ?? "sys"}) serif=${SERIF_FAMILY}(${serifSrc ?? "sys/fallback"}) hand=${HAND_FAMILY}(${handSrc ?? "sys/fallback"}) latin=${LATIN_FAMILY ?? "없음(베트남어 자막 깨질 수 있음)"}(${latinSrc ?? "sys"}) deco=[impact:${impactSrc ? "✓" : "✗"} romance:${romanceSrc ? "✓" : "✗"} brush:${brushSrc ? "✓" : "✗"} jua:${juaSrc ? "✓" : "✗"} retro:${retroSrc ? "✓" : "✗"}]`
   );
 } catch {}
 

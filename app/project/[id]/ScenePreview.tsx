@@ -32,12 +32,16 @@ export default function ScenePreview({
 }) {
   const st = resolveSubtitleStyle(sub);
   const recipe = resolveCaptionRecipe(sub, captionStyle);
-  const fontFamily =
-    recipe.font === "serif"
-      ? "var(--font-noto-serif-kr), 'Noto Serif KR', serif"
-      : recipe.font === "hand"
-        ? "var(--font-nanum-pen), 'Nanum Pen Script', cursive"
-        : "var(--font-noto-sans-kr), sans-serif";
+  const FONT_CSS: Record<string, string> = {
+    serif: "var(--font-noto-serif-kr), 'Noto Serif KR', serif",
+    hand: "var(--font-nanum-pen), 'Nanum Pen Script', cursive",
+    impact: "var(--font-black-han), 'Black Han Sans', sans-serif",
+    romance: "var(--font-song-myung), 'Song Myung', serif",
+    brush: "var(--font-nanum-brush), 'Nanum Brush Script', cursive",
+    jua: "var(--font-jua), 'Jua', sans-serif",
+    retro: "var(--font-kirang), 'Kirang Haerang', cursive",
+  };
+  const fontFamily = FONT_CSS[recipe.font] ?? "var(--font-noto-sans-kr), sans-serif";
   const koCaps = useMemo(() => segmentCaptions(subtitle, sub.size), [subtitle, sub.size]);
   const enCaps = useMemo(
     () => segmentCaptions(subtitleEn || subtitle, sub.size),

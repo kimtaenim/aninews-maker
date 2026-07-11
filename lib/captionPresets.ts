@@ -10,7 +10,7 @@
 import type { SubtitleSettings } from "./types";
 
 export interface CaptionRecipe {
-  font: "sans" | "serif" | "hand";
+  font: "sans" | "serif" | "hand" | "impact" | "romance" | "brush" | "jua" | "retro";
   weight: 500 | 700;
   box: "solid" | "none";
   boxFill: string; // 박스 배경 (canvas fillStyle · CSS background 공용 색 문자열)
@@ -27,6 +27,11 @@ export const CAPTION_STYLES = [
   ["serif", "감성명조"],
   ["bubble", "말풍선"],
   ["hand", "손글씨"],
+  ["impact", "임팩트"],
+  ["romance", "감성세리프"],
+  ["brush", "붓글씨"],
+  ["jua", "발랄"],
+  ["retro", "복고"],
 ] as const;
 
 // 기본(프리셋 없음): 프로젝트 자막 설정 그대로 — 기존 렌더와 픽셀 동일.
@@ -96,6 +101,72 @@ export function resolveCaptionRecipe(sub: SubtitleSettings, presetId?: string): 
         boxFill: "rgba(0,0,0,0.5)",
         textColor: "#ffffff",
         emColor: "#ffd24a",
+        radiusRel: 0.16,
+        outline: false,
+      };
+    // ── ani-cliché 장식 프리셋 (화려한 무료 글꼴) ──
+    // 임팩트 — 블랙한산스, 박스 없이 굵고 크게 + 헤일로(MV 타이틀 느낌).
+    case "impact":
+      return {
+        ...base,
+        font: "impact",
+        weight: 700,
+        box: "none",
+        boxFill: "transparent",
+        textColor: "#ffffff",
+        emColor: "#ffd24a",
+        radiusRel: 0,
+        outline: true,
+      };
+    // 감성세리프 — 송명체(얇은 스타일리시 세리프) + 반투명 박스. 로맨스 감성.
+    case "romance":
+      return {
+        ...base,
+        font: "romance",
+        weight: 500,
+        box: "solid",
+        boxFill: "rgba(0,0,0,0.42)",
+        textColor: "#ffffff",
+        emColor: "#ffd24a",
+        radiusRel: 0.12,
+        outline: false,
+      };
+    // 붓글씨 — 나눔 붓 + 반투명 어두운 박스. 극적인 손맛.
+    case "brush":
+      return {
+        ...base,
+        font: "brush",
+        weight: 500,
+        box: "solid",
+        boxFill: "rgba(0,0,0,0.5)",
+        textColor: "#ffffff",
+        emColor: "#ffd24a",
+        radiusRel: 0.16,
+        outline: false,
+      };
+    // 발랄 — 주아(둥근 발랄체) + 흰 알약 박스. 코믹·발랄.
+    case "jua":
+      return {
+        ...base,
+        font: "jua",
+        weight: 500,
+        box: "solid",
+        boxFill: "rgba(255,255,255,0.94)",
+        textColor: "#18181b",
+        emColor: "#c1121f",
+        radiusRel: 1.2,
+        outline: false,
+      };
+    // 복고 — 기랑해랑(복고 개성체) + 어두운 박스.
+    case "retro":
+      return {
+        ...base,
+        font: "retro",
+        weight: 500,
+        box: "solid",
+        boxFill: "rgba(0,0,0,0.5)",
+        textColor: "#ffe9a8",
+        emColor: "#ff7aa8",
         radiusRel: 0.16,
         outline: false,
       };
