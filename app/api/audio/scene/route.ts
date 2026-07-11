@@ -88,6 +88,8 @@ export async function POST(req: NextRequest) {
       text,
       lang: voiceLang,
       provider: project.ttsProvider,
+      // 프로젝트가 고른 목소리 — primary 트랙만. 더빙(다국어)은 언어별 env voice 사용.
+      voiceId: isDub ? undefined : project.voiceId,
       speed: project.voiceSpeed ?? 1.2, // 기본 1.2배(미설정 프로젝트도 동일하게).
     });
     const { url } = await uploadAsset(

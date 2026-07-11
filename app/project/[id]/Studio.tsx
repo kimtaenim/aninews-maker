@@ -321,6 +321,9 @@ export default function Studio({
     const prev = ttsProvider;
     setTtsProvider(p);
     setProject((pr) => ({ ...pr, ttsProvider: p }));
+    // 새 엔진에 없는 목소리는 해제(기본으로) — 다른 엔진 voice id 를 넘겨 합성 실패 방지.
+    const cur = voices.find((x) => x.id === voiceId);
+    if (voiceId && cur && cur.provider !== p) void saveVoice("");
     try {
       await call("/api/project/tts", { projectId: project.id, provider: p });
     } catch (e) {
@@ -341,6 +344,36 @@ export default function Studio({
     } catch (e) {
       setVoiceSpeed(prev); // 실패 시 롤백
       setError(e instanceof Error ? e.message : "속도 저장 실패");
+    }
+  }
+
+  // 보이스오버 목소리(프로젝트당 하나) — config/voices.json 목록에서 엔진에 맞는 걸 고름.
+  const [voiceId, setVoiceId] = useState<string>(initial.voiceId ?? "");
+  const [voices, setVoices] = useState<
+    { id: string; name: string; provider: string; note?: string; narration?: boolean }[]
+  >([]);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/tts/voices")
+      .then((r) => r.json())
+      .then((d) => {
+        if (alive && d?.ok) setVoices(d.voices ?? []);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+  async function saveVoice(id: string) {
+    if (id === voiceId) return;
+    const prev = voiceId;
+    setVoiceId(id);
+    setProject((pr) => ({ ...pr, voiceId: id || undefined }));
+    try {
+      await call("/api/project/voice", { projectId: project.id, voiceId: id });
+    } catch (e) {
+      setVoiceId(prev); // 실패 시 롤백
+      setError(e instanceof Error ? e.message : "목소리 저장 실패");
     }
   }
 
@@ -3295,6 +3328,29 @@ export default function Studio({
           {!initial.ttsProvider && tts?.default && (
             <span className="text-[10px] text-zinc-400">기본값(env): {tts.default === "typecast" ? "타입캐스트" : "일레븐랩스"}</span>
           )}
+        </div>
+
+        {/* 목소리 선택(프로젝트당 하나) — 위 엔진에 맞는 목록. 바꾼 뒤 음성 재생성해야 반영. */}
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <span className="text-[11px] text-zinc-500">목소리</span>
+          <select
+            value={voiceId}
+            onChange={(e) => saveVoice(e.target.value)}
+            disabled={busy !== null}
+            className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1.5 text-xs outline-none focus:border-accent disabled:opacity-50"
+          >
+            <option value="">기본 목소리 (env 설정)</option>
+            {voices
+              .filter((v) => v.provider === ttsProvider)
+              .map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.narration ? "★ " : ""}
+                  {v.name}
+                  {v.note ? ` · ${v.note}` : ""}
+                </option>
+              ))}
+          </select>
+          <span className="text-[10px] text-zinc-400">★=내레이션 추천 · 바꾸면 음성 재생성</span>
         </div>
 
         {/* 음성 속도 — 생성 시 적용. 바꾼 뒤엔 음성을 다시 생성해야 반영된다. */}

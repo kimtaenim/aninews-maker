@@ -63,12 +63,18 @@ export async function synthesize(opts: {
   text: string;
   lang?: string;
   provider?: string;
+  voiceId?: string; // 프로젝트가 고른 목소리(config/voices.json). 없으면 엔진별 env 기본 voice.
   speed?: number; // 보이스오버 속도(1.0 기본). 엔진별 voice_settings.speed / output.tempo 로 전달.
 }): Promise<TtsResult> {
   if (resolveTtsProvider(opts.provider) === "typecast") {
-    const out = await synthesizeSpeechTypecast({ text: opts.text, lang: opts.lang, speed: opts.speed });
+    const out = await synthesizeSpeechTypecast({
+      text: opts.text,
+      lang: opts.lang,
+      voiceId: opts.voiceId,
+      speed: opts.speed,
+    });
     return { ...out, vendor: "typecast", model: out.model };
   }
-  const out = await synthesizeSpeech({ text: opts.text, speed: opts.speed });
+  const out = await synthesizeSpeech({ text: opts.text, voiceId: opts.voiceId, speed: opts.speed });
   return { ...out, vendor: "elevenlabs", model: "eleven_multilingual_v2" };
 }
