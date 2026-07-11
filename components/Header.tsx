@@ -18,16 +18,16 @@ export default async function Header() {
             새 영상
           </Link>
           <Link
-            href="/cliche/new"
-            className="text-xs font-medium text-pink-600 dark:text-pink-400 hover:text-pink-700 dark:hover:text-pink-300"
-          >
-            💘 연애 클리셰
-          </Link>
-          <Link
             href="/library"
             className="text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100"
           >
             라이브러리
+          </Link>
+          <Link
+            href="/cliche/new"
+            className="text-xs font-medium text-pink-600 dark:text-pink-400 hover:text-pink-700 dark:hover:text-pink-300"
+          >
+            💘 연애 클리셰
           </Link>
           {email && (
             <>
