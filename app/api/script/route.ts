@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProject, saveProject } from "@/lib/projectStore";
-import { generateScript } from "@/lib/script";
+import { generateScript, generateClicheScript } from "@/lib/script";
 import { canStart } from "@/lib/stepMachine";
 import type { SourceMaterial } from "@/lib/source";
 
@@ -45,13 +45,22 @@ export async function POST(req: NextRequest) {
   await saveProject(project);
 
   try {
-    const { scenes } = await generateScript({
-      projectId,
-      material,
-      styleBible: project.styleBible,
-      // 명시 userPrompt 우선, 없으면 소스 단계에서 저장한 프로젝트 의도 사용.
-      userPrompt: body.userPrompt ?? project.userPrompt,
-    });
+    // ani-cliché 모드는 로맨스 클리셰 생성기(대사+화자), 뉴스 모드는 기존 생성기.
+    const { scenes } =
+      project.mode === "cliche"
+        ? await generateClicheScript({
+            projectId,
+            tropes: material.body.split(/[,·\n]/).map((t) => t.trim()).filter(Boolean),
+            styleBible: project.styleBible,
+            userPrompt: body.userPrompt ?? project.userPrompt,
+          })
+        : await generateScript({
+            projectId,
+            material,
+            styleBible: project.styleBible,
+            // 명시 userPrompt 우선, 없으면 소스 단계에서 저장한 프로젝트 의도 사용.
+            userPrompt: body.userPrompt ?? project.userPrompt,
+          });
     project.scenes = scenes;
     project.steps.script.status = "generated";
     project.steps.script.updatedAt = Date.now();
