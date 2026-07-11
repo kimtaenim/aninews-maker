@@ -91,6 +91,20 @@ const CAMERA_MOVES = [
   ["static", "■ 고정", "Locked-off static camera, no camera movement — only very subtle ambient motion; the subject stays still."],
 ] as const;
 
+// ani-cliché 전용 — 로맨스 뮤직비디오 카메라(무조건 스타일리시, re-animator 톤 참고).
+const CLICHE_CAMERA_MOVES = [
+  ["face-push", "💗 얼굴 푸시인", "Slow dramatic push-in toward the character's face, ending in an intimate close-up on the sparkling eyes — breathless heart-flutter. Camera only; the subject barely moves."],
+  ["hair-blow", "🌬️ 머리카락 슬로우", "Dreamy slow-motion as the character's hair and clothes flutter in a soft breeze, glossy strands catching the light — music-video romance. Camera drifts gently; the subject stays soft and still."],
+  ["rack-eyes", "👁️ 눈 랙포커스", "Rack focus snapping sharply from a soft foreground onto the character's glistening eyes — a sudden 심쿵 beat. Camera only."],
+  ["sparkle", "✨ 반짝 심쿵", "Gentle push-in as sparkles and soft bloom bloom around the character and a blush rises — exaggerated shoujo heart-flutter. Camera only; the subject barely moves."],
+  ["two-shot", "💞 투샷 드리프트", "Slow romantic camera drift across a two-shot of the two leads, soft bokeh and lens bloom — cinematic ballad energy. Camera drifts gently; subjects stay still."],
+  ["speed-ramp", "🚀 스피드 램프", "Speed-ramped dolly-in: starts in dreamy slow motion, then bursts into a rapid accelerating rush toward the subject — cinematic energy. Camera only; the subject barely moves."],
+  ["crash-in", "⚡ 크래시 줌인", "Camera creeps forward slowly, then suddenly accelerates into a dramatic crash zoom slamming toward the subject — explosive speed ramp. Camera only; the subject barely moves."],
+  ["vertigo", "🌀 현기증", "Extreme dolly zoom vertigo effect: aggressive dolly-in while zooming out, the background warping and stretching around the subject who stays the same size. Camera only."],
+  ["whip-pan", "💨 휩 팬", "Fast whip pan with heavy motion blur streaking across the scene, aggressive and energetic. Camera only; the subject stays mostly still."],
+  ["slow-orbit", "⟳ 느린 오비트", "Smooth elegant slow orbit gliding around the subject like a luxury perfume commercial — glossy and cinematic. Camera moves; the subject stays still."],
+] as const;
+
 // 4단계 이미지 스타일 칩 — 그룹별로 하나만 선택(그룹 간에는 자유 조합). 고르면 씬 이미지
 // 프롬프트 끝에 [스타일: …] 지시로 붙는다. [id, 버튼라벨, 프롬프트 조각(영문)].
 const IMG_CHIP_GROUPS = [
@@ -1718,8 +1732,12 @@ export default function Studio({
   }
 
   // 카메라 워크 프리셋 선택 → 그 씬 모션 프롬프트(영문)를 프리셋 문구로 채운다.
+  // 카메라 프리셋 세트 — 연애 클리셰 모드는 로맨스 MV 세트, 그 외는 기본(잔잔) 세트.
+  const cameraMoves: readonly (readonly [string, string, string])[] =
+    project.mode === "cliche" ? CLICHE_CAMERA_MOVES : CAMERA_MOVES;
+
   function applyCameraMove(sceneIndex: number, moveId: string) {
-    const move = CAMERA_MOVES.find((m) => m[0] === moveId);
+    const move = cameraMoves.find((m) => m[0] === moveId);
     if (!move) return;
     setCameraMove((prev) => ({ ...prev, [sceneIndex]: moveId }));
     patchScene(sceneIndex, { motion: move[2] }); // 버퍼 갱신 + 자동저장
@@ -3284,9 +3302,13 @@ export default function Studio({
                             <option value="large">크게</option>
                           </select>
                         </div>
-                        <span className="text-[10px] text-zinc-400">카메라 워크 (고르면 모션 채움 · 인물은 거의 정지)</span>
+                        <span className="text-[10px] text-zinc-400">
+                          {project.mode === "cliche"
+                            ? "카메라 워크 (로맨스 MV — 고르면 모션 채움)"
+                            : "카메라 워크 (고르면 모션 채움 · 인물은 거의 정지)"}
+                        </span>
                         <div className="flex flex-wrap gap-1">
-                          {CAMERA_MOVES.map(([id, label]) => (
+                          {cameraMoves.map(([id, label]) => (
                             <button
                               key={id}
                               type="button"
