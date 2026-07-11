@@ -19,8 +19,13 @@ const TROPES = [
   "비 오는 날",
 ];
 
+// 인물 클리셰 아키타입 — 두 주인공 성격. 스크립트의 A·B + (다음 페이즈)시뮬 페르소나로 이어짐.
+const CHAR_M = ["마초남", "소심남", "츤데레남", "오타쿠남", "재벌남", "나쁜남자", "순정남", "능글남"];
+const CHAR_F = ["저돌적인 여자", "청순녀", "4차원녀", "새침녀", "발랄녀", "카리스마녀", "백치미녀", "대장부녀"];
+
 export default function ClicheNewForm() {
   const router = useRouter();
+  const [chars, setChars] = useState<Set<string>>(new Set(["츤데레남", "저돌적인 여자"]));
   const [selected, setSelected] = useState<Set<string>>(new Set(["첫 만남", "심쿵 눈맞춤", "고백"]));
   const [free, setFree] = useState("");
   const [style, setStyle] = useState<"webtoon" | "realistic">("webtoon");
@@ -30,6 +35,14 @@ export default function ClicheNewForm() {
 
   function toggle(t: string) {
     setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(t)) next.delete(t);
+      else next.add(t);
+      return next;
+    });
+  }
+  function toggleChar(t: string) {
+    setChars((prev) => {
       const next = new Set(prev);
       if (next.has(t)) next.delete(t);
       else next.add(t);
@@ -52,6 +65,7 @@ export default function ClicheNewForm() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           tropes,
+          characters: [...chars],
           styleProfileId: style === "realistic" ? "realistic" : "webtoon-romance",
           userPrompt: userPrompt.trim() || undefined,
         }),
@@ -67,6 +81,56 @@ export default function ClicheNewForm() {
 
   return (
     <div className="mt-6 grid gap-5">
+      <div>
+        <div className="text-[13px] font-medium text-zinc-600 dark:text-zinc-300">
+          인물 설정 <span className="text-zinc-400">(썸 탈 주인공들의 클리셰 성격)</span>
+        </div>
+        <div className="mt-2 grid gap-1.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="w-6 text-[11px] text-zinc-400">남</span>
+            {CHAR_M.map((c) => {
+              const on = chars.has(c);
+              return (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => toggleChar(c)}
+                  className={
+                    "rounded-full px-3 py-1 text-[13px] border transition-colors " +
+                    (on
+                      ? "border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 font-medium"
+                      : "border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900")
+                  }
+                >
+                  {c}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="w-6 text-[11px] text-zinc-400">여</span>
+            {CHAR_F.map((c) => {
+              const on = chars.has(c);
+              return (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => toggleChar(c)}
+                  className={
+                    "rounded-full px-3 py-1 text-[13px] border transition-colors " +
+                    (on
+                      ? "border-pink-500 bg-pink-50 text-pink-700 dark:bg-pink-950/50 dark:text-pink-300 font-medium"
+                      : "border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900")
+                  }
+                >
+                  {c}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
       <div>
         <div className="text-[13px] font-medium text-zinc-600 dark:text-zinc-300">
           클리셰 고르기 <span className="text-zinc-400">(복수 선택 → 5~6씬으로 엮음)</span>

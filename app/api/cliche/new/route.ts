@@ -12,7 +12,7 @@ export const maxDuration = 30;
 // body: { tropes: string[], styleProfileId?, userPrompt? }
 // mode="cliche" 로 만들고, 2단계(script)는 generateClicheScript 로 분기(대사+화자 씬).
 export async function POST(req: NextRequest) {
-  let body: { tropes?: unknown; styleProfileId?: string; userPrompt?: string };
+  let body: { tropes?: unknown; characters?: unknown; styleProfileId?: string; userPrompt?: string };
   try {
     body = await req.json();
   } catch {
@@ -25,6 +25,11 @@ export async function POST(req: NextRequest) {
   if (tropes.length === 0) {
     return NextResponse.json({ ok: false, error: "클리셰(트로프)를 하나 이상 골라주세요" }, { status: 400 });
   }
+
+  // 인물 성격(클리셰 아키타입) — 두 주인공 A·B 의 성격으로 스크립트에 주입한다.
+  const characters = (Array.isArray(body.characters) ? body.characters : [])
+    .map((c) => (typeof c === "string" ? c.trim() : ""))
+    .filter(Boolean);
 
   // 그림체: 웹툰(기본) 또는 실사. 그 외 프로필은 클리셰에 부적합 → 웹툰으로.
   const styleProfileId = body.styleProfileId === "realistic" ? "realistic" : "webtoon-romance";
@@ -50,7 +55,14 @@ export async function POST(req: NextRequest) {
       styleProfileId,
       videoModelId: videoModels.default,
       ttsEnabled: true,
-      userPrompt: (body.userPrompt ?? "").trim() || undefined,
+      // 인물 성격을 생성 지시 앞에 붙여 A·B 캐릭터로 반영(스크립트 + 이후 시뮬 페르소나).
+      userPrompt:
+        [
+          characters.length ? `주인공 성격(클리셰): ${characters.join(" × ")}` : "",
+          (body.userPrompt ?? "").trim(),
+        ]
+          .filter(Boolean)
+          .join(". ") || undefined,
       mode: "cliche",
     });
     return NextResponse.json({ ok: true, projectId: project.id });
