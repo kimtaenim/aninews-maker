@@ -25,7 +25,7 @@ const CHAR_F = ["저돌적인 여자", "청순녀", "4차원녀", "새침녀", "
 
 export default function ClicheNewForm() {
   const router = useRouter();
-  const [chars, setChars] = useState<Set<string>>(new Set(["츤데레남", "저돌적인 여자"]));
+  const [chars, setChars] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set(["첫 만남", "심쿵 눈맞춤", "고백"]));
   const [free, setFree] = useState("");
   const [style, setStyle] = useState<"webtoon" | "realistic">("webtoon");
@@ -83,7 +83,7 @@ export default function ClicheNewForm() {
     <div className="mt-6 grid gap-5">
       <div>
         <div className="text-[13px] font-medium text-zinc-600 dark:text-zinc-300">
-          인물 설정 <span className="text-zinc-400">(썸 탈 주인공들의 클리셰 성격)</span>
+          인물 설정 <span className="text-zinc-400">(썸 탈 주인공들의 클리셰 성격 — 남남·여여·남녀 자유, 안 고르면 AI가 정함)</span>
         </div>
         <div className="mt-2 grid gap-1.5">
           <div className="flex flex-wrap items-center gap-2">
