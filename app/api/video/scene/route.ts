@@ -89,24 +89,28 @@ export async function POST(req: NextRequest) {
       imageUrl: scene.imageUrl,
       prompt,
     });
-    project.scenes[sceneIndex] = {
-      ...scene,
+    // 제출(네트워크 수 초) 동안 다른 저장(효과음·자막 등)이 있었을 수 있으니
+    // 최신 재읽기 후 이 씬의 비디오 필드만 머지(낡은 스냅샷 통째 저장 금지).
+    const fresh = (await getProject(projectId)) ?? project;
+    fresh.scenes[sceneIndex] = {
+      ...(fresh.scenes[sceneIndex] ?? scene),
       videoJobId: jobId,
       videoModelId: modelId,
       videoUrl: undefined,
       status: "generating",
     };
-    project.steps.videos.status = "generating";
-    project.steps.videos.updatedAt = Date.now();
-    project.updatedAt = Date.now();
-    await saveProject(project);
+    fresh.steps.videos.status = "generating";
+    fresh.steps.videos.updatedAt = Date.now();
+    fresh.updatedAt = Date.now();
+    await saveProject(fresh);
     return NextResponse.json({ ok: true, jobId });
   } catch (e) {
     const error = e instanceof Error ? e.message : "비디오 제출 실패";
-    project.steps.videos.status = "error";
-    project.steps.videos.error = error;
-    project.steps.videos.updatedAt = Date.now();
-    await saveProject(project);
+    const fresh = (await getProject(projectId)) ?? project;
+    fresh.steps.videos.status = "error";
+    fresh.steps.videos.error = error;
+    fresh.steps.videos.updatedAt = Date.now();
+    await saveProject(fresh);
     return NextResponse.json({ ok: false, error }, { status: 500 });
   }
 }
@@ -156,11 +160,13 @@ export async function GET(req: NextRequest) {
   const poll = await pollVideoJob(scene.videoJobId);
 
   if (poll.status === "failed") {
-    project.scenes[sceneIndex] = { ...scene, status: "error" };
-    project.steps.videos.status = "error";
-    project.steps.videos.error = poll.error;
-    project.steps.videos.updatedAt = Date.now();
-    await saveProject(project);
+    // 폴링(네트워크) 동안 다른 저장이 있었을 수 있으니 최신 재읽기 후 머지.
+    const fresh = (await getProject(projectId)) ?? project;
+    fresh.scenes[sceneIndex] = { ...(fresh.scenes[sceneIndex] ?? scene), status: "error" };
+    fresh.steps.videos.status = "error";
+    fresh.steps.videos.error = poll.error;
+    fresh.steps.videos.updatedAt = Date.now();
+    await saveProject(fresh);
     return NextResponse.json({ ok: true, status: "failed", error: poll.error });
   }
 
@@ -185,10 +191,12 @@ export async function GET(req: NextRequest) {
     videoUrl = up.url;
   } catch (e) {
     const error = e instanceof Error ? e.message : "비디오 저장 실패";
-    project.steps.videos.status = "error";
-    project.steps.videos.error = error;
-    project.steps.videos.updatedAt = Date.now();
-    await saveProject(project);
+    // 다운로드 시도(최대 60초) 동안 다른 저장이 있었을 수 있으니 최신 재읽기 후 머지.
+    const fresh = (await getProject(projectId)) ?? project;
+    fresh.steps.videos.status = "error";
+    fresh.steps.videos.error = error;
+    fresh.steps.videos.updatedAt = Date.now();
+    await saveProject(fresh);
     return NextResponse.json({ ok: true, status: "failed", error });
   }
 

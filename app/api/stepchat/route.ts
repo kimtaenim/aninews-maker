@@ -47,16 +47,18 @@ export async function POST(req: NextRequest) {
     }
     try {
       const { reply, material: updated } = await runSourceChat({ projectId, material, userMessage });
+      // Claude 호출(수십 초) 동안 다른 저장이 있었을 수 있으니 최신 재읽기 후 머지.
+      const fresh = (await getProject(projectId)) ?? project;
       const now = Date.now();
-      project.steps.source.params = { ...project.steps.source.params, material: updated };
-      project.steps.source.chat.push(
+      fresh.steps.source.params = { ...fresh.steps.source.params, material: updated };
+      fresh.steps.source.chat.push(
         { role: "user", text: userMessage, ts: now },
         { role: "assistant", text: reply, ts: now }
       );
-      project.steps.source.updatedAt = now;
-      project.updatedAt = now;
-      await saveProject(project);
-      return NextResponse.json({ ok: true, reply, material: updated, chat: project.steps.source.chat });
+      fresh.steps.source.updatedAt = now;
+      fresh.updatedAt = now;
+      await saveProject(fresh);
+      return NextResponse.json({ ok: true, reply, material: updated, chat: fresh.steps.source.chat });
     } catch (e) {
       return NextResponse.json(
         { ok: false, error: e instanceof Error ? e.message : "소스 대화 실패" },
@@ -78,7 +80,10 @@ export async function POST(req: NextRequest) {
         narrations: project.scenes.map((s) => s.narration),
         userMessage,
       });
-      const prev = project.scenes;
+      // Claude 호출(수십 초) 동안 다른 저장이 있었을 수 있으니 최신 재읽기 후,
+      // carry(산출물 보존)도 최신 씬 기준으로 한다.
+      const fresh = (await getProject(projectId)) ?? project;
+      const prev = fresh.scenes;
       const scenes: Scene[] = narrations
         .map((n, index): Scene => {
           const carry = prev[index];
@@ -104,15 +109,15 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: false, error: "결과 스크립트가 비었어요 — 다시 시도" }, { status: 502 });
       }
       const now = Date.now();
-      project.scenes = scenes;
-      project.steps.script.chat.push(
+      fresh.scenes = scenes;
+      fresh.steps.script.chat.push(
         { role: "user", text: userMessage, ts: now },
         { role: "assistant", text: reply, ts: now }
       );
-      project.steps.script.updatedAt = now;
-      project.updatedAt = now;
-      await saveProject(project);
-      return NextResponse.json({ ok: true, reply, scenes, chat: project.steps.script.chat });
+      fresh.steps.script.updatedAt = now;
+      fresh.updatedAt = now;
+      await saveProject(fresh);
+      return NextResponse.json({ ok: true, reply, scenes, chat: fresh.steps.script.chat });
     } catch (e) {
       return NextResponse.json(
         { ok: false, error: e instanceof Error ? e.message : "스크립트 대화 실패" },
@@ -136,21 +141,23 @@ export async function POST(req: NextRequest) {
       userMessage,
     });
 
+    // Claude 호출(수십 초) 동안 다른 저장이 있었을 수 있으니 최신 재읽기 후 머지.
+    const fresh = (await getProject(projectId)) ?? project;
     const now = Date.now();
-    project.styleBible = styleBible;
-    project.steps.keyframe.chat.push(
+    fresh.styleBible = styleBible;
+    fresh.steps.keyframe.chat.push(
       { role: "user", text: userMessage, ts: now },
       { role: "assistant", text: reply, ts: now }
     );
-    project.steps.keyframe.updatedAt = now;
-    project.updatedAt = now;
-    await saveProject(project);
+    fresh.steps.keyframe.updatedAt = now;
+    fresh.updatedAt = now;
+    await saveProject(fresh);
 
     return NextResponse.json({
       ok: true,
       reply,
       styleBible,
-      chat: project.steps.keyframe.chat,
+      chat: fresh.steps.keyframe.chat,
     });
   } catch (e) {
     return NextResponse.json(

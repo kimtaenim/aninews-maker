@@ -57,21 +57,24 @@ export async function POST(req: NextRequest) {
       referenceImageUrl: project.keyframeReferenceUrl, // 업로드한 참조본이 있으면 img2img
       subtitlePosition: project.subtitle?.position, // 비워둘 지점(자막 위치) 반영
     });
-    project.steps.keyframe.params = {
-      ...project.steps.keyframe.params,
+    // 생성(수십 초) 동안 다른 저장이 있었을 수 있으니 최신 재읽기 후 머지.
+    const fresh = (await getProject(projectId)) ?? project;
+    fresh.steps.keyframe.params = {
+      ...fresh.steps.keyframe.params,
       candidates: urls,
     };
-    project.steps.keyframe.status = "generated";
-    project.steps.keyframe.updatedAt = Date.now();
-    project.updatedAt = Date.now();
-    await saveProject(project);
+    fresh.steps.keyframe.status = "generated";
+    fresh.steps.keyframe.updatedAt = Date.now();
+    fresh.updatedAt = Date.now();
+    await saveProject(fresh);
     return NextResponse.json({ ok: true, urls, cost: formatKrw(costUsd) });
   } catch (e) {
     const error = e instanceof Error ? e.message : "키프레임 생성 실패";
-    project.steps.keyframe.status = "error";
-    project.steps.keyframe.error = error;
-    project.steps.keyframe.updatedAt = Date.now();
-    await saveProject(project);
+    const fresh = (await getProject(projectId)) ?? project;
+    fresh.steps.keyframe.status = "error";
+    fresh.steps.keyframe.error = error;
+    fresh.steps.keyframe.updatedAt = Date.now();
+    await saveProject(fresh);
     // Blob 토큰 누락 같은 설정 오류를 사용자에게 분명히.
     const hint = /token|blob/i.test(error)
       ? " (BLOB_READ_WRITE_TOKEN 이 .env.local 에 있는지 확인해주세요)"

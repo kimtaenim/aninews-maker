@@ -39,18 +39,20 @@ export async function POST(req: NextRequest) {
         { status: 502 }
       );
     }
+    // 생성(수십 초) 동안 다른 저장(효과음·대사 등)이 있었을 수 있으니 최신 재읽기 후 머지.
+    const fresh = (await getProject(projectId)) ?? project;
     const narrMap = new Map(scenes.map((s) => [s.index, s.narration.trim()]));
-    project.scenes = project.scenes.map((sc) => {
+    fresh.scenes = fresh.scenes.map((sc) => {
       const motion = motions.get(sc.index);
       if (motion === undefined) return sc;
       const narration = narrMap.get(sc.index);
       return { ...sc, motion, ...(narration ? { narration } : {}) };
     });
-    project.updatedAt = Date.now();
-    await saveProject(project);
+    fresh.updatedAt = Date.now();
+    await saveProject(fresh);
     return NextResponse.json({
       ok: true,
-      scenes: project.scenes,
+      scenes: fresh.scenes,
       cost: formatKrw(costUsd),
     });
   } catch (e) {

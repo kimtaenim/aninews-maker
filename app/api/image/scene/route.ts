@@ -118,11 +118,13 @@ export async function POST(req: NextRequest) {
     });
   } catch (e) {
     const error = e instanceof Error ? e.message : "이미지 생성 실패";
-    project.steps.images.status = "error";
-    project.steps.images.error = error;
-    project.steps.images.updatedAt = Date.now();
-    project.scenes[sceneIndex] = { ...scene, status: "error" };
-    await saveProject(project);
+    // 생성 시도(수십 초) 동안 다른 저장이 있었을 수 있으니 최신 재읽기 후 머지.
+    const fresh = (await getProject(projectId)) ?? project;
+    fresh.steps.images.status = "error";
+    fresh.steps.images.error = error;
+    fresh.steps.images.updatedAt = Date.now();
+    fresh.scenes[sceneIndex] = { ...(fresh.scenes[sceneIndex] ?? scene), status: "error" };
+    await saveProject(fresh);
     const hint = /token|blob/i.test(error)
       ? " (BLOB_READ_WRITE_TOKEN 이 .env.local 에 있는지 확인해주세요)"
       : "";
