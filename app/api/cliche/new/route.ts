@@ -69,7 +69,8 @@ export async function POST(req: NextRequest) {
       material,
       ownerEmail: (await getSessionEmail()) ?? undefined,
       styleProfileId,
-      videoModelId: videoModels.default,
+      // 클리셰는 MV 카메라(크래시줌·오비트 등)라 모션 좋은 모델 기본값(Kling). 없으면 레지스트리 기본.
+      videoModelId: videoModels.models.some((m) => m.id === "kling3") ? "kling3" : videoModels.default,
       ttsEnabled: true,
       // 인물 성격을 생성 지시 앞에 붙여 A·B 캐릭터로 반영(스크립트 + 이후 시뮬 페르소나).
       userPrompt:
