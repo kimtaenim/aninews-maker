@@ -12,6 +12,12 @@
       "runtimeExecutable": "node",
       "runtimeArgs": ["C:\\myapps\\gift-rank-tracker\\tracker.mjs"],
       "port": 4321
+    },
+    {
+      "name": "nlize-pages",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8899", "-d", "C:\\myapps\\nlize-kakao-sample-test\\docs"],
+      "port": 8899
     }
   ]
 }

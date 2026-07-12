@@ -132,6 +132,7 @@ export interface Project {
   // 콘텐츠 모드. "news"(기본)=뉴스 숏폼, "cliche"=연애 클리셰(ani-cliché 탭).
   // cliche 는 같은 파이프라인을 쓰되 스크립트(대사)·스타일·카메라·목소리를 로맨스로 프리셋.
   mode?: "news" | "cliche";
+  cast?: string[]; // [cliche] 등장 인물 이름들(화자 = 이 이름 또는 "내레이션"). 목소리·씬 화자에 사용.
   styleProfileId: string; // config/style-profiles.json 의 id
   styleBible: string; // 키프레임에서 확정 → 전 씬 공유되는 스타일 규약
   keyframeUrl?: string;

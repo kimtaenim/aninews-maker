@@ -26,21 +26,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "클리셰(트로프)를 하나 이상 골라주세요" }, { status: 400 });
   }
 
-  // 인물 설정 — [{name, archetype}] 또는 [string]. 각 인물의 이름·클리셰 성격을 스크립트에 주입.
-  const characters = (Array.isArray(body.characters) ? body.characters : [])
-    .map((c) => {
-      if (typeof c === "string") return c.trim();
-      if (c && typeof c === "object") {
-        const name = typeof (c as { name?: unknown }).name === "string" ? (c as { name: string }).name.trim() : "";
-        const arch =
-          typeof (c as { archetype?: unknown }).archetype === "string"
-            ? (c as { archetype: string }).archetype.trim()
-            : "";
-        return [name, arch].filter(Boolean).join(" — ");
-      }
-      return "";
-    })
-    .filter(Boolean);
+  // 인물 설정 — [{name, archetype}] 또는 [string]. 각 인물의 이름·성격을 뽑는다.
+  const rawChars = (Array.isArray(body.characters) ? body.characters : []).map((c) => {
+    if (typeof c === "string") return { name: "", archetype: c.trim() };
+    if (c && typeof c === "object") {
+      const o = c as { name?: unknown; archetype?: unknown };
+      return {
+        name: typeof o.name === "string" ? o.name.trim() : "",
+        archetype: typeof o.archetype === "string" ? o.archetype.trim() : "",
+      };
+    }
+    return { name: "", archetype: "" };
+  });
+  // 인물 이름(cast) — 이름 없으면 "인물1"… 로 채운다. 화자·목소리 키로 쓴다.
+  const cast = rawChars
+    .filter((c) => c.name || c.archetype)
+    .map((c, i) => c.name || `인물${i + 1}`);
+  // 스크립트 주입용 "이름(성격)" 문자열.
+  const characters = rawChars
+    .filter((c) => c.name || c.archetype)
+    .map((c) => (c.name && c.archetype ? `${c.name}(${c.archetype})` : c.name || c.archetype));
 
   // 그림체: 웹툰(기본) 또는 실사. 그 외 프로필은 클리셰에 부적합 → 웹툰으로.
   const styleProfileId = body.styleProfileId === "realistic" ? "realistic" : "webtoon-romance";
@@ -75,6 +80,7 @@ export async function POST(req: NextRequest) {
           .filter(Boolean)
           .join(". ") || undefined,
       mode: "cliche",
+      cast: cast.length ? cast : undefined,
     });
     return NextResponse.json({ ok: true, projectId: project.id });
   } catch (e) {

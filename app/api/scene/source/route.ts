@@ -22,6 +22,7 @@ type Body = {
   captionStyle?: string | null; // 자막 스타일 프리셋 id ("" 또는 null = 기본)
   narration?: string; // 자막 강조([[ ]]) 편집 — 미리보기에서 저장. 음성대본(ttsScript)은 안 건드림.
   emotion?: string | null; // [cliche] 감정 연기 id ("" 또는 null = 없음)
+  speaker?: string | null; // [cliche] 대사 화자(인물 이름 또는 "내레이션")
   keyframeReferenceUrl?: string | null;
 };
 
@@ -74,6 +75,7 @@ export async function POST(req: NextRequest) {
   if (body.skipped !== undefined) scene.skipped = body.skipped || undefined;
   if (body.captionStyle !== undefined) scene.captionStyle = clear(body.captionStyle);
   if (body.emotion !== undefined) scene.emotion = clear(body.emotion);
+  if (body.speaker !== undefined) scene.speaker = clear(body.speaker);
   // 자막 강조 편집(미리보기) — 나레이션 문자열만 갱신. 강조 마커([[ ]])는 발음에 영향이
   // 없으므로 음성대본(ttsScript) 오버라이드는 그대로 둔다. 빈 문자열은 무시(자막 비우기 방지).
   if (typeof body.narration === "string" && body.narration.trim()) {

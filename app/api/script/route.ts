@@ -53,6 +53,7 @@ export async function POST(req: NextRequest) {
             tropes: material.body.split(/[,·\n]/).map((t) => t.trim()).filter(Boolean),
             styleBible: project.styleBible,
             userPrompt: body.userPrompt ?? project.userPrompt,
+            cast: project.cast,
           })
         : await generateScript({
             projectId,

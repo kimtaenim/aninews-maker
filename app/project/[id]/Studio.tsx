@@ -999,6 +999,7 @@ export default function Studio({
       captionStyle?: string | null;
       narration?: string;
       emotion?: string | null;
+      speaker?: string | null;
     }
   ) {
     const data = await call("/api/scene/source", {
@@ -1045,6 +1046,39 @@ export default function Studio({
       await patchSceneSource(i, { emotion: id || null });
     } catch (e) {
       setError(e instanceof Error ? e.message : "감정 저장 실패");
+    }
+  }
+
+  // [cliche] 씬 화자 지정 → 대사별로 인물/내레이션 배정(캐릭터별 목소리로 더빙).
+  async function setSpeaker(i: number, name: string) {
+    setError(null);
+    try {
+      await patchSceneSource(i, { speaker: name || null });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "화자 저장 실패");
+    }
+  }
+
+  // [cliche] 인물 이름 목록 + 이름 변경(cast·목소리·씬 화자 동기화).
+  const cast = project.cast ?? [];
+  async function renameCast(from: string, to: string) {
+    const t = to.trim();
+    if (!t || t === from) return;
+    setError(null);
+    try {
+      await call("/api/project/cast", { projectId: project.id, rename: { from, to: t } });
+      setProject((p) => ({
+        ...p,
+        cast: (p.cast ?? []).map((c) => (c === from ? t : c)),
+        castVoices: p.castVoices
+          ? Object.fromEntries(
+              Object.entries(p.castVoices).map(([k, v]) => [k === from ? t : k, v])
+            )
+          : p.castVoices,
+        scenes: p.scenes.map((s) => (s.speaker === from ? { ...s, speaker: t } : s)),
+      }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "인물 이름 변경 실패");
     }
   }
 
@@ -3511,12 +3545,30 @@ export default function Studio({
           <span className="text-[10px] text-zinc-400">★=내레이션 추천 · 바꾸면 음성 재생성</span>
         </div>
 
-        {/* [cliche] 캐릭터별 목소리 — 씬 화자(A/B…)마다 다른 목소리. 비우면 위 프로젝트 목소리. */}
+        {/* [cliche] 인물 이름 편집 — 바꾸면 대사 화자·목소리도 함께 바뀜. */}
+        {project.mode === "cliche" && cast.length > 0 && (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="text-[11px] text-zinc-500">인물 이름</span>
+            {cast.map((name) => (
+              <input
+                key={name}
+                defaultValue={name}
+                onBlur={(e) => renameCast(name, e.target.value)}
+                disabled={busy !== null}
+                className="w-24 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1 text-xs outline-none focus:border-pink-500 disabled:opacity-50"
+              />
+            ))}
+            <span className="text-[10px] text-zinc-400">이름 바꾸면 대사 화자·목소리도 같이 바뀝니다</span>
+          </div>
+        )}
+
+        {/* [cliche] 캐릭터별 목소리 — 인물·내레이션마다 다른 목소리. 비우면 위 프로젝트 목소리. */}
         {project.mode === "cliche" &&
           (() => {
-            // 씬에 등장하는 화자 + "내레이션"(항상) — 나레이터 목소리를 늘 고를 수 있게.
+            // 인물(cast) + 씬 화자 + "내레이션"(항상). 나레이터·인물 목소리를 늘 고를 수 있게.
             const speakers = [
               ...new Set([
+                ...cast,
                 ...project.scenes.map((s) => s.speaker).filter(Boolean),
                 "내레이션",
               ]),
@@ -3529,7 +3581,7 @@ export default function Studio({
                 {speakers.map((sp) => (
                   <div key={sp} className="flex flex-wrap items-center gap-2">
                     <span className="inline-block w-24 shrink-0 text-[11px] text-zinc-500">
-                      {sp === "내레이션" ? "🎙️ 내레이션" : `🗣️ 인물 ${sp}`}
+                      {sp === "내레이션" ? "🎙️ 내레이션" : `🗣️ ${sp}`}
                     </span>
                     <select
                       value={castVoices[sp] ?? ""}
@@ -3656,6 +3708,31 @@ export default function Studio({
                         )}
                       </div>
                     </div>
+                    {/* [cliche] 이 대사의 화자 — 인물/내레이션 지정. 그 목소리로 더빙된다. */}
+                    {project.mode === "cliche" && (
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                        <span className="text-[10px] text-zinc-400">🗣️ 화자</span>
+                        <select
+                          value={sc.speaker ?? ""}
+                          onChange={(e) => setSpeaker(i, e.target.value)}
+                          disabled={voiceBusy !== null}
+                          className="rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1 text-[11px] outline-none focus:border-pink-500 disabled:opacity-50"
+                        >
+                          <option value="">미지정 (기본 목소리)</option>
+                          {[
+                            ...new Set([
+                              ...cast,
+                              "내레이션",
+                              ...(sc.speaker ? [sc.speaker] : []),
+                            ]),
+                          ].map((sp) => (
+                            <option key={sp} value={sp}>
+                              {sp === "내레이션" ? "🎙️ 내레이션" : sp}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                     {/* 오디오 바는 카드 전체 폭 별도 줄. 네이티브 <audio controls> 는
                         모바일 최소 폭이 viewport 를 넘겨 가로 스크롤을 만들어 커스텀
                         미니 플레이어(MiniAudio)로 대체 — 폭을 완전히 제어. */}

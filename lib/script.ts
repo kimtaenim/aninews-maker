@@ -88,8 +88,9 @@ export async function generateClicheScript(args: {
   tropes: string[]; // 고른 클리셰(자유 입력 포함)
   styleBible: string;
   userPrompt?: string;
+  cast?: string[]; // 등장 인물 이름 — 화자(speaker)로 사용. 없으면 A/B.
 }): Promise<{ scenes: Scene[]; costUsd: number }> {
-  const { projectId, tropes, styleBible, userPrompt } = args;
+  const { projectId, tropes, styleBible, userPrompt, cast } = args;
   const client = getAnthropic();
   const section = getPrompt("script_cliche");
   const system = formatPrompt(section.system, { style_bible: styleBible });
@@ -99,9 +100,14 @@ export async function generateClicheScript(args: {
     userPrompt ? `추가 지시: ${userPrompt}\n` : "",
     `연애 클리셰(트로프): ${tropes.filter(Boolean).join(", ") || "설렘 가득한 로맨스"}`,
     "",
-    "위 클리셰들을 엮어 두 주인공(A·B)의 미니 러브스토리 5~6씬으로 만들어줘.",
+    cast && cast.length
+      ? `등장 인물(이 이름들을 speaker 로 그대로 써): ${cast.join(", ")}`
+      : "",
+    "위 클리셰들을 엮어 주인공들의 미니 러브스토리 5~6씬으로 만들어줘.",
     '각 씬: narration(한국어, 짧은 한 줄 — 자막이자 소리내는 대사. 캐릭터면 오글거리는 클리셰 대사, 나레이터면 상황설명·독백),',
-    'speaker("A"/"B"=그 주인공 대사, "내레이션"=나레이터. 대부분 대사로 하고 "내레이션" 1~2컷만 섞어),',
+    cast && cast.length
+      ? `speaker(대사면 위 인물 이름 중 하나 "${cast.join('"/"')}", 나레이터면 "내레이션". 대부분 대사 + "내레이션" 1~2컷),`
+      : 'speaker("A"/"B"=그 주인공 대사, "내레이션"=나레이터. 대부분 대사로 하고 "내레이션" 1~2컷만 섞어),',
     'image_prompt(영어, 글로시 웹툰 로맨스 비주얼), motion(영어, MV 카메라워크), duration_sec(3~6).',
     '반드시 JSON 만: {"scenes":[{"narration":"...","speaker":"A","image_prompt":"...","motion":"...","duration_sec":4}]}',
   ]
