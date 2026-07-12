@@ -90,6 +90,10 @@ export async function POST(req: NextRequest) {
         quality: body.quality,
         referenceImageUrl:
           s.imageSource === "reference" ? s.referenceImageUrl : undefined,
+        // [cliche] 캐스팅 포트레이트 — 등장인물 외모를 시트로 고정(키프레임과 함께 참조).
+        portraitUrls: project.castMembers
+          ?.map((m) => m.portraitUrl)
+          .filter((u): u is string => !!u),
         paletteHint: s.paletteHint,
         subtitlePosition: project.subtitle?.position, // 비워둘 지점(자막 위치) 반영
       });

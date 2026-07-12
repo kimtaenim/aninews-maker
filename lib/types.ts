@@ -94,6 +94,18 @@ export interface SceneLine {
   audioUrl?: string; // 이 줄 더빙 오디오 (Blob)
 }
 
+// [cliche] 캐스팅 단계 산출물 — 인물 한 명. 새 프로젝트 위저드(캐스팅 화면)에서 만들고,
+// cast(이름 목록)·castVoices(이름→목소리)는 여기서 파생·동기화되는 미러다(기존 경로 무회귀).
+export interface CastMember {
+  name: string; // 인물 이름(화자 키 — cast/castVoices/씬 speaker 와 동일 문자열)
+  archetype?: string; // 클리셰 성격(예: "츤데레남") — 스크립트·포트레이트 생성에 사용
+  faceSource?: "upload" | "generate"; // 얼굴 출처. upload=사진 업로드→스타일화 변환
+  faceUploadUrl?: string; // 업로드 원본 사진(변환 입력). 재변환용으로 보관
+  faceDesc?: string; // 생성 모드 외모 설명(예: "은발 단발, 안경")
+  portraitUrl?: string; // 확정 포트레이트(캐릭터 시트) — 키프레임·씬 생성 참조로 주입
+  voiceId?: string; // 이 인물 목소리(castVoices 미러)
+}
+
 // ── StepChat: 단계별 Claude 미세조정 창 ──────────────────────────────────────
 export interface StepChatTurn {
   role: "user" | "assistant";
@@ -147,6 +159,7 @@ export interface Project {
   // cliche 는 같은 파이프라인을 쓰되 스크립트(대사)·스타일·카메라·목소리를 로맨스로 프리셋.
   mode?: "news" | "cliche";
   cast?: string[]; // [cliche] 등장 인물 이름들(화자 = 이 이름 또는 "내레이션"). 목소리·씬 화자에 사용.
+  castMembers?: CastMember[]; // [cliche] 캐스팅 단계 산출물(얼굴·목소리 포함). cast/castVoices 의 원천.
   styleProfileId: string; // config/style-profiles.json 의 id
   styleBible: string; // 키프레임에서 확정 → 전 씬 공유되는 스타일 규약
   keyframeUrl?: string;

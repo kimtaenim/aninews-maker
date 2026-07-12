@@ -55,6 +55,10 @@ export async function POST(req: NextRequest) {
       quality: body.quality ?? "low",
       count: 3,
       referenceImageUrl: project.keyframeReferenceUrl, // 업로드한 참조본이 있으면 img2img
+      // [cliche] 캐스팅 포트레이트 — 등장인물 외모를 시트로 고정.
+      portraitUrls: project.castMembers
+        ?.map((m) => m.portraitUrl)
+        .filter((u): u is string => !!u),
       subtitlePosition: project.subtitle?.position, // 비워둘 지점(자막 위치) 반영
     });
     // 생성(수십 초) 동안 다른 저장이 있었을 수 있으니 최신 재읽기 후 머지.

@@ -13,6 +13,7 @@ import type { SourceMaterial } from "./source";
 import {
   STEP_ORDER,
   DEFAULT_SUBTITLE,
+  type CastMember,
   type Project,
   type StepKind,
   type StepState,
@@ -40,14 +41,26 @@ export interface CreateProjectArgs {
   ownerEmail?: string; // 만든 사람(로그인 이메일)
   mode?: "news" | "cliche"; // 콘텐츠 모드(기본 news). cliche=ani-cliché(연애).
   cast?: string[]; // [cliche] 등장 인물 이름들
+  castMembers?: CastMember[]; // [cliche] 캐스팅 위저드 산출물(얼굴·목소리)
+  castVoices?: Record<string, string>; // [cliche] 인물별 목소리(castMembers 에서 파생)
 }
 
 // 1단계 소스 캡처 = 프로젝트 생성. 소스 재료는 steps.source.params 에 담고
 // source 단계를 "generated"(검수 대기)로 둔다. styleBible 은 프로필 image_bible
 // 에서 시작해 keyframe 단계에서 확정·갱신된다.
 export async function createProject(args: CreateProjectArgs): Promise<Project> {
-  const { material, styleProfileId, videoModelId, ttsEnabled, userPrompt, ownerEmail, mode, cast } =
-    args;
+  const {
+    material,
+    styleProfileId,
+    videoModelId,
+    ttsEnabled,
+    userPrompt,
+    ownerEmail,
+    mode,
+    cast,
+    castMembers,
+    castVoices,
+  } = args;
   const profile = getStyleProfile(styleProfileId);
   const now = Date.now();
   const steps = emptySteps();
@@ -64,6 +77,8 @@ export async function createProject(args: CreateProjectArgs): Promise<Project> {
     title: material.title,
     ...(mode === "cliche" ? { mode } : {}), // news 는 필드 안 남겨 기존 프로젝트와 동일
     ...(cast?.length ? { cast } : {}),
+    ...(castMembers?.length ? { castMembers } : {}),
+    ...(castVoices && Object.keys(castVoices).length ? { castVoices } : {}),
     styleProfileId,
     styleBible: profile.imageBible,
     scenes: [],

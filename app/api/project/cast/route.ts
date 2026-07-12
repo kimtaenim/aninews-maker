@@ -42,7 +42,19 @@ export async function POST(req: NextRequest) {
       delete cv[from];
       project.castVoices = cv;
     }
-    project.scenes = project.scenes.map((s) => (s.speaker === from ? { ...s, speaker: to } : s));
+    // 캐스팅 산출물(castMembers)의 이름도 함께 — cast/castVoices 와 항상 같은 키를 유지.
+    if (project.castMembers?.length) {
+      project.castMembers = project.castMembers.map((m) =>
+        m.name === from ? { ...m, name: to } : m
+      );
+    }
+    // 씬 화자 — 씬 단위(speaker)와 줄 단위(lines[].speaker) 모두 동기화.
+    // (줄 화자를 빼먹으면 castVoices 조회가 옛 이름으로 실패해 그 줄만 기본 목소리로 떨어진다.)
+    project.scenes = project.scenes.map((s) => {
+      const lines = s.lines?.map((l) => (l.speaker === from ? { ...l, speaker: to } : l));
+      const next = s.speaker === from ? { ...s, speaker: to } : s;
+      return lines ? { ...next, lines } : next;
+    });
   } else if (Array.isArray(body.cast)) {
     project.cast =
       body.cast.map((c) => (typeof c === "string" ? c.trim() : "")).filter(Boolean) || undefined;

@@ -3,6 +3,7 @@ import { createProject } from "@/lib/projectStore";
 import { getSessionEmail } from "@/lib/auth";
 import { getStyleProfile } from "@/lib/styleProfiles";
 import type { SourceMaterial } from "@/lib/source";
+import type { CastMember } from "@/lib/types";
 import videoModels from "@/config/video-models.json";
 
 export const runtime = "nodejs";
@@ -12,7 +13,13 @@ export const maxDuration = 30;
 // body: { tropes: string[], styleProfileId?, userPrompt? }
 // mode="cliche" 로 만들고, 2단계(script)는 generateClicheScript 로 분기(대사+화자 씬).
 export async function POST(req: NextRequest) {
-  let body: { tropes?: unknown; characters?: unknown; styleProfileId?: string; userPrompt?: string };
+  let body: {
+    tropes?: unknown;
+    characters?: unknown;
+    castMembers?: unknown; // 캐스팅 위저드 산출물(얼굴·목소리 포함) — 있으면 characters 보다 우선
+    styleProfileId?: string;
+    userPrompt?: string;
+  };
   try {
     body = await req.json();
   } catch {
@@ -26,18 +33,37 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "클리셰(트로프)를 하나 이상 골라주세요" }, { status: 400 });
   }
 
+  // 캐스팅 위저드 산출물 — [{name, archetype, faceSource, faceUploadUrl, faceDesc, portraitUrl, voiceId}].
+  // 있으면 이게 인물 정보의 원천(characters 는 무시). cast/castVoices 는 여기서 파생·동기화.
+  const s = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  const castMembers: CastMember[] = (Array.isArray(body.castMembers) ? body.castMembers : [])
+    .filter((m): m is Record<string, unknown> => !!m && typeof m === "object")
+    .map((m, i) => ({
+      name: s(m.name) || `인물${i + 1}`,
+      ...(s(m.archetype) ? { archetype: s(m.archetype) } : {}),
+      ...(m.faceSource === "upload" || m.faceSource === "generate"
+        ? { faceSource: m.faceSource as "upload" | "generate" }
+        : {}),
+      ...(s(m.faceUploadUrl) ? { faceUploadUrl: s(m.faceUploadUrl) } : {}),
+      ...(s(m.faceDesc) ? { faceDesc: s(m.faceDesc) } : {}),
+      ...(s(m.portraitUrl) ? { portraitUrl: s(m.portraitUrl) } : {}),
+      ...(s(m.voiceId) ? { voiceId: s(m.voiceId) } : {}),
+    }));
+
   // 인물 설정 — [{name, archetype}] 또는 [string]. 각 인물의 이름·성격을 뽑는다.
-  const rawChars = (Array.isArray(body.characters) ? body.characters : []).map((c) => {
-    if (typeof c === "string") return { name: "", archetype: c.trim() };
-    if (c && typeof c === "object") {
-      const o = c as { name?: unknown; archetype?: unknown };
-      return {
-        name: typeof o.name === "string" ? o.name.trim() : "",
-        archetype: typeof o.archetype === "string" ? o.archetype.trim() : "",
-      };
-    }
-    return { name: "", archetype: "" };
-  });
+  const rawChars = castMembers.length
+    ? castMembers.map((m) => ({ name: m.name, archetype: m.archetype ?? "" }))
+    : (Array.isArray(body.characters) ? body.characters : []).map((c) => {
+        if (typeof c === "string") return { name: "", archetype: c.trim() };
+        if (c && typeof c === "object") {
+          const o = c as { name?: unknown; archetype?: unknown };
+          return {
+            name: typeof o.name === "string" ? o.name.trim() : "",
+            archetype: typeof o.archetype === "string" ? o.archetype.trim() : "",
+          };
+        }
+        return { name: "", archetype: "" };
+      });
   // 인물 이름(cast) — 이름 없으면 "인물1"… 로 채운다. 화자·목소리 키로 쓴다.
   const cast = rawChars
     .filter((c) => c.name || c.archetype)
@@ -46,6 +72,10 @@ export async function POST(req: NextRequest) {
   const characters = rawChars
     .filter((c) => c.name || c.archetype)
     .map((c) => (c.name && c.archetype ? `${c.name}(${c.archetype})` : c.name || c.archetype));
+  // 인물별 목소리 — 캐스팅 위저드에서 골랐으면 castVoices 미러로 동기화.
+  const castVoices = Object.fromEntries(
+    castMembers.filter((m) => m.voiceId).map((m) => [m.name, m.voiceId as string])
+  );
 
   // 그림체: 웹툰(기본) 또는 실사. 그 외 프로필은 클리셰에 부적합 → 웹툰으로.
   const styleProfileId = body.styleProfileId === "realistic" ? "realistic" : "webtoon-romance";
@@ -82,6 +112,8 @@ export async function POST(req: NextRequest) {
           .join(". ") || undefined,
       mode: "cliche",
       cast: cast.length ? cast : undefined,
+      castMembers: castMembers.length ? castMembers : undefined,
+      castVoices: Object.keys(castVoices).length ? castVoices : undefined,
     });
     return NextResponse.json({ ok: true, projectId: project.id });
   } catch (e) {
