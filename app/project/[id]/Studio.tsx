@@ -3520,11 +3520,13 @@ export default function Studio({
             return speakers.length ? (
               <div className="mt-2 grid gap-1.5 rounded-lg border border-pink-200 dark:border-pink-900/50 bg-pink-50/40 dark:bg-pink-950/20 p-2">
                 <span className="text-[11px] font-medium text-pink-700 dark:text-pink-300">
-                  캐릭터별 목소리 (화자마다 다르게)
+                  캐릭터별 목소리 (인물 + 내레이션 각각 더빙)
                 </span>
                 {speakers.map((sp) => (
                   <div key={sp} className="flex flex-wrap items-center gap-2">
-                    <span className="w-8 text-[11px] text-zinc-500">{sp}</span>
+                    <span className="inline-block w-24 shrink-0 text-[11px] text-zinc-500">
+                      {sp === "내레이션" ? "🎙️ 내레이션" : `🗣️ 인물 ${sp}`}
+                    </span>
                     <select
                       value={castVoices[sp] ?? ""}
                       onChange={(e) => saveVoice(e.target.value, sp)}
