@@ -7,7 +7,7 @@
 
 import { getAnthropic, MODELS } from "./anthropic";
 import { getPrompt, formatPrompt } from "./prompts";
-import { parseScenes } from "./scenes";
+import { parseScenes, parseClicheScenes } from "./scenes";
 import { anthropicCostUsd, recordCost } from "./cost";
 import type { Scene } from "./types";
 import type { SourceMaterial } from "./source";
@@ -104,12 +104,17 @@ export async function generateClicheScript(args: {
       ? `등장 인물(이 이름들을 speaker 로 그대로 써): ${cast.join(", ")}`
       : "",
     "위 클리셰들을 엮어 주인공들의 미니 러브스토리 5~6씬으로 만들어줘.",
-    '각 씬: narration(한국어, 짧은 한 줄 — 자막이자 소리내는 대사. 캐릭터면 오글거리는 클리셰 대사, 나레이터면 상황설명·독백),',
+    "각 씬은 lines 배열(그 씬에서 나오는 대사·내레이션 줄들, 순서대로). 한 씬에 내레이션 줄 +",
+    "대사 여러 줄을 섞어도 됨(예: 내레이션 한 줄 뒤 두 인물이 티키타카).",
+    "각 줄: text(한국어 한 줄 — 대사면 오글거리는 클리셰, 내레이터면 상황설명·독백),",
     cast && cast.length
-      ? `speaker(대사면 위 인물 이름 중 하나 "${cast.join('"/"')}", 나레이터면 "내레이션". 대부분 대사 + "내레이션" 1~2컷),`
-      : 'speaker("A"/"B"=그 주인공 대사, "내레이션"=나레이터. 대부분 대사로 하고 "내레이션" 1~2컷만 섞어),',
-    'image_prompt(영어, 글로시 웹툰 로맨스 비주얼), motion(영어, MV 카메라워크), duration_sec(3~6).',
-    '반드시 JSON 만: {"scenes":[{"narration":"...","speaker":"A","image_prompt":"...","motion":"...","duration_sec":4}]}',
+      ? `speaker(대사면 인물 이름 "${cast.join('"/"')}" 중 하나, 내레이션이면 "내레이션"),`
+      : 'speaker(대사면 주인공 이름/"A"/"B", 내레이션이면 "내레이션"),',
+    'emotion(선택, 대사 감정: flutter=설렘/throb=심쿵/shy=부끄럼/aegyo=애교/whisper=속삭임/serious=진지/teary=울컥/tease=능글/excited=신남).',
+    '그리고 image_prompt(영어, 글로시 웹툰 로맨스 비주얼), motion(영어, MV 카메라워크), duration_sec(3~8).',
+    '반드시 JSON 만: {"scenes":[{"lines":[{"text":"...","speaker":"내레이션"},{"text":"...","speaker":"' +
+      (cast && cast[0] ? cast[0] : "지훈") +
+      '","emotion":"throb"}],"image_prompt":"...","motion":"...","duration_sec":5}]}',
   ]
     .filter(Boolean)
     .join("\n");
@@ -140,7 +145,7 @@ export async function generateClicheScript(args: {
     meta: { kind: "script-cliche" },
   });
 
-  const scenes = parseScenes(raw);
+  const scenes = parseClicheScenes(raw);
   if (!scenes || scenes.length === 0) {
     throw new Error("클리셰 씬 배열 파싱 실패 — Claude 응답에서 JSON 을 못 찾았어요");
   }

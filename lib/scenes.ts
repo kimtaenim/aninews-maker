@@ -66,3 +66,49 @@ export function parseScenes(raw: string): Scene[] | null {
     };
   });
 }
+
+// [cliche] 줄 배열(내레이션+대사 여러 줄) 스크립트 파서.
+const RawClicheLine = z.object({
+  text: z.string().min(1),
+  speaker: z.string().optional(),
+  emotion: z.string().optional(),
+});
+const RawClicheScene = z.object({
+  lines: z.array(RawClicheLine).min(1),
+  image_prompt: z.string().optional(),
+  motion: z.string().optional(),
+  duration_sec: z.number().optional(),
+});
+const RawClicheScript = z.object({ scenes: z.array(RawClicheScene).min(1) });
+
+export function parseClicheScenes(raw: string): Scene[] | null {
+  const m = raw.match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  let json: unknown;
+  try {
+    json = JSON.parse(m[0]);
+  } catch {
+    return null;
+  }
+  const parsed = RawClicheScript.safeParse(json);
+  if (!parsed.success) return null;
+
+  return parsed.data.scenes.map((s, index) => {
+    const lines = s.lines.map((l) => ({
+      text: l.text.trim(),
+      ...(l.speaker?.trim() ? { speaker: l.speaker.trim() } : {}),
+      ...(l.emotion?.trim() ? { emotion: l.emotion.trim() } : {}),
+    }));
+    // 자막·길이용 합친 텍스트. 줄바꿈으로 이어 캡션이 줄 경계를 존중하게.
+    const narration = lines.map((l) => l.text).join("\n");
+    return {
+      index,
+      narration,
+      lines,
+      imagePrompt: (s.image_prompt ?? "").trim(),
+      motion: (s.motion ?? "").trim(),
+      durationSec: estimateDuration(narration.replace(/\n/g, " ")),
+      status: "generated" as const,
+    };
+  });
+}

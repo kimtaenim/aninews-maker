@@ -49,7 +49,8 @@ export type VideoSourceMode = "generate" | "upload";
 export interface Scene {
   index: number;
   narration: string; // 자막 + (기본)보이스오버 소스 (한국어). 자막 단계는 항상 이걸 쓴다.
-  speaker?: string; // [cliche] 대사 화자 ("A"|"B" 두 주인공). 캐릭터별 목소리 라우팅에 사용.
+  lines?: SceneLine[]; // [cliche] 씬 안 대사/내레이션 줄들(줄마다 화자·감정, 줄별 더빙 후 이어붙임).
+  speaker?: string; // [cliche·레거시] 씬 단일 화자. lines 있으면 lines 가 우선.
   emotion?: string; // [cliche] 감정 연기 id (lib/emotions). TTS 에 오디오 태그로 과장 연기.
   voiceId?: string; // [cliche] 이 씬(대사) 전용 목소리 오버라이드. 없으면 화자(castVoices)→프로젝트 목소리.
   ttsScript?: string; // 음성(TTS) 전용 오버라이드. 비면 narration 사용. 자막엔 영향 없음.
@@ -79,6 +80,15 @@ export interface TtsWord {
   word: string;
   startSec: number;
   endSec: number;
+}
+
+// [cliche] 한 씬 안의 대사/내레이션 한 줄. 씬은 여러 줄을 가질 수 있고(내레이션+대사),
+// 각 줄은 화자·감정이 다르며 줄별로 더빙된다. 줄 오디오들을 이어붙여 씬 오디오가 된다.
+export interface SceneLine {
+  text: string; // 이 줄 텍스트(자막·음성)
+  speaker?: string; // 인물 이름 또는 "내레이션"
+  emotion?: string; // 감정 연기 id (lib/emotions)
+  audioUrl?: string; // 이 줄 더빙 오디오 (Blob)
 }
 
 // ── StepChat: 단계별 Claude 미세조정 창 ──────────────────────────────────────
