@@ -7,6 +7,7 @@
 // ============================================================================
 
 import { elevenLabsCostUsd, usdToKrw } from "./cost";
+import { emotionTag } from "./emotions";
 
 const API_BASE = "https://api.elevenlabs.io/v1";
 
@@ -14,6 +15,8 @@ const API_BASE = "https://api.elevenlabs.io/v1";
 // 한국어에 맞는 voice 를 지정하는 걸 권장.
 const DEFAULT_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || "EXAVITQu4vr4xnSDxMaL";
 const DEFAULT_MODEL = "eleven_multilingual_v2"; // 한국어 지원
+// 감정 연기용 표현 모델 — 오디오 태그([shyly] 등)로 과장 연기(ani-cliché). 감정 지정 시에만 사용.
+const EXPRESSIVE_MODEL = process.env.ELEVENLABS_V3_MODEL || "eleven_v3";
 const TTS_TIMEOUT_MS = 60_000;
 
 export function getElevenLabsKey(): string {
@@ -29,18 +32,23 @@ export async function synthesizeSpeech(opts: {
   voiceId?: string;
   model?: string;
   speed?: number; // 1.0 기본. ElevenLabs voice_settings.speed 허용 범위 0.7~1.2.
+  emotion?: string; // [cliche] 감정 id — 있으면 표현모델(v3)+오디오 태그로 과장 연기.
 }): Promise<{
   audioBuffer: ArrayBuffer;
   costUsd: number;
   costKrw: number;
   charsUsed: number;
+  model: string;
 }> {
   const key = getElevenLabsKey();
-  const text = (opts.text ?? "").trim();
+  let text = (opts.text ?? "").trim();
   if (!text) throw new Error("TTS 텍스트가 비었어요");
 
   const voiceId = opts.voiceId || DEFAULT_VOICE_ID;
-  const model = opts.model || DEFAULT_MODEL;
+  // 감정이 지정된 경우에만 표현모델(v3)+오디오 태그. 아니면 기존 다국어 v2 그대로(무변화).
+  const tag = emotionTag(opts.emotion);
+  const model = opts.model || (tag ? EXPRESSIVE_MODEL : DEFAULT_MODEL);
+  if (tag) text = `[${tag}] ${text}`;
   // ElevenLabs 는 speed 0.7~1.2 만 허용 — 범위 밖 값은 클램프.
   const speed = Math.min(1.2, Math.max(0.7, opts.speed ?? 1.0));
 
@@ -68,5 +76,5 @@ export async function synthesizeSpeech(opts: {
   const audioBuffer = await r.arrayBuffer();
   const charsUsed = text.length;
   const costUsd = elevenLabsCostUsd(charsUsed);
-  return { audioBuffer, costUsd, costKrw: usdToKrw(costUsd), charsUsed };
+  return { audioBuffer, costUsd, costKrw: usdToKrw(costUsd), charsUsed, model };
 }

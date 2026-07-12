@@ -20,6 +20,7 @@ import { resolveLang, otherLanguages } from "@/lib/languages";
 import Spinner from "@/components/Spinner";
 import ScenePreview from "./ScenePreview";
 import CaptionControls from "./CaptionControls";
+import { EMOTIONS } from "@/lib/emotions";
 import MiniAudio from "./MiniAudio";
 import SceneRecorder from "./SceneRecorder";
 import AutoTextarea from "./AutoTextarea";
@@ -997,6 +998,7 @@ export default function Studio({
       videoUrl?: string | null;
       captionStyle?: string | null;
       narration?: string;
+      emotion?: string | null;
     }
   ) {
     const data = await call("/api/scene/source", {
@@ -1033,6 +1035,16 @@ export default function Studio({
       await patchSceneSource(i, { captionStyle: id || null });
     } catch (e) {
       setError(e instanceof Error ? e.message : "자막 스타일 저장 실패");
+    }
+  }
+
+  // [cliche] 씬 감정 연기 저장 → 음성 생성 시 오디오 태그로 과장 연기.
+  async function setEmotion(i: number, id: string) {
+    setError(null);
+    try {
+      await patchSceneSource(i, { emotion: id || null });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "감정 저장 실패");
     }
   }
 
@@ -2260,6 +2272,30 @@ export default function Studio({
                       onStyle={(id) => setCaptionStyle(i, id)}
                     />
                   </div>
+                  {/* [cliche] 감정 연기 칩 — 그 씬 대사의 과장 연기(음성에 오디오 태그로 반영). */}
+                  {project.mode === "cliche" && (
+                    <div className="flex flex-wrap items-center gap-1">
+                      <span className="mr-1 text-[10px] text-zinc-400">감정</span>
+                      {EMOTIONS.map((em) => {
+                        const active = project.scenes[i]?.emotion === em.id;
+                        return (
+                          <button
+                            key={em.id}
+                            type="button"
+                            onClick={() => setEmotion(i, active ? "" : em.id)}
+                            className={
+                              "rounded-md px-2 py-0.5 text-[11px] border transition-colors " +
+                              (active
+                                ? "border-pink-500 bg-pink-50 text-pink-700 dark:bg-pink-950/50 dark:text-pink-300 font-medium"
+                                : "border-zinc-300 dark:border-zinc-700 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900")
+                            }
+                          >
+                            {em.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                   <p className="text-[10px] text-zinc-400">
                     길이 ~{estimateDuration(stripMarks(sc.narration))}초 (글자수 기준 자동). 이미지
                     프롬프트·모션은 3~5단계에서 생성합니다.

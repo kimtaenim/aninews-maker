@@ -93,6 +93,8 @@ export async function POST(req: NextRequest) {
       voiceId: isDub
         ? undefined
         : (scene?.speaker && project.castVoices?.[scene.speaker]) || project.voiceId,
+      // [cliche] 씬 감정 → ElevenLabs 오디오 태그로 과장 연기(더빙 트랙엔 미적용).
+      emotion: isDub ? undefined : scene?.emotion,
       speed: project.voiceSpeed ?? 1.2, // 기본 1.2배(미설정 프로젝트도 동일하게).
     });
     const { url } = await uploadAsset(

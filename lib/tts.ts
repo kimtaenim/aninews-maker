@@ -65,8 +65,10 @@ export async function synthesize(opts: {
   provider?: string;
   voiceId?: string; // 프로젝트가 고른 목소리(config/voices.json). 없으면 엔진별 env 기본 voice.
   speed?: number; // 보이스오버 속도(1.0 기본). 엔진별 voice_settings.speed / output.tempo 로 전달.
+  emotion?: string; // [cliche] 감정 연기 id(lib/emotions). ElevenLabs 에만 오디오 태그로 과장 연기.
 }): Promise<TtsResult> {
   if (resolveTtsProvider(opts.provider) === "typecast") {
+    // Typecast 는 오디오 태그 미지원 — 감정은 무시(추후 자체 emotion 파라미터로 확장 가능).
     const out = await synthesizeSpeechTypecast({
       text: opts.text,
       lang: opts.lang,
@@ -75,6 +77,11 @@ export async function synthesize(opts: {
     });
     return { ...out, vendor: "typecast", model: out.model };
   }
-  const out = await synthesizeSpeech({ text: opts.text, voiceId: opts.voiceId, speed: opts.speed });
-  return { ...out, vendor: "elevenlabs", model: "eleven_multilingual_v2" };
+  const out = await synthesizeSpeech({
+    text: opts.text,
+    voiceId: opts.voiceId,
+    speed: opts.speed,
+    emotion: opts.emotion,
+  });
+  return { ...out, vendor: "elevenlabs", model: out.model };
 }
