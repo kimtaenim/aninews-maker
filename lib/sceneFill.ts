@@ -118,21 +118,24 @@ export async function generateMotions(args: {
   const system =
     args.mode === "cliche"
       ? "You write short English MOTION prompts for an image-to-video model, for a glossy Korean romance " +
-        "MUSIC VIDEO. Every scene must feel STYLISH and cinematic — never plain, never static. " +
-        "The CAMERA does the dramatic work while the subject stays mostly still (soft hair/clothes " +
-        "flutter, breathing, a blink at most):\n" +
-        "- Camera (pick ONE bold move per scene, VARY across scenes): dramatic slow push-in ending in an " +
-        "intimate face close-up, crash zoom that suddenly slams in, speed-ramped dolly (starts in dreamy " +
-        "slow motion then suddenly bursts fast), whip pan with heavy motion blur, elegant slow orbit like " +
-        "a luxury perfume commercial, dolly-zoom vertigo (background warps while the subject stays the " +
-        "same size), rack focus snapping onto the glistening eyes.\n" +
-        "- Spell out SPEED changes explicitly in English (e.g. 'starts in dreamy slow motion, then " +
-        "suddenly accelerates'). Add glossy MV dressing where it fits: lens bloom, sparkles, soft " +
-        "slow-motion, a romantic backlight sweep.\n" +
-        "Use the lines only to judge the emotional beat (심쿵 → crash zoom / rack focus; 애틋 → slow " +
-        "push-in / slow orbit; 갈등 → whip pan / vertigo). " +
+        "MUSIC VIDEO. Every scene must feel STYLISH and cinematic — never plain, never static:\n" +
+        "- Camera (pick ONE bold move per scene, VARY across scenes): fast push-in slamming into a face " +
+        "close-up, crash zoom, speed-ramped dolly (dreamy slow motion that SNAPS into a violently fast " +
+        "rush), whip pan with heavy motion blur then a hard stop, full sweeping orbit like a luxury " +
+        "perfume commercial, dolly-zoom vertigo (background warps and stretches), rack focus snapping " +
+        "onto the glistening eyes.\n" +
+        "- Always state how the FRAMING changes from first frame to last (e.g. 'starts medium, ends in " +
+        "an extreme close-up on the eyes') and spell out SPEED changes explicitly ('begins in dreamy " +
+        "slow motion, then suddenly accelerates').\n" +
+        "- The subject may move too: hair and clothes whipping in wind, a head turn, a step toward " +
+        "camera. NEVER write 'subject stays still', 'camera only', 'gentle', 'subtle' or 'slightly' — " +
+        "those words make the shot timid. Add glossy MV dressing where it fits: lens bloom, sparkles, " +
+        "a dramatic backlight sweep.\n" +
+        "Use the lines only to judge the emotional beat (심쿵 → crash zoom / rack focus; 애틋 → " +
+        "slow-motion glamour / orbit; 갈등 → whip pan / vertigo). " +
         'One scene = one short English line, e.g. "Speed-ramped dolly-in: dreamy slow motion, then a ' +
-        'sudden fast rush toward her glistening eyes, lens bloom flaring". ' +
+        "violently fast rush ending in an extreme close-up on her glistening eyes, hair whipping, lens " +
+        'bloom flaring". ' +
         'Output ONLY JSON: {"items":[{"index":0,"motion":"..."}]} with the SAME indices, one per scene.'
       : "You write short English MOTION prompts for an image-to-video model. " +
         "The still image is already composed, so keep the movement light and natural — focus on camera work and " +

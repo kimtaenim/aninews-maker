@@ -93,18 +93,20 @@ const CAMERA_MOVES = [
   ["static", "■ 고정", "Locked-off static camera, no camera movement — only very subtle ambient motion; the subject stays still."],
 ] as const;
 
-// ani-cliché 전용 — 로맨스 뮤직비디오 카메라(무조건 스타일리시, re-animator 톤 참고).
+// ani-cliché 전용 — 로맨스 뮤직비디오 카메라. Grok v2 튜닝(2026-07-13): "Camera only /
+// subject barely moves" 같은 정지 앵커는 과장 카메라 지시와 충돌해 밋밋하게 타협됨(실사용
+// 확인) → 전부 제거하고, 시작→끝 프레이밍 변화와 속도를 명시. 검증되면 re-animator 이식.
 const CLICHE_CAMERA_MOVES = [
-  ["face-push", "💗 얼굴 푸시인", "Slow dramatic push-in toward the character's face, ending in an intimate close-up on the sparkling eyes — breathless heart-flutter. Camera only; the subject barely moves."],
-  ["hair-blow", "🌬️ 머리카락 슬로우", "Dreamy slow-motion as the character's hair and clothes flutter in a soft breeze, glossy strands catching the light — music-video romance. Camera drifts gently; the subject stays soft and still."],
-  ["rack-eyes", "👁️ 눈 랙포커스", "Rack focus snapping sharply from a soft foreground onto the character's glistening eyes — a sudden 심쿵 beat. Camera only."],
-  ["sparkle", "✨ 반짝 심쿵", "Gentle push-in as sparkles and soft bloom bloom around the character and a blush rises — exaggerated shoujo heart-flutter. Camera only; the subject barely moves."],
-  ["two-shot", "💞 투샷 드리프트", "Slow romantic camera drift across a two-shot of the two leads, soft bokeh and lens bloom — cinematic ballad energy. Camera drifts gently; subjects stay still."],
-  ["speed-ramp", "🚀 스피드 램프", "Speed-ramped dolly-in: starts in dreamy slow motion, then bursts into a rapid accelerating rush toward the subject — cinematic energy. Camera only; the subject barely moves."],
-  ["crash-in", "⚡ 크래시 줌인", "Camera creeps forward slowly, then suddenly accelerates into a dramatic crash zoom slamming toward the subject — explosive speed ramp. Camera only; the subject barely moves."],
-  ["vertigo", "🌀 현기증", "Extreme dolly zoom vertigo effect: aggressive dolly-in while zooming out, the background warping and stretching around the subject who stays the same size. Camera only."],
-  ["whip-pan", "💨 휩 팬", "Fast whip pan with heavy motion blur streaking across the scene, aggressive and energetic. Camera only; the subject stays mostly still."],
-  ["slow-orbit", "⟳ 느린 오비트", "Smooth elegant slow orbit gliding around the subject like a luxury perfume commercial — glossy and cinematic. Camera moves; the subject stays still."],
+  ["face-push", "💗 얼굴 푸시인", "Fast dramatic push-in that starts at a medium shot and ends slammed into an extreme close-up on the sparkling eyes — the framing changes completely, accelerating as it closes in. Hair drifts across the face; lens bloom flares at the end."],
+  ["hair-blow", "🌬️ 머리카락 슬로우", "Dreamy slow-motion glamour shot: a strong wind whips the character's hair and clothes in big flowing waves while the camera arcs slowly around; strands catch dramatic backlight with heavy bloom — a shampoo-commercial hero shot, lush and exaggerated."],
+  ["rack-eyes", "👁️ 눈 랙포커스", "Aggressive rack focus that SNAPS from a blurred foreground to razor-sharp glistening eyes, then a quick push-in right after the snap — a sudden heart-skip beat; a glint of light flashes across the eyes."],
+  ["sparkle", "✨ 반짝 심쿵", "Push-in while the whole frame blooms: sparkles burst around the character, a blush rises, and the background melts into glowing bokeh — exaggerated shoujo-manga heart-flutter, framing tightening from waist-up to a close-up."],
+  ["two-shot", "💞 투샷 드리프트", "Sweeping romantic crane-drift across the two leads: the camera glides in a wide arc from one face to the other, ending closer and lower than it started; bokeh lights streak past in the foreground."],
+  ["speed-ramp", "🚀 스피드 램프", "Speed-ramped dolly-in: begins in dreamy slow motion, then SNAPS into a violently fast rush toward the subject, ending in a tight close-up — the speed change must be obvious and abrupt."],
+  ["crash-in", "⚡ 크래시 줌인", "Crash zoom: the camera slams from a wide shot into an extreme close-up in a fraction of a second, motion blur streaking during the slam — explosive, abrupt, music-video punch."],
+  ["vertigo", "🌀 현기증", "Extreme dolly-zoom vertigo: aggressive dolly-in while zooming out so the background warps and stretches violently around the subject — the perspective distortion must be strong and unmistakable."],
+  ["whip-pan", "💨 휩 팬", "Violent whip pan streaking across the scene with heavy motion blur, then a hard stop reframing on the subject — fast, aggressive, energetic."],
+  ["slow-orbit", "⟳ 느린 오비트", "Elegant orbit gliding a FULL sweep around the subject like a luxury perfume commercial — the background rotates completely behind them while dramatic rim light sweeps across the face; glossy, cinematic, starting wide and finishing closer."],
 ] as const;
 
 // 4단계 이미지 스타일 칩 — 그룹별로 하나만 선택(그룹 간에는 자유 조합). 고르면 씬 이미지

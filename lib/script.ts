@@ -118,7 +118,9 @@ export async function generateClicheScript(args: {
     "무대사 '분위기 씬'도 1~2개 끼워도 좋아(비 오는 창밖, 노을 하늘, 스치는 손끝 클로즈업 같은",
     '감성 인서트): {"mood":true,"narration":"분위기 묘사(한국어)","lines":[]} — 이 씬은 더빙·자막 없이',
     "영상과 효과음만 나간다. 리듬상 전환점(고백 직전, 시간 경과)에 넣으면 좋다.",
-    '그리고 image_prompt(영어, 글로시 웹툰 로맨스 비주얼), motion(영어, MV 카메라워크), duration_sec(3~8).',
+    "그리고 image_prompt(영어, 글로시 웹툰 로맨스 비주얼), motion(영어 — 볼드한 MV 카메라 한 방:",
+    "씬마다 다른 무브, 시작→끝 프레이밍 변화와 속도 변화를 영어로 명시, gentle/subtle 금지),",
+    "duration_sec(3~8).",
     '반드시 JSON 만: {"scenes":[{"lines":[{"text":"...","speaker":"내레이션"},{"text":"...","speaker":"' +
       (cast && cast[0] ? cast[0] : "지훈") +
       '","emotion":"throb"}],"image_prompt":"...","motion":"...","duration_sec":5},' +
