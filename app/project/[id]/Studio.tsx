@@ -3514,8 +3514,12 @@ export default function Studio({
         {/* [cliche] 캐릭터별 목소리 — 씬 화자(A/B…)마다 다른 목소리. 비우면 위 프로젝트 목소리. */}
         {project.mode === "cliche" &&
           (() => {
+            // 씬에 등장하는 화자 + "내레이션"(항상) — 나레이터 목소리를 늘 고를 수 있게.
             const speakers = [
-              ...new Set(project.scenes.map((s) => s.speaker).filter(Boolean)),
+              ...new Set([
+                ...project.scenes.map((s) => s.speaker).filter(Boolean),
+                "내레이션",
+              ]),
             ] as string[];
             return speakers.length ? (
               <div className="mt-2 grid gap-1.5 rounded-lg border border-pink-200 dark:border-pink-900/50 bg-pink-50/40 dark:bg-pink-950/20 p-2">
