@@ -32,7 +32,11 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { motions, costUsd } = await generateMotions({ projectId, scenes });
+    const { motions, costUsd } = await generateMotions({
+      projectId,
+      scenes,
+      mode: project.mode === "cliche" ? "cliche" : "news",
+    });
     if (motions.size === 0) {
       return NextResponse.json(
         { ok: false, error: "모션 생성 결과가 비었어요 — 다시 시도해주세요." },

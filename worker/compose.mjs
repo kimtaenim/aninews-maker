@@ -147,7 +147,8 @@ export async function composeProject(projectId, lang) {
 
       const dubText =
         lang === "ko" ? "" : s.dub?.[lang]?.narration ?? (lang === "en" ? s.narrationEn : "");
-      const text = (lang === "ko" ? s.narration : dubText || s.narration) ?? "";
+      // [cliche] 분위기 씬(mood) — 자막 없이 영상+효과음만 나간다(narration 은 분위기 묘사라 안 그림).
+      const text = s.mood ? "" : (lang === "ko" ? s.narration : dubText || s.narration) ?? "";
       // 긴 나레이션은 캡션 여러 개로 분할(미리보기와 동일 알고리즘) → 씬 안에서 순차 표시.
       const caps = segmentCaptions(text, sub.size);
       await log(`씬 ${i + 1}: 자막 캡션 ${caps.length}컷 렌더(canvas)…`);

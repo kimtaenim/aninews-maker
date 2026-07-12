@@ -9,6 +9,7 @@ import { getAnthropic, MODELS } from "./anthropic";
 import { getPrompt, formatPrompt } from "./prompts";
 import { parseScenes, parseClicheScenes } from "./scenes";
 import { anthropicCostUsd, recordCost } from "./cost";
+import { EMOTIONS } from "./emotions";
 import type { Scene } from "./types";
 import type { SourceMaterial } from "./source";
 
@@ -103,18 +104,25 @@ export async function generateClicheScript(args: {
     cast && cast.length
       ? `등장 인물(이 이름들을 speaker 로 그대로 써): ${cast.join(", ")}`
       : "",
-    "위 클리셰들을 엮어 주인공들의 미니 러브스토리 5~6씬으로 만들어줘.",
+    "위 클리셰들을 엮어 주인공들의 미니 러브스토리 5~7씬으로 만들어줘.",
     "각 씬은 lines 배열(그 씬에서 나오는 대사·내레이션 줄들, 순서대로). 한 씬에 내레이션 줄 +",
     "대사 여러 줄을 섞어도 됨(예: 내레이션 한 줄 뒤 두 인물이 티키타카).",
     "각 줄: text(한국어 한 줄 — 대사면 오글거리는 클리셰, 내레이터면 상황설명·독백),",
     cast && cast.length
       ? `speaker(대사면 인물 이름 "${cast.join('"/"')}" 중 하나, 내레이션이면 "내레이션"),`
       : 'speaker(대사면 주인공 이름/"A"/"B", 내레이션이면 "내레이션"),',
-    'emotion(선택, 대사 감정: flutter=설렘/throb=심쿵/shy=부끄럼/aegyo=애교/whisper=속삭임/serious=진지/teary=울컥/tease=능글/excited=신남).',
+    // 감정 id 목록은 lib/emotions.ts 단일 원천에서 파생(추가·삭제 자동 반영).
+    `emotion(선택, 대사 감정 — 갈등·오열·고함도 적극 활용: ${EMOTIONS.map(
+      (e) => `${e.id}=${e.label.split(" ").slice(1).join(" ") || e.label}`
+    ).join("/")}).`,
+    "무대사 '분위기 씬'도 1~2개 끼워도 좋아(비 오는 창밖, 노을 하늘, 스치는 손끝 클로즈업 같은",
+    '감성 인서트): {"mood":true,"narration":"분위기 묘사(한국어)","lines":[]} — 이 씬은 더빙·자막 없이',
+    "영상과 효과음만 나간다. 리듬상 전환점(고백 직전, 시간 경과)에 넣으면 좋다.",
     '그리고 image_prompt(영어, 글로시 웹툰 로맨스 비주얼), motion(영어, MV 카메라워크), duration_sec(3~8).',
     '반드시 JSON 만: {"scenes":[{"lines":[{"text":"...","speaker":"내레이션"},{"text":"...","speaker":"' +
       (cast && cast[0] ? cast[0] : "지훈") +
-      '","emotion":"throb"}],"image_prompt":"...","motion":"...","duration_sec":5}]}',
+      '","emotion":"throb"}],"image_prompt":"...","motion":"...","duration_sec":5},' +
+      '{"mood":true,"narration":"노을이 지는 옥상, 바람에 흔들리는 머리칼","lines":[],"image_prompt":"...","motion":"...","duration_sec":4}]}',
   ]
     .filter(Boolean)
     .join("\n");

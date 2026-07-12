@@ -7,6 +7,7 @@
 // ============================================================================
 
 export const EMOTIONS: { id: string; label: string; tag: string }[] = [
+  // 설렘 계열
   { id: "flutter", label: "💓 설렘", tag: "nervously" },
   { id: "throb", label: "😳 심쿵", tag: "breathlessly" },
   { id: "shy", label: "☺️ 부끄럼", tag: "shyly" },
@@ -16,6 +17,20 @@ export const EMOTIONS: { id: string; label: string; tag: string }[] = [
   { id: "teary", label: "🥹 울컥", tag: "tearfully" },
   { id: "tease", label: "😏 능글", tag: "teasingly" },
   { id: "excited", label: "🔥 신남", tag: "excited" },
+  // 갈등·격정 계열 — 삼각관계·티격태격·이별 씬용
+  { id: "angry", label: "😠 화남", tag: "angrily" },
+  { id: "shout", label: "📢 고함", tag: "shouting" },
+  { id: "annoyed", label: "😤 짜증", tag: "annoyed, snapping" },
+  { id: "cold", label: "🥶 차갑게", tag: "coldly" },
+  { id: "jealous", label: "😒 질투", tag: "jealously, bitter" },
+  // 슬픔 계열
+  { id: "sad", label: "😢 슬픔", tag: "sadly" },
+  { id: "sob", label: "😭 오열", tag: "sobbing" },
+  { id: "desperate", label: "🥺 애원", tag: "desperately pleading" },
+  // 리액션 계열
+  { id: "panic", label: "😱 당황", tag: "panicked, flustered" },
+  { id: "laugh", label: "😂 웃음", tag: "laughing" },
+  { id: "sigh", label: "😮‍💨 한숨", tag: "sighing" },
 ];
 
 // 감정 id → ElevenLabs v3 오디오 태그. 없으면 빈 문자열(태그 없이 일반 합성).

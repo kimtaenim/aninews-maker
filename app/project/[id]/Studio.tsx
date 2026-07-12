@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   STEP_ORDER,
   DEFAULT_SUBTITLE,
+  type CastMember,
   type Project,
   type Scene,
   type StepKind,
@@ -308,8 +309,9 @@ export default function Studio({
   const [videoModelId, setVideoModelId] = useState(
     initial.videoModelId || videoModels[0]?.id || ""
   );
-  // 씬별 모션 크기 (기본 잔잔, 가끔 크게)
+  // 씬별 모션 크기 — 뉴스는 기본 잔잔, 클리셰는 기본 크게(MV 카메라). 씬별로 바꿀 수 있다.
   const [motionScale, setMotionScale] = useState<Record<number, "subtle" | "large">>({});
+  const defaultMotionScale: "subtle" | "large" = initial.mode === "cliche" ? "large" : "subtle";
   // 씬별 선택한 카메라 워크(하이라이트용). 고르면 그 씬 모션 프롬프트를 프리셋으로 채운다.
   const [cameraMove, setCameraMove] = useState<Record<number, string>>({});
   // 4단계 스타일 칩 — 씬별 { 그룹키: 선택 칩id }. 그룹당 하나만. 프롬프트 [스타일: …] 반영.
@@ -790,7 +792,7 @@ export default function Studio({
   const voiceoverApproved = voiceoverStatus === "approved";
   const [audioCost, setAudioCost] = useState<Record<number, string>>({});
   const allScenesHaveAudio =
-    project.scenes.length > 0 && project.scenes.every((s) => s.skipped || !!s.audioUrl);
+    project.scenes.length > 0 && project.scenes.every((s) => s.skipped || s.mood || !!s.audioUrl);
 
   // 음성(TTS) 전용 스크립트 편집 버퍼 — 자막(narration)으로 미리 채워 바로 편집 가능
   // (placeholder 만 떠서 회색 글씨를 선택·수정 못 하던 문제 해소). 비우면 자막이 그대로 쓰인다.
@@ -920,13 +922,14 @@ export default function Studio({
   // 빈 씬을 afterIndex 뒤에 삽입 — 서버가 직접 splice 해 뒤 씬 산출물(imageUrl/videoUrl/
   // audioUrl)을 배열과 함께 보존(중간 삽입 시 클라이언트 index carry 어긋남 회피).
   // 미저장 편집은 먼저 flush 하고, 반환된 씬으로 버퍼를 재구성한다.
-  async function insertSceneAt(afterIndex: number) {
+  async function insertSceneAt(afterIndex: number, mood = false) {
     if (busy !== null) return;
     try {
       await flushScenes();
       const data = await call("/api/script/insert", {
         projectId: project.id,
         insertAfterIndex: afterIndex,
+        ...(mood ? { mood: true } : {}),
       });
       const saved = data.scenes as Scene[];
       setProject((p) => ({ ...p, scenes: saved }));
@@ -1115,6 +1118,65 @@ export default function Studio({
       setError(e instanceof Error ? e.message : "볼륨 저장 실패");
     }
   }
+  // ── [cliche] 출연진 포트레이트 재편집 — 설명 생성/사진 업로드→웹툰 변환 → castMembers 저장 ──
+  const [faceBusy, setFaceBusy] = useState<string | null>(null); // 인물 이름
+  const [faceDesc, setFaceDesc] = useState<Record<string, string>>({});
+  const [faceOpen, setFaceOpen] = useState<Record<string, boolean>>({});
+  const castFaceRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const memberOf = (name: string) => project.castMembers?.find((mm) => mm.name === name);
+
+  async function saveCastMember(name: string, patch: Partial<CastMember>) {
+    const data = await call("/api/project/cast", {
+      projectId: project.id,
+      member: { name, ...patch },
+    });
+    setProject((p) => ({
+      ...p,
+      castMembers: (data.castMembers as CastMember[]) ?? p.castMembers,
+    }));
+  }
+  // uploadUrl 있으면 사진→웹툰 변환, 없으면 설명 생성. 포트레이트 생성은 무상태 API 라
+  // 생성 후 castMembers 패치로 저장(저장은 짧은 창 — 경합 규약 준수).
+  async function genCastPortrait(name: string, uploadUrl?: string) {
+    const m = memberOf(name);
+    const desc = (faceDesc[name] ?? m?.faceDesc ?? "").trim();
+    if (!uploadUrl && !desc && !m?.archetype && !name) {
+      setError("외모 설명을 입력하거나 사진을 올려주세요");
+      return;
+    }
+    setError(null);
+    setFaceBusy(name);
+    try {
+      const data = await call("/api/cast/portrait", {
+        projectId: project.id,
+        styleProfileId: project.styleProfileId,
+        name,
+        archetype: m?.archetype || undefined,
+        description: desc || undefined,
+        uploadUrl,
+      });
+      await saveCastMember(name, {
+        portraitUrl: data.url as string,
+        faceSource: uploadUrl ? "upload" : "generate",
+        ...(uploadUrl ? { faceUploadUrl: uploadUrl } : {}),
+        ...(desc ? { faceDesc: desc } : {}),
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "포트레이트 생성 실패");
+    } finally {
+      setFaceBusy(null);
+    }
+  }
+  async function uploadCastFace(name: string, file: File) {
+    setError(null);
+    try {
+      const url = await uploadFile(file, `cast-${name}`);
+      await genCastPortrait(name, url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "사진 업로드 실패");
+    }
+  }
+
   async function clearSfx(i: number) {
     setProject((p) => ({ ...p, scenes: p.scenes.map((s, x) => (x === i ? { ...s, sfxUrl: undefined, sfx: undefined } : s)) }));
     try {
@@ -1855,7 +1917,7 @@ export default function Studio({
       projectId: project.id,
       sceneIndex,
       videoModelId,
-      motionScale: motionScale[sceneIndex] ?? "subtle",
+      motionScale: motionScale[sceneIndex] ?? defaultMotionScale,
     });
     setProject((p) => ({
       ...p,
@@ -2087,7 +2149,7 @@ export default function Studio({
       const scenes = p.scenes.map((s, i) =>
         i === sceneIndex ? { ...s, audioUrl: url, status: "generated" as const } : s
       );
-      const allDone = scenes.every((s) => s.skipped || !!s.audioUrl);
+      const allDone = scenes.every((s) => s.skipped || s.mood || !!s.audioUrl);
       return {
         ...p,
         scenes,
@@ -2113,6 +2175,7 @@ export default function Studio({
     try {
       for (let i = 0; i < project.scenes.length; i++) {
         if (project.scenes[i].skipped) continue; // 건너뛴 씬 제외
+        if (project.scenes[i].mood) continue; // 분위기 씬(무대사) 제외
         if (!all && project.scenes[i].audioUrl) continue;
         await generateOneAudio(i);
       }
@@ -2421,14 +2484,27 @@ export default function Studio({
                     <span className="text-zinc-500">⏎ 자막을 끊고 싶은 곳에서 줄바꿈(Enter)</span>{" "}
                     하면 그 자리에서 자막이 나뉩니다(음성엔 영향 없음).
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => insertSceneAt(i)}
-                    disabled={busy !== null}
-                    className="mt-1 justify-self-start text-[11px] text-accent hover:underline disabled:opacity-40"
-                  >
-                    ＋ 아래에 씬 추가
-                  </button>
+                  <div className="mt-1 flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => insertSceneAt(i)}
+                      disabled={busy !== null}
+                      className="text-[11px] text-accent hover:underline disabled:opacity-40"
+                    >
+                      ＋ 아래에 씬 추가
+                    </button>
+                    {project.mode === "cliche" && (
+                      <button
+                        type="button"
+                        onClick={() => insertSceneAt(i, true)}
+                        disabled={busy !== null}
+                        title="대사·자막 없이 영상+효과음만 나가는 감성 인서트 (비 오는 창밖, 노을 등)"
+                        className="text-[11px] text-pink-500 hover:underline disabled:opacity-40"
+                      >
+                        💫 분위기 씬 추가
+                      </button>
+                    )}
+                  </div>
                 </li>
               ))}
             </ol>
@@ -3455,7 +3531,7 @@ export default function Studio({
                         <div className="flex items-center gap-1.5">
                           <span className="text-[10px] text-zinc-400">움직임 크기</span>
                           <select
-                            value={motionScale[i] ?? "subtle"}
+                            value={motionScale[i] ?? defaultMotionScale}
                             onChange={(e) =>
                               setMotionScale((m) => ({
                                 ...m,
@@ -3631,56 +3707,137 @@ export default function Studio({
         {project.mode === "cliche" && (
           <div className="mt-2 grid gap-1.5 rounded-lg border border-pink-200 dark:border-pink-900/50 bg-pink-50/40 dark:bg-pink-950/20 p-2">
             <span className="text-[11px] font-medium text-pink-700 dark:text-pink-300">
-              출연진 — 이름 · 목소리
+              출연진 — 얼굴 · 이름 · 목소리
             </span>
             {[...new Set([...cast, "내레이션"])].map((m) => {
               const isNarr = m === "내레이션";
+              const member = isNarr ? undefined : memberOf(m);
               return (
-                <div key={m} className="flex flex-wrap items-center gap-2">
-                  {isNarr ? (
-                    <span className="inline-block w-24 shrink-0 text-[11px] text-zinc-500">
-                      🎙️ 내레이션
-                    </span>
-                  ) : (
-                    <input
-                      defaultValue={m}
-                      onBlur={(e) => renameCast(m, e.target.value)}
-                      disabled={busy !== null}
-                      title="인물 이름 (바꾸면 대사 화자·목소리도 같이 바뀝니다)"
-                      className="w-24 shrink-0 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1 text-xs outline-none focus:border-pink-500 disabled:opacity-50"
-                    />
-                  )}
-                  <select
-                    value={castVoices[m] ?? ""}
-                    onChange={(e) => saveVoice(e.target.value, m)}
-                    disabled={busy !== null}
-                    className="min-w-[9rem] rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1.5 text-xs outline-none focus:border-pink-500 disabled:opacity-50"
-                  >
-                    <option value="">목소리 선택…</option>
-                    {voices
-                      .filter((v) => v.provider === ttsProvider)
-                      .map((v) => (
-                        <option key={v.id} value={v.id}>
-                          {v.narration ? "★ " : ""}
-                          {v.name}
-                          {v.note ? ` · ${v.note}` : ""}
-                        </option>
+                <div key={m} className="grid gap-1.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {!isNarr &&
+                      (member?.portraitUrl ? (
+                        <button
+                          type="button"
+                          onClick={() => setZoomUrl(member.portraitUrl!)}
+                          title="포트레이트 크게 보기"
+                          className="shrink-0"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={member.portraitUrl}
+                            alt={`${m} 포트레이트`}
+                            className="w-8 h-8 rounded-md object-cover object-top border border-pink-200 dark:border-pink-900/50"
+                          />
+                        </button>
+                      ) : (
+                        <span
+                          className="w-8 h-8 shrink-0 rounded-md border border-dashed border-zinc-300 dark:border-zinc-700 flex items-center justify-center text-[10px] text-zinc-400"
+                          title="아직 포트레이트 없음 — 🎨 얼굴에서 만들기"
+                        >
+                          {faceBusy === m ? <Spinner /> : "?"}
+                        </span>
                       ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => previewVoice(castVoices[m])}
-                    disabled={previewBusy || busy !== null}
-                    title="이 목소리 미리듣기"
-                    className="shrink-0 rounded-lg border border-zinc-300 dark:border-zinc-700 px-2.5 py-1.5 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
-                  >
-                    ▶
-                  </button>
+                    {isNarr ? (
+                      <span className="inline-block w-24 shrink-0 text-[11px] text-zinc-500">
+                        🎙️ 내레이션
+                      </span>
+                    ) : (
+                      <input
+                        defaultValue={m}
+                        onBlur={(e) => renameCast(m, e.target.value)}
+                        disabled={busy !== null}
+                        title="인물 이름 (바꾸면 대사 화자·목소리도 같이 바뀝니다)"
+                        className="w-24 shrink-0 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1 text-xs outline-none focus:border-pink-500 disabled:opacity-50"
+                      />
+                    )}
+                    <select
+                      value={castVoices[m] ?? ""}
+                      onChange={(e) => saveVoice(e.target.value, m)}
+                      disabled={busy !== null}
+                      className="min-w-[9rem] rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1.5 text-xs outline-none focus:border-pink-500 disabled:opacity-50"
+                    >
+                      <option value="">목소리 선택…</option>
+                      {voices
+                        .filter((v) => v.provider === ttsProvider)
+                        .map((v) => (
+                          <option key={v.id} value={v.id}>
+                            {v.narration ? "★ " : ""}
+                            {v.name}
+                            {v.note ? ` · ${v.note}` : ""}
+                          </option>
+                        ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => previewVoice(castVoices[m])}
+                      disabled={previewBusy || busy !== null}
+                      title="이 목소리 미리듣기"
+                      className="shrink-0 rounded-lg border border-zinc-300 dark:border-zinc-700 px-2.5 py-1.5 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
+                    >
+                      ▶
+                    </button>
+                    {!isNarr && (
+                      <button
+                        type="button"
+                        onClick={() => setFaceOpen((o) => ({ ...o, [m]: !o[m] }))}
+                        disabled={faceBusy !== null}
+                        title="포트레이트(캐릭터 시트) 만들기/다시 만들기 — 키프레임·씬 이미지에 얼굴 참조로 들어갑니다"
+                        className="shrink-0 rounded-lg border border-pink-300 dark:border-pink-800 px-2 py-1.5 text-xs text-pink-600 dark:text-pink-300 hover:bg-pink-50 dark:hover:bg-pink-950/40 disabled:opacity-40"
+                      >
+                        🎨 얼굴
+                      </button>
+                    )}
+                  </div>
+                  {/* 포트레이트 재편집 — 설명 생성 또는 사진 업로드→웹툰 변환(항상 스타일화). */}
+                  {!isNarr && faceOpen[m] && (
+                    <div className="ml-10 flex flex-wrap items-center gap-1.5">
+                      <input
+                        value={faceDesc[m] ?? member?.faceDesc ?? ""}
+                        onChange={(e) => setFaceDesc((d) => ({ ...d, [m]: e.target.value }))}
+                        placeholder="외모 설명 (예: 은발 단발, 안경, 차가운 인상)"
+                        disabled={faceBusy !== null}
+                        className="flex-1 min-w-[150px] rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1 text-xs outline-none focus:border-pink-500 disabled:opacity-50"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => genCastPortrait(m)}
+                        disabled={faceBusy !== null}
+                        className="shrink-0 rounded-lg bg-pink-500 hover:bg-pink-600 disabled:opacity-40 text-white text-xs font-medium px-2.5 py-1"
+                      >
+                        {faceBusy === m ? <Busy>생성 중…</Busy> : member?.portraitUrl ? "✨ 다시 생성" : "✨ 생성"}
+                      </button>
+                      <input
+                        ref={(el) => {
+                          castFaceRefs.current[m] = el;
+                        }}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          e.target.value = "";
+                          if (f) void uploadCastFace(m, f);
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => castFaceRefs.current[m]?.click()}
+                        disabled={faceBusy !== null || uploading !== null}
+                        title="실제 사진은 항상 웹툰체로 변환됩니다(실사 복제 불가)"
+                        className="shrink-0 rounded-lg border border-zinc-300 dark:border-zinc-700 px-2.5 py-1 text-xs text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
+                      >
+                        📷 사진 → 웹툰
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })}
             <span className="text-[10px] text-zinc-400">
-              이름 옆에서 목소리를 정하면 그 인물 대사가 그 목소리로 더빙됩니다. 씬마다 화자는 아래 씬 카드에서.
+              이름 옆에서 목소리를 정하면 그 인물 대사가 그 목소리로 더빙됩니다. 🎨 얼굴로 만든
+              포트레이트는 이후 키프레임·씬 이미지 생성에 얼굴 참조로 들어갑니다(이미 만든 이미지는
+              리롤해야 반영). 씬마다 화자는 아래 씬 카드에서.
             </span>
           </div>
         )}
@@ -3735,6 +3892,7 @@ export default function Studio({
               {project.scenes.map((sc, i) => {
                 const audioBusy = voiceBusy === `audio-${i}` || voiceBusy === "audio-all";
                 const skipped = !!sc.skipped;
+                const moodScene = !!sc.mood; // 분위기 씬 — 대사·더빙·자막 없음(영상+효과음만)
                 return (
                   <li
                     key={i}
@@ -3748,37 +3906,49 @@ export default function Studio({
                         title="클릭하면 스크립트 단계로 올라가 이 자막을 수정할 수 있어요 (행갈이 포함)"
                         className="min-w-0 flex-1 truncate text-left text-[11px] text-zinc-500 hover:text-accent hover:underline"
                       >
-                        <span className="text-zinc-400">📝 자막 </span>
-                        {skipped ? <span className="text-amber-600">건너뜀</span> : sc.narration}
+                        {moodScene ? (
+                          <>
+                            <span className="text-pink-500">💫 분위기 씬 </span>
+                            <span className="text-zinc-400">(더빙·자막 없음) </span>
+                            {sc.narration}
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-zinc-400">📝 자막 </span>
+                            {skipped ? <span className="text-amber-600">건너뜀</span> : sc.narration}
+                          </>
+                        )}
                         <span className="ml-1 text-zinc-300">✎</span>
                       </button>
-                      <div className="shrink-0 grid justify-items-end gap-0.5">
-                        <div className="flex items-center gap-1">
-                          <SceneRecorder
-                            projectId={project.id}
-                            sceneIndex={i}
-                            hasAudio={!!sc.audioUrl}
-                            disabled={voiceBusy !== null || skipped}
-                            onLocal={(url) => applyRecordedAudio(i, url)}
-                            onSaved={(url) => applyRecordedAudio(i, url)}
-                            onError={(m) => setError(m)}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => generateAudio(i)}
-                            disabled={voiceBusy !== null || !sc.narration || skipped}
-                            className="text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
-                          >
-                            {sc.audioUrl ? "리롤" : "음성 생성"}
-                          </button>
+                      {!moodScene && (
+                        <div className="shrink-0 grid justify-items-end gap-0.5">
+                          <div className="flex items-center gap-1">
+                            <SceneRecorder
+                              projectId={project.id}
+                              sceneIndex={i}
+                              hasAudio={!!sc.audioUrl}
+                              disabled={voiceBusy !== null || skipped}
+                              onLocal={(url) => applyRecordedAudio(i, url)}
+                              onSaved={(url) => applyRecordedAudio(i, url)}
+                              onError={(m) => setError(m)}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => generateAudio(i)}
+                              disabled={voiceBusy !== null || !sc.narration || skipped}
+                              className="text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
+                            >
+                              {sc.audioUrl ? "리롤" : "음성 생성"}
+                            </button>
+                          </div>
+                          {audioCost[i] && (
+                            <span className="text-[11px] text-zinc-400">{audioCost[i]}</span>
+                          )}
                         </div>
-                        {audioCost[i] && (
-                          <span className="text-[11px] text-zinc-400">{audioCost[i]}</span>
-                        )}
-                      </div>
+                      )}
                     </div>
                     {/* [cliche] 대사·내레이션 줄 편집 — 줄마다 화자·텍스트·감정. 줄들을 이어 더빙한다. */}
-                    {project.mode === "cliche" && (
+                    {project.mode === "cliche" && !moodScene && (
                         <div className="mt-1.5 grid gap-1">
                           <span className="text-[10px] text-zinc-400">대사·내레이션 (줄마다 화자·감정 지정)</span>
                           {sceneLines(i).map((ln, li) => (

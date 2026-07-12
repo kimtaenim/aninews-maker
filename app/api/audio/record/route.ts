@@ -70,6 +70,12 @@ export async function POST(req: NextRequest) {
   if (project.scenes[sceneIndex]?.skipped) {
     return NextResponse.json({ ok: false, error: "건너뛴 씬이에요" }, { status: 422 });
   }
+  if (project.scenes[sceneIndex]?.mood) {
+    return NextResponse.json(
+      { ok: false, error: "분위기 씬은 대사·더빙이 없어요 (영상+효과음만)" },
+      { status: 422 }
+    );
+  }
 
   const bytes = Buffer.from(await file.arrayBuffer());
   const ext = EXT[type] ?? "webm";
@@ -83,7 +89,7 @@ export async function POST(req: NextRequest) {
   const fresh = (await getProject(projectId)) ?? project;
   const fScene = fresh.scenes[sceneIndex] ?? project.scenes[sceneIndex];
   fresh.scenes[sceneIndex] = { ...fScene, audioUrl: url, status: "generated" };
-  const allDone = fresh.scenes.every((s) => s.skipped || !!s.audioUrl);
+  const allDone = fresh.scenes.every((s) => s.skipped || s.mood || !!s.audioUrl);
   fresh.steps.voiceover.status = allDone ? "generated" : "generating";
   fresh.steps.voiceover.updatedAt = Date.now();
   fresh.updatedAt = Date.now();

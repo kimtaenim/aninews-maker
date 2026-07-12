@@ -107,28 +107,51 @@ export async function generateImagePrompts(args: {
 export async function generateMotions(args: {
   projectId: string;
   scenes: SceneInput[];
+  mode?: "news" | "cliche"; // cliche 면 잔잔한 카메라 대신 뮤직비디오 카메라워크
 }): Promise<{ motions: Map<number, string>; costUsd: number }> {
   const scenes = (args.scenes ?? []).filter((s) => s?.narration?.trim());
   if (scenes.length === 0) return { motions: new Map(), costUsd: 0 };
 
   const client = getAnthropic();
+  // [cliche] 무조건 스타일리시한 MV 카메라 — 속도 변화는 영어로 명시(i2v 가 알아듣게),
+  // 피사체는 거의 정지하고 카메라가 드라마를 만든다. (기본 news 프롬프트는 잔잔·자연스럽게.)
   const system =
-    "You write short English MOTION prompts for an image-to-video model. " +
-    "The still image is already composed, so keep the movement light and natural — focus on camera work and " +
-    "lighting, with a touch of gentle subject motion that fits the image:\n" +
-    "- Camera (pick one that fits the mood): slow zoom in, slow zoom out, pan left, pan right, tilt up, " +
-    "tilt down, dolly / track in, track out, push-in, pull-back, full 360-degree orbit around the subject, " +
-    "gentle handheld drift.\n" +
-    "- Lighting (optional): gradually brightens, slowly darkens, shifts to dramatic " +
-    "cinematic lighting, a light sweeps across the scene, light rotates around the subject.\n" +
-    "- Subject (optional): a slight, natural micro-movement such as gentle breathing, a small head tilt, " +
-    "a soft blink, or hair / clothing drifting in a light breeze.\n" +
-    "Use the narration only to judge the mood. Keep it smooth and cinematic. " +
-    'One scene = one short English line, e.g. "Slow push-in, lighting shifts to dramatic side-light, subject breathing gently" ' +
-    'or "Full 360-degree orbit around the subject, hair drifting softly". ' +
-    'Output ONLY JSON: {"items":[{"index":0,"motion":"..."}]} with the SAME indices, one per scene.';
+    args.mode === "cliche"
+      ? "You write short English MOTION prompts for an image-to-video model, for a glossy Korean romance " +
+        "MUSIC VIDEO. Every scene must feel STYLISH and cinematic — never plain, never static. " +
+        "The CAMERA does the dramatic work while the subject stays mostly still (soft hair/clothes " +
+        "flutter, breathing, a blink at most):\n" +
+        "- Camera (pick ONE bold move per scene, VARY across scenes): dramatic slow push-in ending in an " +
+        "intimate face close-up, crash zoom that suddenly slams in, speed-ramped dolly (starts in dreamy " +
+        "slow motion then suddenly bursts fast), whip pan with heavy motion blur, elegant slow orbit like " +
+        "a luxury perfume commercial, dolly-zoom vertigo (background warps while the subject stays the " +
+        "same size), rack focus snapping onto the glistening eyes.\n" +
+        "- Spell out SPEED changes explicitly in English (e.g. 'starts in dreamy slow motion, then " +
+        "suddenly accelerates'). Add glossy MV dressing where it fits: lens bloom, sparkles, soft " +
+        "slow-motion, a romantic backlight sweep.\n" +
+        "Use the lines only to judge the emotional beat (심쿵 → crash zoom / rack focus; 애틋 → slow " +
+        "push-in / slow orbit; 갈등 → whip pan / vertigo). " +
+        'One scene = one short English line, e.g. "Speed-ramped dolly-in: dreamy slow motion, then a ' +
+        'sudden fast rush toward her glistening eyes, lens bloom flaring". ' +
+        'Output ONLY JSON: {"items":[{"index":0,"motion":"..."}]} with the SAME indices, one per scene.'
+      : "You write short English MOTION prompts for an image-to-video model. " +
+        "The still image is already composed, so keep the movement light and natural — focus on camera work and " +
+        "lighting, with a touch of gentle subject motion that fits the image:\n" +
+        "- Camera (pick one that fits the mood): slow zoom in, slow zoom out, pan left, pan right, tilt up, " +
+        "tilt down, dolly / track in, track out, push-in, pull-back, full 360-degree orbit around the subject, " +
+        "gentle handheld drift.\n" +
+        "- Lighting (optional): gradually brightens, slowly darkens, shifts to dramatic " +
+        "cinematic lighting, a light sweeps across the scene, light rotates around the subject.\n" +
+        "- Subject (optional): a slight, natural micro-movement such as gentle breathing, a small head tilt, " +
+        "a soft blink, or hair / clothing drifting in a light breeze.\n" +
+        "Use the narration only to judge the mood. Keep it smooth and cinematic. " +
+        'One scene = one short English line, e.g. "Slow push-in, lighting shifts to dramatic side-light, subject breathing gently" ' +
+        'or "Full 360-degree orbit around the subject, hair drifting softly". ' +
+        'Output ONLY JSON: {"items":[{"index":0,"motion":"..."}]} with the SAME indices, one per scene.';
   const userMsg = [
-    "씬별 나레이션 (분위기 참고용 — 내용은 묘사하지 말고, 어울리는 카메라 워크·조명·인물의 가벼운 미세 움직임만 고르세요. 번호 유지):",
+    args.mode === "cliche"
+      ? "씬별 대사/나레이션 (감정 비트 참고용 — 씬마다 다른 볼드한 MV 카메라 무브를 고르세요. 번호 유지):"
+      : "씬별 나레이션 (분위기 참고용 — 내용은 묘사하지 말고, 어울리는 카메라 워크·조명·인물의 가벼운 미세 움직임만 고르세요. 번호 유지):",
     ...scenes.map((s, pos) => `[${pos}] ${s.narration}`),
     "",
     'JSON only: {"items":[{"index":0,"motion":"camera work + lighting only, in English"}]} — keep the [number] as index.',

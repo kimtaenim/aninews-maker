@@ -74,7 +74,10 @@ const RawClicheLine = z.object({
   emotion: z.string().optional(),
 });
 const RawClicheScene = z.object({
-  lines: z.array(RawClicheLine).min(1),
+  // 분위기 씬(mood=true)은 대사가 없어 lines 를 생략/빈배열로 낼 수 있다. 일반 씬은 1줄 이상.
+  lines: z.array(RawClicheLine).optional(),
+  mood: z.boolean().optional(), // 무대사 분위기 인서트(비 오는 창밖, 노을 등)
+  narration: z.string().optional(), // mood 씬의 분위기 묘사(한국어) — 이미지 생성 컨텍스트용
   image_prompt: z.string().optional(),
   motion: z.string().optional(),
   duration_sec: z.number().optional(),
@@ -93,22 +96,40 @@ export function parseClicheScenes(raw: string): Scene[] | null {
   const parsed = RawClicheScript.safeParse(json);
   if (!parsed.success) return null;
 
-  return parsed.data.scenes.map((s, index) => {
-    const lines = s.lines.map((l) => ({
-      text: l.text.trim(),
-      ...(l.speaker?.trim() ? { speaker: l.speaker.trim() } : {}),
-      ...(l.emotion?.trim() ? { emotion: l.emotion.trim() } : {}),
-    }));
-    // 자막·길이용 합친 텍스트. 줄바꿈으로 이어 캡션이 줄 경계를 존중하게.
-    const narration = lines.map((l) => l.text).join("\n");
-    return {
-      index,
-      narration,
-      lines,
-      imagePrompt: (s.image_prompt ?? "").trim(),
-      motion: (s.motion ?? "").trim(),
-      durationSec: estimateDuration(narration.replace(/\n/g, " ")),
-      status: "generated" as const,
-    };
-  });
+  const scenes = parsed.data.scenes
+    .map((s, index) => {
+      const lines = (s.lines ?? []).map((l) => ({
+        text: l.text.trim(),
+        ...(l.speaker?.trim() ? { speaker: l.speaker.trim() } : {}),
+        ...(l.emotion?.trim() ? { emotion: l.emotion.trim() } : {}),
+      }));
+      // 분위기 씬 — 대사 없음(더빙·자막 스킵). narration 은 분위기 묘사(생성 컨텍스트).
+      if (s.mood === true || lines.length === 0) {
+        const desc = (s.narration ?? "").trim();
+        if (!desc && lines.length === 0) return null; // mood 도 아니고 대사도 묘사도 없으면 버림
+        return {
+          index,
+          narration: desc || "감성 인서트",
+          mood: true as const,
+          imagePrompt: (s.image_prompt ?? "").trim(),
+          motion: (s.motion ?? "").trim(),
+          durationSec: clampDuration(s.duration_sec),
+          status: "generated" as const,
+        };
+      }
+      // 자막·길이용 합친 텍스트. 줄바꿈으로 이어 캡션이 줄 경계를 존중하게.
+      const narration = lines.map((l) => l.text).join("\n");
+      return {
+        index,
+        narration,
+        lines,
+        imagePrompt: (s.image_prompt ?? "").trim(),
+        motion: (s.motion ?? "").trim(),
+        durationSec: estimateDuration(narration.replace(/\n/g, " ")),
+        status: "generated" as const,
+      };
+    })
+    .filter((s): s is NonNullable<typeof s> => s !== null)
+    .map((s, index) => ({ ...s, index })); // 버려진 씬이 있으면 index 재부여
+  return scenes.length ? scenes : null;
 }

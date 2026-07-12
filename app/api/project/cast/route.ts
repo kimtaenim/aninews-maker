@@ -1,13 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProject, saveProject } from "@/lib/projectStore";
+import type { CastMember } from "@/lib/types";
 
 export const runtime = "nodejs";
 
 // [cliche] 등장 인물 이름(cast) 편집.
 //   - { rename: { from, to } } : 인물 이름 변경 — cast·castVoices·씬 화자(speaker)를 한 번에 동기화.
 //   - { cast: string[] }       : 인물 목록 통째 설정(추가/삭제).
+//   - { member: { name, ...패치 } } : 캐스팅 산출물(castMembers) 한 명 패치 — 포트레이트
+//     재편집(Studio)용. 없던 인물이면 추가, castMembers 가 없으면 cast 에서 시드.
 export async function POST(req: NextRequest) {
-  let body: { projectId?: string; rename?: { from?: string; to?: string }; cast?: unknown };
+  let body: {
+    projectId?: string;
+    rename?: { from?: string; to?: string };
+    cast?: unknown;
+    member?: {
+      name?: string;
+      archetype?: string;
+      faceSource?: string;
+      faceUploadUrl?: string;
+      faceDesc?: string;
+      portraitUrl?: string;
+      voiceId?: string;
+    };
+  };
   try {
     body = await req.json();
   } catch {
@@ -59,8 +75,32 @@ export async function POST(req: NextRequest) {
     project.cast =
       body.cast.map((c) => (typeof c === "string" ? c.trim() : "")).filter(Boolean) || undefined;
     if (!project.cast?.length) project.cast = undefined;
+  } else if (body.member && typeof body.member === "object" && (body.member.name ?? "").trim()) {
+    // castMembers 한 명 패치(포트레이트 재편집). 빈 문자열 필드는 무시(지우기 아님 — 단순 패치).
+    const name = (body.member.name as string).trim();
+    const clean = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+    const patch: Partial<CastMember> = {
+      ...(clean(body.member.archetype) ? { archetype: clean(body.member.archetype) } : {}),
+      ...(body.member.faceSource === "upload" || body.member.faceSource === "generate"
+        ? { faceSource: body.member.faceSource }
+        : {}),
+      ...(clean(body.member.faceUploadUrl) ? { faceUploadUrl: clean(body.member.faceUploadUrl) } : {}),
+      ...(clean(body.member.faceDesc) ? { faceDesc: clean(body.member.faceDesc) } : {}),
+      ...(clean(body.member.portraitUrl) ? { portraitUrl: clean(body.member.portraitUrl) } : {}),
+      ...(clean(body.member.voiceId) ? { voiceId: clean(body.member.voiceId) } : {}),
+    };
+    // castMembers 없던 구 프로젝트는 cast 이름들로 시드.
+    const members: CastMember[] = project.castMembers?.length
+      ? [...project.castMembers]
+      : (project.cast ?? []).map((n) => ({ name: n }));
+    const idx = members.findIndex((mm) => mm.name === name);
+    if (idx >= 0) members[idx] = { ...members[idx], ...patch };
+    else members.push({ name, ...patch });
+    project.castMembers = members;
+    // cast 미러 유지 — 새 인물이면 이름 목록에도 추가.
+    if (!project.cast?.includes(name)) project.cast = [...(project.cast ?? []), name];
   } else {
-    return NextResponse.json({ ok: false, error: "rename 또는 cast 필요" }, { status: 400 });
+    return NextResponse.json({ ok: false, error: "rename, cast 또는 member 필요" }, { status: 400 });
   }
 
   project.updatedAt = Date.now();
@@ -69,5 +109,6 @@ export async function POST(req: NextRequest) {
     ok: true,
     cast: project.cast ?? [],
     castVoices: project.castVoices ?? {},
+    castMembers: project.castMembers ?? [],
   });
 }

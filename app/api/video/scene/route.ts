@@ -81,8 +81,18 @@ export async function POST(req: NextRequest) {
     // 가이드 문구는 config/prompts.json 의 video_motion 에서 관리(하드코딩 X).
     const motion = (body.prompt ?? scene.motion ?? "").trim();
     // 씬별로 subtle/large 선택 유지. 클리셰에서 "크게"는 스톱모션이 아닌 다이내믹 MV 가이드로.
+    // 미지정 기본값: 뉴스=잔잔(subtle), 클리셰=MV(cliche) — 클리셰가 잔잔·스톱모션 톤으로
+    // 생성되던 원인(기본 subtle)을 라우트에서도 방어.
     const scale =
-      body.motionScale === "large" ? (project.mode === "cliche" ? "cliche" : "large") : "subtle";
+      body.motionScale === "large"
+        ? project.mode === "cliche"
+          ? "cliche"
+          : "large"
+        : body.motionScale === "subtle"
+          ? "subtle"
+          : project.mode === "cliche"
+            ? "cliche"
+            : "subtle";
     const guidance = getVideoMotion(scale);
     const prompt = motion ? `${motion}. ${guidance}` : guidance;
     const { jobId } = await submitVideo(modelId, {
