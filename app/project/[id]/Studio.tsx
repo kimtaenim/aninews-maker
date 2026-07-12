@@ -1060,18 +1060,16 @@ export default function Studio({
     }
   }
 
-  // [cliche] 씬 전용 목소리 오버라이드 — 이 대사만 특정 목소리로(비우면 화자 기본).
-  async function setSceneVoice(i: number, id: string) {
-    setError(null);
-    try {
-      await patchSceneSource(i, { voiceId: id || null });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "목소리 저장 실패");
-    }
-  }
-
-  // [cliche] 인물 이름 목록 + 이름 변경(cast·목소리·씬 화자 동기화).
-  const cast = project.cast ?? [];
+  // [cliche] 인물 이름 목록 — 저장된 cast 우선, 없으면 씬 화자에서 파생(내레이션 제외).
+  const cast = project.cast?.length
+    ? project.cast
+    : [
+        ...new Set(
+          project.scenes
+            .map((s) => s.speaker)
+            .filter((s): s is string => !!s && s !== "내레이션")
+        ),
+      ];
   async function renameCast(from: string, to: string) {
     const t = to.trim();
     if (!t || t === from) return;
@@ -3524,7 +3522,8 @@ export default function Studio({
           )}
         </div>
 
-        {/* 목소리 선택(프로젝트당 하나) — 위 엔진에 맞는 목록. 바꾼 뒤 음성 재생성해야 반영. */}
+        {/* 목소리 선택(프로젝트당 하나) — 뉴스 모드용. 클리셰는 아래 "출연진"에서 인물별로 정한다. */}
+        {project.mode !== "cliche" && (
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <span className="text-[11px] text-zinc-500">목소리</span>
           <select
@@ -3555,77 +3554,66 @@ export default function Studio({
           </button>
           <span className="text-[10px] text-zinc-400">★=내레이션 추천 · 바꾸면 음성 재생성</span>
         </div>
-
-        {/* [cliche] 인물 이름 편집 — 바꾸면 대사 화자·목소리도 함께 바뀜. */}
-        {project.mode === "cliche" && cast.length > 0 && (
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <span className="text-[11px] text-zinc-500">인물 이름</span>
-            {cast.map((name) => (
-              <input
-                key={name}
-                defaultValue={name}
-                onBlur={(e) => renameCast(name, e.target.value)}
-                disabled={busy !== null}
-                className="w-24 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1 text-xs outline-none focus:border-pink-500 disabled:opacity-50"
-              />
-            ))}
-            <span className="text-[10px] text-zinc-400">이름 바꾸면 대사 화자·목소리도 같이 바뀝니다</span>
-          </div>
         )}
 
-        {/* [cliche] 캐릭터별 목소리 — 인물·내레이션마다 다른 목소리. 비우면 위 프로젝트 목소리. */}
-        {project.mode === "cliche" &&
-          (() => {
-            // 인물(cast) + 씬 화자 + "내레이션"(항상). 나레이터·인물 목소리를 늘 고를 수 있게.
-            const speakers = [
-              ...new Set([
-                ...cast,
-                ...project.scenes.map((s) => s.speaker).filter(Boolean),
-                "내레이션",
-              ]),
-            ] as string[];
-            return speakers.length ? (
-              <div className="mt-2 grid gap-1.5 rounded-lg border border-pink-200 dark:border-pink-900/50 bg-pink-50/40 dark:bg-pink-950/20 p-2">
-                <span className="text-[11px] font-medium text-pink-700 dark:text-pink-300">
-                  캐릭터별 목소리 (인물 + 내레이션 각각 더빙)
-                </span>
-                {speakers.map((sp) => (
-                  <div key={sp} className="flex flex-wrap items-center gap-2">
+        {/* [cliche] 출연진 — 인물 이름 + 목소리(+내레이션). 여기서 이름·목소리를 정하고,
+            씬마다 누가 말하는지는 아래 씬 카드의 "화자"에서 고른다. */}
+        {project.mode === "cliche" && (
+          <div className="mt-2 grid gap-1.5 rounded-lg border border-pink-200 dark:border-pink-900/50 bg-pink-50/40 dark:bg-pink-950/20 p-2">
+            <span className="text-[11px] font-medium text-pink-700 dark:text-pink-300">
+              출연진 — 이름 · 목소리
+            </span>
+            {[...new Set([...cast, "내레이션"])].map((m) => {
+              const isNarr = m === "내레이션";
+              return (
+                <div key={m} className="flex flex-wrap items-center gap-2">
+                  {isNarr ? (
                     <span className="inline-block w-24 shrink-0 text-[11px] text-zinc-500">
-                      {sp === "내레이션" ? "🎙️ 내레이션" : `🗣️ ${sp}`}
+                      🎙️ 내레이션
                     </span>
-                    <select
-                      value={castVoices[sp] ?? ""}
-                      onChange={(e) => saveVoice(e.target.value, sp)}
+                  ) : (
+                    <input
+                      defaultValue={m}
+                      onBlur={(e) => renameCast(m, e.target.value)}
                       disabled={busy !== null}
-                      className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1.5 text-xs outline-none focus:border-pink-500 disabled:opacity-50"
-                    >
-                      <option value="">기본 목소리 따름</option>
-                      {voices
-                        .filter((v) => v.provider === ttsProvider)
-                        .map((v) => (
-                          <option key={v.id} value={v.id}>
-                            {v.narration ? "★ " : ""}
-                            {v.name}
-                            {v.note ? ` · ${v.note}` : ""}
-                          </option>
-                        ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => previewVoice(castVoices[sp])}
-                      disabled={previewBusy || busy !== null}
-                      title="이 화자 목소리 미리듣기"
-                      className="shrink-0 rounded-lg border border-zinc-300 dark:border-zinc-700 px-2.5 py-1.5 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
-                    >
-                      ▶
-                    </button>
-                  </div>
-                ))}
-                <span className="text-[10px] text-zinc-400">비우면 위 프로젝트 목소리를 씁니다.</span>
-              </div>
-            ) : null;
-          })()}
+                      title="인물 이름 (바꾸면 대사 화자·목소리도 같이 바뀝니다)"
+                      className="w-24 shrink-0 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1 text-xs outline-none focus:border-pink-500 disabled:opacity-50"
+                    />
+                  )}
+                  <select
+                    value={castVoices[m] ?? ""}
+                    onChange={(e) => saveVoice(e.target.value, m)}
+                    disabled={busy !== null}
+                    className="min-w-[9rem] rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1.5 text-xs outline-none focus:border-pink-500 disabled:opacity-50"
+                  >
+                    <option value="">목소리 선택…</option>
+                    {voices
+                      .filter((v) => v.provider === ttsProvider)
+                      .map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {v.narration ? "★ " : ""}
+                          {v.name}
+                          {v.note ? ` · ${v.note}` : ""}
+                        </option>
+                      ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => previewVoice(castVoices[m])}
+                    disabled={previewBusy || busy !== null}
+                    title="이 목소리 미리듣기"
+                    className="shrink-0 rounded-lg border border-zinc-300 dark:border-zinc-700 px-2.5 py-1.5 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
+                  >
+                    ▶
+                  </button>
+                </div>
+              );
+            })}
+            <span className="text-[10px] text-zinc-400">
+              이름 옆에서 목소리를 정하면 그 인물 대사가 그 목소리로 더빙됩니다. 씬마다 화자는 아래 씬 카드에서.
+            </span>
+          </div>
+        )}
 
         {/* 음성 속도 — 생성 시 적용. 바꾼 뒤엔 음성을 다시 생성해야 반영된다. */}
         <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -3741,24 +3729,6 @@ export default function Studio({
                               {sp === "내레이션" ? "🎙️ 내레이션" : sp}
                             </option>
                           ))}
-                        </select>
-                        <span className="text-[10px] text-zinc-400">목소리</span>
-                        <select
-                          value={sc.voiceId ?? ""}
-                          onChange={(e) => setSceneVoice(i, e.target.value)}
-                          disabled={voiceBusy !== null}
-                          title="이 대사만 특정 목소리로 (비우면 화자 기본 목소리)"
-                          className="rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1 text-[11px] outline-none focus:border-pink-500 disabled:opacity-50"
-                        >
-                          <option value="">화자 기본 따름</option>
-                          {voices
-                            .filter((v) => v.provider === ttsProvider)
-                            .map((v) => (
-                              <option key={v.id} value={v.id}>
-                                {v.narration ? "★ " : ""}
-                                {v.name}
-                              </option>
-                            ))}
                         </select>
                       </div>
                     )}

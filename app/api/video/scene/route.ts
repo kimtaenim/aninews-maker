@@ -80,9 +80,9 @@ export async function POST(req: NextRequest) {
     // 기본은 잔잔(동작 적게 + 스톱모션 느낌). 씬별로 "크게" 선택하면 더 역동적으로.
     // 가이드 문구는 config/prompts.json 의 video_motion 에서 관리(하드코딩 X).
     const motion = (body.prompt ?? scene.motion ?? "").trim();
-    // 연애 클리셰는 과격·다이내믹 카메라(MV) — subtle 가이드가 크래시줌 등을 죽이므로 cliche 가이드로.
+    // 씬별로 subtle/large 선택 유지. 클리셰에서 "크게"는 스톱모션이 아닌 다이내믹 MV 가이드로.
     const scale =
-      project.mode === "cliche" ? "cliche" : body.motionScale === "large" ? "large" : "subtle";
+      body.motionScale === "large" ? (project.mode === "cliche" ? "cliche" : "large") : "subtle";
     const guidance = getVideoMotion(scale);
     const prompt = motion ? `${motion}. ${guidance}` : guidance;
     const { jobId } = await submitVideo(modelId, {

@@ -26,7 +26,16 @@ export async function POST(req: NextRequest) {
   const to = (body.rename?.to ?? "").trim();
   if (from && to && from !== to) {
     // 이름 변경 — 인물명·화자별 목소리·씬 화자를 모두 새 이름으로.
-    if (project.cast) project.cast = project.cast.map((c) => (c === from ? to : c));
+    // cast 가 비어 있으면(옛 프로젝트) 씬 화자에서 파생해 시드한 뒤 변경.
+    const base =
+      project.cast?.length
+        ? project.cast
+        : [
+            ...new Set(
+              project.scenes.map((s) => s.speaker).filter((s) => !!s && s !== "내레이션") as string[]
+            ),
+          ];
+    project.cast = [...new Set(base.map((c) => (c === from ? to : c)))];
     if (project.castVoices?.[from]) {
       const cv = { ...project.castVoices };
       cv[to] = cv[from];
