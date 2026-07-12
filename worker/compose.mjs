@@ -226,9 +226,11 @@ export async function composeProject(projectId, lang) {
         const sfxIdx = 2 + capPaths.length + (wmPath ? 1 : 0) + (showCredit ? 1 : 0);
         args.push("-stream_loop", "-1", "-t", String(duration), "-i", sfxPath);
         const sfxVol = typeof s.sfxVolume === "number" ? Math.min(1, Math.max(0, s.sfxVolume)) : 0.35;
+        // amix 는 입력 수(2)로 볼륨을 반씩 줄인다 → 미리 2배로 올려 상쇄(목소리 원음 유지,
+        // 효과음은 지정 볼륨). normalize 옵션 없이 써서 구버전 ffmpeg 도 호환.
         filterFull =
-          `${filter};[1:a]volume=1[voca];[${sfxIdx}:a]volume=${sfxVol.toFixed(2)}[sfxa];` +
-          `[voca][sfxa]amix=inputs=2:duration=longest:normalize=0[aout]`;
+          `${filter};[1:a]volume=2[voca];[${sfxIdx}:a]volume=${(sfxVol * 2).toFixed(2)}[sfxa];` +
+          `[voca][sfxa]amix=inputs=2:duration=longest[aout]`;
         audioMap = "[aout]";
       }
       args.push(
