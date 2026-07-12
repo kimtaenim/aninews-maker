@@ -18,7 +18,8 @@ export function getPrompt(step: keyof typeof promptsJson): PromptSection {
 }
 
 // 씬별 영상 모션 가이드(config/prompts.json 의 video_motion). 기본 subtle=동작 적게+스톱모션.
-export function getVideoMotion(scale: "subtle" | "large" | "cliche"): string {
+// cliche_calm = 클리셰 전용 잔잔(스톱모션 아님 — 차분하지만 글로시한 MV 비트).
+export function getVideoMotion(scale: "subtle" | "large" | "cliche" | "cliche_calm"): string {
   const vm = (promptsJson as Record<string, unknown>).video_motion as
     | Record<string, string>
     | undefined;

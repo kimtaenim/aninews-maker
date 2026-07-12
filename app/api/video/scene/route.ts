@@ -80,17 +80,20 @@ export async function POST(req: NextRequest) {
     // 기본은 잔잔(동작 적게 + 스톱모션 느낌). 씬별로 "크게" 선택하면 더 역동적으로.
     // 가이드 문구는 config/prompts.json 의 video_motion 에서 관리(하드코딩 X).
     const motion = (body.prompt ?? scene.motion ?? "").trim();
-    // 씬별로 subtle/large 선택 유지. 클리셰에서 "크게"는 스톱모션이 아닌 다이내믹 MV 가이드로.
-    // 미지정 기본값: 뉴스=잔잔(subtle), 클리셰=MV(cliche) — 클리셰가 잔잔·스톱모션 톤으로
-    // 생성되던 원인(기본 subtle)을 라우트에서도 방어.
+    // 씬별로 subtle/large 선택 유지. 클리셰에서 "크게"=다이내믹 MV, "잔잔"=차분하되 글로시한
+    // MV 비트(cliche_calm — 뉴스용 스톱모션 잔잔과 다름). 미지정 기본값: 뉴스=잔잔(subtle),
+    // 클리셰=MV(cliche) — 클리셰가 잔잔·스톱모션 톤으로 생성되던 원인(기본 subtle)을 방어.
+    const isCliche = project.mode === "cliche";
     const scale =
       body.motionScale === "large"
-        ? project.mode === "cliche"
+        ? isCliche
           ? "cliche"
           : "large"
         : body.motionScale === "subtle"
-          ? "subtle"
-          : project.mode === "cliche"
+          ? isCliche
+            ? "cliche_calm"
+            : "subtle"
+          : isCliche
             ? "cliche"
             : "subtle";
     const guidance = getVideoMotion(scale);

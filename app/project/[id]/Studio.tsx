@@ -3543,8 +3543,17 @@ export default function Studio({
                             disabled={busy !== null}
                             className="rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-1.5 py-0.5 text-[10px] outline-none focus:border-accent disabled:opacity-50"
                           >
-                            <option value="subtle">잔잔 (기본)</option>
-                            <option value="large">크게</option>
+                            {project.mode === "cliche" ? (
+                              <>
+                                <option value="subtle">잔잔 (감성 드리프트)</option>
+                                <option value="large">크게 (MV · 기본)</option>
+                              </>
+                            ) : (
+                              <>
+                                <option value="subtle">잔잔 (기본)</option>
+                                <option value="large">크게</option>
+                              </>
+                            )}
                           </select>
                         </div>
                         <span className="text-[10px] text-zinc-400">
