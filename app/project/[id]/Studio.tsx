@@ -1051,23 +1051,18 @@ export default function Studio({
     }
   }
 
-  // [cliche] 씬 화자 지정 → 대사별로 인물/내레이션 배정(캐릭터별 목소리로 더빙).
-  async function setSpeaker(i: number, name: string) {
-    setError(null);
-    try {
-      await patchSceneSource(i, { speaker: name || null });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "화자 저장 실패");
-    }
-  }
-
   // [cliche] 씬 줄(lines) 편집 — 줄마다 화자·텍스트·감정. 저장하면 줄들을 이어 다시 더빙.
-  function sceneLines(i: number) {
-    return (project.scenes[i]?.lines ?? []).map((l) => ({
-      text: l.text,
-      speaker: l.speaker,
-      emotion: l.emotion,
-    }));
+  // lines 가 없으면 나레이션을 줄바꿈으로 쪼개 파생(옛 프로젝트·수동 편집도 줄별 화자 지정 가능).
+  function sceneLines(i: number): { text: string; speaker?: string; emotion?: string }[] {
+    const s = project.scenes[i];
+    if (s?.lines?.length) {
+      return s.lines.map((l) => ({ text: l.text, speaker: l.speaker, emotion: l.emotion }));
+    }
+    return (s?.narration ?? "")
+      .split(/\n+/)
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .map((t) => ({ text: t }));
   }
   async function saveLines(i: number, lines: { text: string; speaker?: string; emotion?: string }[]) {
     setError(null);
@@ -3735,11 +3730,10 @@ export default function Studio({
                       </div>
                     </div>
                     {/* [cliche] 대사·내레이션 줄 편집 — 줄마다 화자·텍스트·감정. 줄들을 이어 더빙한다. */}
-                    {project.mode === "cliche" &&
-                      (sc.lines && sc.lines.length > 0 ? (
+                    {project.mode === "cliche" && (
                         <div className="mt-1.5 grid gap-1">
-                          <span className="text-[10px] text-zinc-400">대사·내레이션 (줄마다 화자·감정)</span>
-                          {sc.lines.map((ln, li) => (
+                          <span className="text-[10px] text-zinc-400">대사·내레이션 (줄마다 화자·감정 지정)</span>
+                          {sceneLines(i).map((ln, li) => (
                             <div key={li} className="flex flex-wrap items-center gap-1.5">
                               <select
                                 value={ln.speaker ?? ""}
@@ -3800,26 +3794,7 @@ export default function Studio({
                             ＋ 줄 추가
                           </button>
                         </div>
-                      ) : (
-                        <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                          <span className="text-[10px] text-zinc-400">🗣️ 화자</span>
-                          <select
-                            value={sc.speaker ?? ""}
-                            onChange={(e) => setSpeaker(i, e.target.value)}
-                            disabled={voiceBusy !== null}
-                            className="rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1 text-[11px] outline-none focus:border-pink-500 disabled:opacity-50"
-                          >
-                            <option value="">미지정 (기본 목소리)</option>
-                            {[...new Set([...cast, "내레이션", ...(sc.speaker ? [sc.speaker] : [])])].map(
-                              (sp) => (
-                                <option key={sp} value={sp}>
-                                  {sp === "내레이션" ? "🎙️ 내레이션" : sp}
-                                </option>
-                              )
-                            )}
-                          </select>
-                        </div>
-                      ))}
+                    )}
                     {/* 오디오 바는 카드 전체 폭 별도 줄. 네이티브 <audio controls> 는
                         모바일 최소 폭이 viewport 를 넘겨 가로 스크롤을 만들어 커스텀
                         미니 플레이어(MiniAudio)로 대체 — 폭을 완전히 제어. */}
