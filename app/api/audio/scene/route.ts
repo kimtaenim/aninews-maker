@@ -93,10 +93,13 @@ export async function POST(req: NextRequest) {
     // (Vercel 엔 ffmpeg 없음 → mp3 바이트를 이어붙임. 합성 워커는 안 건드림.)
     if (!isDub && scene.lines && scene.lines.length > 0) {
       const parts: Buffer[] = [];
+      let lastSpeaker = ""; // 빈 화자 줄은 윗줄 화자를 따라간다(첫 줄만 정하면 나머지 자동).
       for (const line of scene.lines) {
         const t = stripMarks((line.text ?? "").trim());
         if (!t) continue;
-        const vId = (line.speaker && project.castVoices?.[line.speaker]) || project.voiceId;
+        const sp = (line.speaker ?? "").trim() || lastSpeaker;
+        lastSpeaker = sp;
+        const vId = (sp && project.castVoices?.[sp]) || project.voiceId;
         const out = await synthesize({
           text: t,
           lang: voiceLang,

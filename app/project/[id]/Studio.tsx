@@ -3741,7 +3741,7 @@ export default function Studio({
                                 disabled={voiceBusy !== null}
                                 className="rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-1.5 py-1 text-[11px] outline-none focus:border-pink-500 disabled:opacity-50"
                               >
-                                <option value="">화자?</option>
+                                <option value="">{li === 0 ? "화자 선택" : "▲ 위 화자 따라감"}</option>
                                 {[...new Set([...cast, "내레이션", ...(ln.speaker ? [ln.speaker] : [])])].map(
                                   (sp) => (
                                     <option key={sp} value={sp}>
