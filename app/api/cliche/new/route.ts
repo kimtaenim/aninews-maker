@@ -99,8 +99,13 @@ export async function POST(req: NextRequest) {
       material,
       ownerEmail: (await getSessionEmail()) ?? undefined,
       styleProfileId,
-      // 클리셰는 MV 카메라(크래시줌·오비트 등)라 모션 좋은 모델 기본값(Kling). 없으면 레지스트리 기본.
-      videoModelId: videoModels.models.some((m) => m.id === "kling3") ? "kling3" : videoModels.default,
+      // 클리셰 기본 영상 모델 = Grok(xAI) — 실사용 주력(로맨스 씬이 fal 콘텐츠 정책에 덜 걸림).
+      // 없으면 Kling(모션 우수) → 레지스트리 기본 순.
+      videoModelId: videoModels.models.some((m) => m.id === "grok")
+        ? "grok"
+        : videoModels.models.some((m) => m.id === "kling3")
+          ? "kling3"
+          : videoModels.default,
       ttsEnabled: true,
       // 인물 성격을 생성 지시 앞에 붙여 A·B 캐릭터로 반영(스크립트 + 이후 시뮬 페르소나).
       userPrompt:
