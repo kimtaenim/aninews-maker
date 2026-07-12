@@ -130,6 +130,16 @@ export async function composeProject(projectId, lang) {
         aPath = join(dir, `a${i}.mp3`);
         await download(audioUrl, aPath);
       }
+      // [cliche] 효과음 — 목소리 밑에 깔 사운드(있으면 다운로드해 뒤에서 믹싱).
+      let sfxPath = null;
+      if (s.sfxUrl) {
+        try {
+          sfxPath = join(dir, `sfx${i}.mp3`);
+          await download(s.sfxUrl, sfxPath);
+        } catch {
+          sfxPath = null; // 효과음 다운로드 실패해도 씬은 계속(목소리만).
+        }
+      }
 
       const vd = await probeDuration(vPath);
       const ad = aPath ? await probeDuration(aPath) : 0;
@@ -208,9 +218,22 @@ export async function composeProject(projectId, lang) {
       for (const cp of capPaths) args.push("-loop", "1", "-framerate", String(FPS), "-i", cp);
       if (wmPath) args.push("-loop", "1", "-framerate", String(FPS), "-i", wmPath);
       if (showCredit) args.push("-loop", "1", "-framerate", String(FPS), "-i", creditPath);
+      // [cliche] 효과음 믹싱 — 목소리(1:a) 밑에 효과음을 볼륨 낮춰 amix. sfx 입력은 -stream_loop
+      // 로 반복하되 -t 로 씬 길이만큼만 읽어 유한하게(무한 입력 + amix=longest 는 매달림 위험).
+      let filterFull = filter;
+      let audioMap = "1:a";
+      if (sfxPath) {
+        const sfxIdx = 2 + capPaths.length + (wmPath ? 1 : 0) + (showCredit ? 1 : 0);
+        args.push("-stream_loop", "-1", "-t", String(duration), "-i", sfxPath);
+        const sfxVol = typeof s.sfxVolume === "number" ? Math.min(1, Math.max(0, s.sfxVolume)) : 0.35;
+        filterFull =
+          `${filter};[1:a]volume=1[voca];[${sfxIdx}:a]volume=${sfxVol.toFixed(2)}[sfxa];` +
+          `[voca][sfxa]amix=inputs=2:duration=longest:normalize=0[aout]`;
+        audioMap = "[aout]";
+      }
       args.push(
-        "-filter_complex", filter,
-        "-map", "[v]", "-map", "1:a",
+        "-filter_complex", filterFull,
+        "-map", "[v]", "-map", audioMap,
         "-t", String(duration),
         "-r", String(FPS),
         // v6 검증 설정(8씬 70초 완성). 단일스레드/ultrafast 는 오히려 매달려서 제거.
