@@ -1000,6 +1000,7 @@ export default function Studio({
       narration?: string;
       emotion?: string | null;
       speaker?: string | null;
+      voiceId?: string | null;
     }
   ) {
     const data = await call("/api/scene/source", {
@@ -1056,6 +1057,16 @@ export default function Studio({
       await patchSceneSource(i, { speaker: name || null });
     } catch (e) {
       setError(e instanceof Error ? e.message : "화자 저장 실패");
+    }
+  }
+
+  // [cliche] 씬 전용 목소리 오버라이드 — 이 대사만 특정 목소리로(비우면 화자 기본).
+  async function setSceneVoice(i: number, id: string) {
+    setError(null);
+    try {
+      await patchSceneSource(i, { voiceId: id || null });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "목소리 저장 실패");
     }
   }
 
@@ -3730,6 +3741,24 @@ export default function Studio({
                               {sp === "내레이션" ? "🎙️ 내레이션" : sp}
                             </option>
                           ))}
+                        </select>
+                        <span className="text-[10px] text-zinc-400">목소리</span>
+                        <select
+                          value={sc.voiceId ?? ""}
+                          onChange={(e) => setSceneVoice(i, e.target.value)}
+                          disabled={voiceBusy !== null}
+                          title="이 대사만 특정 목소리로 (비우면 화자 기본 목소리)"
+                          className="rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1 text-[11px] outline-none focus:border-pink-500 disabled:opacity-50"
+                        >
+                          <option value="">화자 기본 따름</option>
+                          {voices
+                            .filter((v) => v.provider === ttsProvider)
+                            .map((v) => (
+                              <option key={v.id} value={v.id}>
+                                {v.narration ? "★ " : ""}
+                                {v.name}
+                              </option>
+                            ))}
                         </select>
                       </div>
                     )}
