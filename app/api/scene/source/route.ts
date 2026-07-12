@@ -24,6 +24,7 @@ type Body = {
   emotion?: string | null; // [cliche] 감정 연기 id ("" 또는 null = 없음)
   speaker?: string | null; // [cliche] 대사 화자(인물 이름 또는 "내레이션")
   voiceId?: string | null; // [cliche] 이 씬 전용 목소리 오버라이드 ("" 또는 null = 화자 기본)
+  lines?: { text?: unknown; speaker?: unknown; emotion?: unknown }[]; // [cliche] 씬 줄 배열 편집
   keyframeReferenceUrl?: string | null;
 };
 
@@ -78,6 +79,18 @@ export async function POST(req: NextRequest) {
   if (body.emotion !== undefined) scene.emotion = clear(body.emotion);
   if (body.speaker !== undefined) scene.speaker = clear(body.speaker);
   if (body.voiceId !== undefined) scene.voiceId = clear(body.voiceId);
+  // [cliche] 줄 배열 편집 — 자막(narration)도 줄들을 이어 동기화.
+  if (Array.isArray(body.lines)) {
+    const lines = body.lines
+      .map((l) => ({
+        text: typeof l?.text === "string" ? l.text.trim() : "",
+        ...(typeof l?.speaker === "string" && l.speaker.trim() ? { speaker: l.speaker.trim() } : {}),
+        ...(typeof l?.emotion === "string" && l.emotion.trim() ? { emotion: l.emotion.trim() } : {}),
+      }))
+      .filter((l) => l.text);
+    scene.lines = lines.length ? lines : undefined;
+    if (lines.length) scene.narration = lines.map((l) => l.text).join("\n");
+  }
   // 자막 강조 편집(미리보기) — 나레이션 문자열만 갱신. 강조 마커([[ ]])는 발음에 영향이
   // 없으므로 음성대본(ttsScript) 오버라이드는 그대로 둔다. 빈 문자열은 무시(자막 비우기 방지).
   if (typeof body.narration === "string" && body.narration.trim()) {

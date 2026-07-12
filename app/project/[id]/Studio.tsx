@@ -1001,6 +1001,7 @@ export default function Studio({
       emotion?: string | null;
       speaker?: string | null;
       voiceId?: string | null;
+      lines?: { text: string; speaker?: string; emotion?: string }[];
     }
   ) {
     const data = await call("/api/scene/source", {
@@ -1058,6 +1059,32 @@ export default function Studio({
     } catch (e) {
       setError(e instanceof Error ? e.message : "화자 저장 실패");
     }
+  }
+
+  // [cliche] 씬 줄(lines) 편집 — 줄마다 화자·텍스트·감정. 저장하면 줄들을 이어 다시 더빙.
+  function sceneLines(i: number) {
+    return (project.scenes[i]?.lines ?? []).map((l) => ({
+      text: l.text,
+      speaker: l.speaker,
+      emotion: l.emotion,
+    }));
+  }
+  async function saveLines(i: number, lines: { text: string; speaker?: string; emotion?: string }[]) {
+    setError(null);
+    try {
+      await patchSceneSource(i, { lines });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "대사 저장 실패");
+    }
+  }
+  function editLine(i: number, li: number, patch: Partial<{ text: string; speaker: string; emotion: string }>) {
+    saveLines(i, sceneLines(i).map((l, x) => (x === li ? { ...l, ...patch } : l)));
+  }
+  function addLine(i: number) {
+    saveLines(i, [...sceneLines(i), { text: "", speaker: "내레이션" }]);
+  }
+  function removeLine(i: number, li: number) {
+    saveLines(i, sceneLines(i).filter((_, x) => x !== li));
   }
 
   // [cliche] 인물 이름 목록 — 저장된 cast 우선, 없으면 씬 화자에서 파생(내레이션 제외).
@@ -3707,31 +3734,92 @@ export default function Studio({
                         )}
                       </div>
                     </div>
-                    {/* [cliche] 이 대사의 화자 — 인물/내레이션 지정. 그 목소리로 더빙된다. */}
-                    {project.mode === "cliche" && (
-                      <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                        <span className="text-[10px] text-zinc-400">🗣️ 화자</span>
-                        <select
-                          value={sc.speaker ?? ""}
-                          onChange={(e) => setSpeaker(i, e.target.value)}
-                          disabled={voiceBusy !== null}
-                          className="rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1 text-[11px] outline-none focus:border-pink-500 disabled:opacity-50"
-                        >
-                          <option value="">미지정 (기본 목소리)</option>
-                          {[
-                            ...new Set([
-                              ...cast,
-                              "내레이션",
-                              ...(sc.speaker ? [sc.speaker] : []),
-                            ]),
-                          ].map((sp) => (
-                            <option key={sp} value={sp}>
-                              {sp === "내레이션" ? "🎙️ 내레이션" : sp}
-                            </option>
+                    {/* [cliche] 대사·내레이션 줄 편집 — 줄마다 화자·텍스트·감정. 줄들을 이어 더빙한다. */}
+                    {project.mode === "cliche" &&
+                      (sc.lines && sc.lines.length > 0 ? (
+                        <div className="mt-1.5 grid gap-1">
+                          <span className="text-[10px] text-zinc-400">대사·내레이션 (줄마다 화자·감정)</span>
+                          {sc.lines.map((ln, li) => (
+                            <div key={li} className="flex flex-wrap items-center gap-1.5">
+                              <select
+                                value={ln.speaker ?? ""}
+                                onChange={(e) => editLine(i, li, { speaker: e.target.value })}
+                                disabled={voiceBusy !== null}
+                                className="rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-1.5 py-1 text-[11px] outline-none focus:border-pink-500 disabled:opacity-50"
+                              >
+                                <option value="">화자?</option>
+                                {[...new Set([...cast, "내레이션", ...(ln.speaker ? [ln.speaker] : [])])].map(
+                                  (sp) => (
+                                    <option key={sp} value={sp}>
+                                      {sp === "내레이션" ? "🎙️내레이션" : sp}
+                                    </option>
+                                  )
+                                )}
+                              </select>
+                              <input
+                                defaultValue={ln.text}
+                                onBlur={(e) =>
+                                  e.target.value.trim() !== ln.text &&
+                                  editLine(i, li, { text: e.target.value })
+                                }
+                                disabled={voiceBusy !== null}
+                                placeholder="대사 / 내레이션"
+                                className="min-w-[8rem] flex-1 rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1 text-[11px] outline-none focus:border-pink-500 disabled:opacity-50"
+                              />
+                              <select
+                                value={ln.emotion ?? ""}
+                                onChange={(e) => editLine(i, li, { emotion: e.target.value })}
+                                disabled={voiceBusy !== null}
+                                title="감정 연기"
+                                className="rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-1.5 py-1 text-[11px] outline-none focus:border-pink-500 disabled:opacity-50"
+                              >
+                                <option value="">감정</option>
+                                {EMOTIONS.map((em) => (
+                                  <option key={em.id} value={em.id}>
+                                    {em.label}
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                type="button"
+                                onClick={() => removeLine(i, li)}
+                                disabled={voiceBusy !== null}
+                                className="shrink-0 rounded px-1 text-[11px] text-red-500 hover:bg-red-50 dark:hover:bg-red-950 disabled:opacity-40"
+                                aria-label="줄 삭제"
+                              >
+                                ✕
+                              </button>
+                            </div>
                           ))}
-                        </select>
-                      </div>
-                    )}
+                          <button
+                            type="button"
+                            onClick={() => addLine(i)}
+                            disabled={voiceBusy !== null}
+                            className="justify-self-start text-[11px] text-pink-600 dark:text-pink-400 hover:underline disabled:opacity-40"
+                          >
+                            ＋ 줄 추가
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                          <span className="text-[10px] text-zinc-400">🗣️ 화자</span>
+                          <select
+                            value={sc.speaker ?? ""}
+                            onChange={(e) => setSpeaker(i, e.target.value)}
+                            disabled={voiceBusy !== null}
+                            className="rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1 text-[11px] outline-none focus:border-pink-500 disabled:opacity-50"
+                          >
+                            <option value="">미지정 (기본 목소리)</option>
+                            {[...new Set([...cast, "내레이션", ...(sc.speaker ? [sc.speaker] : [])])].map(
+                              (sp) => (
+                                <option key={sp} value={sp}>
+                                  {sp === "내레이션" ? "🎙️ 내레이션" : sp}
+                                </option>
+                              )
+                            )}
+                          </select>
+                        </div>
+                      ))}
                     {/* 오디오 바는 카드 전체 폭 별도 줄. 네이티브 <audio controls> 는
                         모바일 최소 폭이 viewport 를 넘겨 가로 스크롤을 만들어 커스텀
                         미니 플레이어(MiniAudio)로 대체 — 폭을 완전히 제어. */}
