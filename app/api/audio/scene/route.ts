@@ -84,24 +84,57 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { audioBuffer, costUsd, vendor, model } = await synthesize({
-      text,
-      lang: voiceLang,
-      provider: project.ttsProvider,
-      // 프로젝트가 고른 목소리 — primary 트랙만. 더빙(다국어)은 언어별 env voice 사용.
-      // [cliche] 목소리 우선순위: 씬 전용(scene.voiceId) → 화자별(castVoices[speaker]) → 프로젝트.
-      voiceId: isDub
-        ? undefined
-        : scene?.voiceId ||
-          (scene?.speaker && project.castVoices?.[scene.speaker]) ||
-          project.voiceId,
-      // [cliche] 씬 감정 → ElevenLabs 오디오 태그로 과장 연기(더빙 트랙엔 미적용).
-      emotion: isDub ? undefined : scene?.emotion,
-      speed: project.voiceSpeed ?? 1.2, // 기본 1.2배(미설정 프로젝트도 동일하게).
-    });
+    const speed = project.voiceSpeed ?? 1.2; // 기본 1.2배(미설정 프로젝트도 동일하게).
+    let audio: Buffer;
+    let costUsd = 0;
+    let vendor: "elevenlabs" | "typecast" = "elevenlabs";
+    let model = "";
+    // [cliche] 씬에 줄(lines)이 있으면 줄마다 화자 목소리·감정으로 더빙 후 이어붙인다.
+    // (Vercel 엔 ffmpeg 없음 → mp3 바이트를 이어붙임. 합성 워커는 안 건드림.)
+    if (!isDub && scene.lines && scene.lines.length > 0) {
+      const parts: Buffer[] = [];
+      for (const line of scene.lines) {
+        const t = stripMarks((line.text ?? "").trim());
+        if (!t) continue;
+        const vId = (line.speaker && project.castVoices?.[line.speaker]) || project.voiceId;
+        const out = await synthesize({
+          text: t,
+          lang: voiceLang,
+          provider: project.ttsProvider,
+          voiceId: vId,
+          emotion: line.emotion,
+          speed,
+        });
+        parts.push(Buffer.from(out.audioBuffer));
+        costUsd += out.costUsd;
+        vendor = out.vendor;
+        model = out.model;
+      }
+      if (!parts.length) throw new Error("더빙할 대사가 없어요");
+      audio = Buffer.concat(parts);
+    } else {
+      const out = await synthesize({
+        text,
+        lang: voiceLang,
+        provider: project.ttsProvider,
+        // primary 트랙만 프로젝트 목소리. 더빙(다국어)은 언어별 env voice.
+        // [cliche] 목소리 우선순위: 씬 전용 → 화자별(castVoices) → 프로젝트.
+        voiceId: isDub
+          ? undefined
+          : scene?.voiceId ||
+            (scene?.speaker && project.castVoices?.[scene.speaker]) ||
+            project.voiceId,
+        emotion: isDub ? undefined : scene?.emotion,
+        speed,
+      });
+      audio = Buffer.from(out.audioBuffer);
+      costUsd = out.costUsd;
+      vendor = out.vendor;
+      model = out.model;
+    }
     const { url } = await uploadAsset(
       `project/${projectId}/scene-${sceneIndex}-audio-${lang}-${Date.now()}.mp3`,
-      Buffer.from(audioBuffer),
+      audio,
       "audio/mpeg"
     );
     // 합성 동안(~수 초) 다른 작업(이미지·영상)이 같은 프로젝트를 저장했을 수 있으니,
