@@ -6,6 +6,8 @@
     { "provider": "typecast", "id": "tc_66e26710ac44cf7c7ebfdb71", "name": "내레이터 C", "lang": "ko", "narration": true, "note": "내레이션 후보" },
     { "provider": "typecast", "id": "tc_64b0eede22ce103fdc1d9f78", "name": "내레이터 D", "lang": "ko", "narration": true, "note": "내레이션 후보" },
     { "provider": "typecast", "id": "tc_6335062fd260d463f7d7abb9", "name": "내레이터 E", "lang": "ko", "narration": true, "note": "내레이션 후보" },
+    { "provider": "typecast", "id": "tc_608820eb05b71bc949df989d", "name": "미남 A", "lang": "ko", "gender": "male", "note": "미남 목소리" },
+    { "provider": "typecast", "id": "tc_603513d91860484c4dcb6a11", "name": "미남 B", "lang": "ko", "gender": "male", "note": "미남 목소리" },
 
     { "provider": "eleven", "id": "onwK4e9ZLuTAKqWW03F9", "name": "Daniel", "lang": "multi", "gender": "male", "narration": true, "note": "뉴스 앵커풍 남성" },
     { "provider": "eleven", "id": "21m00Tcm4TlvDq8ikWAM", "name": "Rachel", "lang": "multi", "gender": "female", "narration": true, "note": "차분한 여성" },
