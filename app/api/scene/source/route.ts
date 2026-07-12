@@ -25,6 +25,9 @@ type Body = {
   speaker?: string | null; // [cliche] 대사 화자(인물 이름 또는 "내레이션")
   voiceId?: string | null; // [cliche] 이 씬 전용 목소리 오버라이드 ("" 또는 null = 화자 기본)
   lines?: { text?: unknown; speaker?: unknown; emotion?: unknown }[]; // [cliche] 씬 줄 배열 편집
+  sfx?: string | null; // [cliche] 효과음 설명(생성은 /api/audio/sfx). "" 또는 null=제거
+  sfxUrl?: string | null; // [cliche] 효과음 오디오 URL — null 이면 효과음 끄기
+  sfxVolume?: number; // [cliche] 효과음 볼륨(0~1)
   keyframeReferenceUrl?: string | null;
 };
 
@@ -90,6 +93,11 @@ export async function POST(req: NextRequest) {
       .filter((l) => l.text);
     scene.lines = lines.length ? lines : undefined;
     if (lines.length) scene.narration = lines.map((l) => l.text).join("\n");
+  }
+  if (body.sfx !== undefined) scene.sfx = clear(body.sfx);
+  if (body.sfxUrl !== undefined) scene.sfxUrl = clear(body.sfxUrl); // null 이면 효과음 끄기
+  if (typeof body.sfxVolume === "number") {
+    scene.sfxVolume = Math.min(1, Math.max(0, body.sfxVolume));
   }
   // 자막 강조 편집(미리보기) — 나레이션 문자열만 갱신. 강조 마커([[ ]])는 발음에 영향이
   // 없으므로 음성대본(ttsScript) 오버라이드는 그대로 둔다. 빈 문자열은 무시(자막 비우기 방지).

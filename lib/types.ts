@@ -73,6 +73,9 @@ export interface Scene {
   audioUrlEn?: string; // [레거시] 영어 더빙 클립 — 신규는 dub.en.audioUrl(읽기 폴백용 유지)
   ttsTimestamps?: TtsWord[]; // 자막 타이밍 (TTS 타임스탬프 기준)
   captionStyle?: string; // 자막 스타일 프리셋 id (lib/captionPresets). 비면 기본.
+  sfx?: string; // [cliche] 효과음 설명(예: "빗소리"). 생성에 사용.
+  sfxUrl?: string; // [cliche] 생성된 효과음 오디오(Blob). 합성 때 목소리 밑에 믹싱.
+  sfxVolume?: number; // [cliche] 효과음 볼륨(0~1, 기본 0.35). 목소리 대비.
   skipped?: boolean; // 건너뛴 씬 — 이미지/영상/음성 생성·합성·완료판정에서 제외
 }
 

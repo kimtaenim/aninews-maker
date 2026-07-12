@@ -1082,6 +1082,54 @@ export default function Studio({
     saveLines(i, sceneLines(i).filter((_, x) => x !== li));
   }
 
+  // [cliche] 효과음 — 설명 → 생성(ElevenLabs) → 씬 저장. 합성 때 목소리 밑에 믹싱.
+  const [sfxText, setSfxText] = useState<Record<number, string>>({});
+  const [sfxBusy, setSfxBusy] = useState<number | null>(null);
+  async function genSfx(i: number) {
+    const text = (sfxText[i] ?? project.scenes[i]?.sfx ?? "").trim();
+    if (!text) return;
+    setSfxBusy(i);
+    setError(null);
+    try {
+      const durationSec = Math.min(22, Math.max(1, Math.round(project.scenes[i]?.durationSec ?? 5)));
+      const data = await call("/api/audio/sfx", { projectId: project.id, sceneIndex: i, text, durationSec });
+      setProject((p) => ({
+        ...p,
+        scenes: p.scenes.map((s, x) =>
+          x === i
+            ? { ...s, sfx: text, sfxUrl: data.url as string, sfxVolume: typeof s.sfxVolume === "number" ? s.sfxVolume : 0.35 }
+            : s
+        ),
+      }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "효과음 생성 실패");
+    } finally {
+      setSfxBusy(null);
+    }
+  }
+  async function setSfxVolume(i: number, v: number) {
+    setProject((p) => ({ ...p, scenes: p.scenes.map((s, x) => (x === i ? { ...s, sfxVolume: v } : s)) }));
+    try {
+      await call("/api/scene/source", { projectId: project.id, sceneIndex: i, sfxVolume: v });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "볼륨 저장 실패");
+    }
+  }
+  async function clearSfx(i: number) {
+    setProject((p) => ({ ...p, scenes: p.scenes.map((s, x) => (x === i ? { ...s, sfxUrl: undefined, sfx: undefined } : s)) }));
+    try {
+      await call("/api/scene/source", { projectId: project.id, sceneIndex: i, sfxUrl: null, sfx: null });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "효과음 제거 실패");
+    }
+  }
+  function playSfx(url: string) {
+    previewAudioRef.current?.pause();
+    const a = new Audio(url);
+    previewAudioRef.current = a;
+    a.play().catch(() => {});
+  }
+
   // [cliche] 인물 이름 목록 — 저장된 cast 우선, 없으면 씬 화자에서 파생(내레이션 제외).
   const cast = project.cast?.length
     ? project.cast
@@ -3794,6 +3842,59 @@ export default function Studio({
                             ＋ 줄 추가
                           </button>
                         </div>
+                    )}
+                    {/* [cliche] 효과음 — 설명 → 생성 → 미리듣기 → 볼륨. 합성 때 목소리 밑에 깔린다. */}
+                    {project.mode === "cliche" && (
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        <span className="text-[10px] text-zinc-400">🔊 효과음</span>
+                        <input
+                          value={sfxText[i] ?? sc.sfx ?? ""}
+                          onChange={(e) => setSfxText((p) => ({ ...p, [i]: e.target.value }))}
+                          placeholder="예: 빗소리, 천둥, 심장 쿵"
+                          disabled={sfxBusy !== null}
+                          className="min-w-[9rem] flex-1 rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1 text-[11px] outline-none focus:border-pink-500 disabled:opacity-50"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => genSfx(i)}
+                          disabled={sfxBusy !== null || !(sfxText[i] ?? sc.sfx ?? "").trim()}
+                          className="shrink-0 rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-1 text-[11px] hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
+                        >
+                          {sfxBusy === i ? <Busy>생성 중…</Busy> : sc.sfxUrl ? "다시 생성" : "생성"}
+                        </button>
+                        {sc.sfxUrl && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => playSfx(sc.sfxUrl!)}
+                              title="효과음 미리듣기"
+                              className="shrink-0 rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-1 text-[11px] hover:bg-zinc-100 dark:hover:bg-zinc-900"
+                            >
+                              ▶
+                            </button>
+                            <div className="inline-flex rounded-md border border-zinc-200 dark:border-zinc-800 p-0.5 text-[10px]">
+                              {([["약", 0.2], ["보통", 0.35], ["크게", 0.6]] as const).map(([lbl, v]) => (
+                                <button
+                                  key={lbl}
+                                  type="button"
+                                  onClick={() => setSfxVolume(i, v)}
+                                  className={`rounded px-1.5 py-0.5 ${Math.abs((sc.sfxVolume ?? 0.35) - v) < 0.01 ? "bg-accent text-white" : "text-zinc-500"}`}
+                                >
+                                  {lbl}
+                                </button>
+                              ))}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => clearSfx(i)}
+                              title="효과음 제거"
+                              className="shrink-0 rounded px-1 text-[11px] text-red-500 hover:bg-red-50 dark:hover:bg-red-950"
+                            >
+                              ✕
+                            </button>
+                          </>
+                        )}
+                      </div>
                     )}
                     {/* 오디오 바는 카드 전체 폭 별도 줄. 네이티브 <audio controls> 는
                         모바일 최소 폭이 viewport 를 넘겨 가로 스크롤을 만들어 커스텀

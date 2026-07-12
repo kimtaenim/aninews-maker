@@ -78,3 +78,29 @@ export async function synthesizeSpeech(opts: {
   const costUsd = elevenLabsCostUsd(charsUsed);
   return { audioBuffer, costUsd, costKrw: usdToKrw(costUsd), charsUsed, model };
 }
+
+// [cliche] 효과음 생성 — 설명(예: "rain", "천둥") → 사운드 이펙트(mp3 bytes).
+// ElevenLabs Sound Effects API. 씬 목소리 밑에 깔린다(합성 워커에서 믹싱).
+export async function generateSoundEffect(opts: {
+  text: string;
+  durationSec?: number; // 0.5~22. 비우면 모델이 알아서.
+}): Promise<{ audioBuffer: ArrayBuffer }> {
+  const key = getElevenLabsKey();
+  const text = (opts.text ?? "").trim();
+  if (!text) throw new Error("효과음 설명이 비었어요");
+  const body: Record<string, unknown> = { text };
+  if (opts.durationSec && opts.durationSec > 0) {
+    body.duration_seconds = Math.min(22, Math.max(0.5, opts.durationSec));
+  }
+  const r = await fetch(`${API_BASE}/sound-generation`, {
+    method: "POST",
+    headers: { "xi-api-key": key, "content-type": "application/json", accept: "audio/mpeg" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(TTS_TIMEOUT_MS),
+  });
+  if (!r.ok) {
+    const detail = await r.text().catch(() => "");
+    throw new Error(`효과음 생성 ${r.status}${detail ? `: ${detail.slice(0, 200)}` : ""}`);
+  }
+  return { audioBuffer: await r.arrayBuffer() };
+}
