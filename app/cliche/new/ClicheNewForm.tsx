@@ -25,7 +25,11 @@ const CHAR_F = ["저돌적인 여자", "청순녀", "4차원녀", "새침녀", "
 
 export default function ClicheNewForm() {
   const router = useRouter();
-  const [chars, setChars] = useState<Set<string>>(new Set());
+  // 인물별 설정 — 각 인물마다 이름 + 클리셰 아키타입 지정. 이 인물들이 스크립트 화자/캐스팅으로 이어짐.
+  const [characters, setCharacters] = useState<{ name: string; archetype: string }[]>([
+    { name: "", archetype: "" },
+    { name: "", archetype: "" },
+  ]);
   const [selected, setSelected] = useState<Set<string>>(new Set(["첫 만남", "심쿵 눈맞춤", "고백"]));
   const [free, setFree] = useState("");
   const [style, setStyle] = useState<"webtoon" | "realistic">("webtoon");
@@ -41,13 +45,14 @@ export default function ClicheNewForm() {
       return next;
     });
   }
-  function toggleChar(t: string) {
-    setChars((prev) => {
-      const next = new Set(prev);
-      if (next.has(t)) next.delete(t);
-      else next.add(t);
-      return next;
-    });
+  function setChar(i: number, patch: Partial<{ name: string; archetype: string }>) {
+    setCharacters((prev) => prev.map((c, idx) => (idx === i ? { ...c, ...patch } : c)));
+  }
+  function addChar() {
+    setCharacters((prev) => [...prev, { name: "", archetype: "" }]);
+  }
+  function removeChar(i: number) {
+    setCharacters((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev));
   }
 
   async function create() {
@@ -65,7 +70,9 @@ export default function ClicheNewForm() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           tropes,
-          characters: [...chars],
+          characters: characters
+            .map((c) => ({ name: c.name.trim(), archetype: c.archetype }))
+            .filter((c) => c.name || c.archetype),
           styleProfileId: style === "realistic" ? "realistic" : "webtoon-romance",
           userPrompt: userPrompt.trim() || undefined,
         }),
@@ -83,51 +90,58 @@ export default function ClicheNewForm() {
     <div className="mt-6 grid gap-5">
       <div>
         <div className="text-[13px] font-medium text-zinc-600 dark:text-zinc-300">
-          인물 설정 <span className="text-zinc-400">(썸 탈 주인공들의 클리셰 성격 — 남남·여여·남녀 자유, 안 고르면 AI가 정함)</span>
+          인물 설정 <span className="text-zinc-400">(각 인물마다 이름·성격 — 남남·여여·남녀 자유)</span>
         </div>
-        <div className="mt-2 grid gap-1.5">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="w-6 text-[11px] text-zinc-400">남</span>
-            {CHAR_M.map((c) => {
-              const on = chars.has(c);
-              return (
+        <div className="mt-2 grid gap-2">
+          {characters.map((c, i) => (
+            <div key={i} className="flex flex-wrap items-center gap-2">
+              <span className="w-12 shrink-0 text-[11px] text-zinc-400">인물 {i + 1}</span>
+              <input
+                value={c.name}
+                onChange={(e) => setChar(i, { name: e.target.value })}
+                placeholder="이름 (선택)"
+                className="w-28 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2.5 py-1.5 text-sm outline-none focus:border-pink-500"
+              />
+              <select
+                value={c.archetype}
+                onChange={(e) => setChar(i, { archetype: e.target.value })}
+                className="flex-1 min-w-[120px] rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2.5 py-1.5 text-sm outline-none focus:border-pink-500"
+              >
+                <option value="">성격 (안 고르면 AI가 정함)</option>
+                <optgroup label="남">
+                  {CHAR_M.map((a) => (
+                    <option key={a} value={a}>
+                      {a}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="여">
+                  {CHAR_F.map((a) => (
+                    <option key={a} value={a}>
+                      {a}
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+              {characters.length > 1 && (
                 <button
-                  key={c}
                   type="button"
-                  onClick={() => toggleChar(c)}
-                  className={
-                    "rounded-full px-3 py-1 text-[13px] border transition-colors " +
-                    (on
-                      ? "border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 font-medium"
-                      : "border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900")
-                  }
+                  onClick={() => removeChar(i)}
+                  className="shrink-0 rounded-md px-2 py-1 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-950"
+                  aria-label="인물 삭제"
                 >
-                  {c}
+                  ✕
                 </button>
-              );
-            })}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="w-6 text-[11px] text-zinc-400">여</span>
-            {CHAR_F.map((c) => {
-              const on = chars.has(c);
-              return (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => toggleChar(c)}
-                  className={
-                    "rounded-full px-3 py-1 text-[13px] border transition-colors " +
-                    (on
-                      ? "border-pink-500 bg-pink-50 text-pink-700 dark:bg-pink-950/50 dark:text-pink-300 font-medium"
-                      : "border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900")
-                  }
-                >
-                  {c}
-                </button>
-              );
-            })}
-          </div>
+              )}
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={addChar}
+            className="justify-self-start text-[12px] text-pink-600 dark:text-pink-400 hover:underline"
+          >
+            ＋ 인물 추가
+          </button>
         </div>
       </div>
 

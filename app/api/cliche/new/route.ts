@@ -26,9 +26,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "클리셰(트로프)를 하나 이상 골라주세요" }, { status: 400 });
   }
 
-  // 인물 성격(클리셰 아키타입) — 두 주인공 A·B 의 성격으로 스크립트에 주입한다.
+  // 인물 설정 — [{name, archetype}] 또는 [string]. 각 인물의 이름·클리셰 성격을 스크립트에 주입.
   const characters = (Array.isArray(body.characters) ? body.characters : [])
-    .map((c) => (typeof c === "string" ? c.trim() : ""))
+    .map((c) => {
+      if (typeof c === "string") return c.trim();
+      if (c && typeof c === "object") {
+        const name = typeof (c as { name?: unknown }).name === "string" ? (c as { name: string }).name.trim() : "";
+        const arch =
+          typeof (c as { archetype?: unknown }).archetype === "string"
+            ? (c as { archetype: string }).archetype.trim()
+            : "";
+        return [name, arch].filter(Boolean).join(" — ");
+      }
+      return "";
+    })
     .filter(Boolean);
 
   // 그림체: 웹툰(기본) 또는 실사. 그 외 프로필은 클리셰에 부적합 → 웹툰으로.
@@ -58,7 +69,7 @@ export async function POST(req: NextRequest) {
       // 인물 성격을 생성 지시 앞에 붙여 A·B 캐릭터로 반영(스크립트 + 이후 시뮬 페르소나).
       userPrompt:
         [
-          characters.length ? `주인공 성격(클리셰): ${characters.join(" × ")}` : "",
+          characters.length ? `등장 인물: ${characters.join(", ")}` : "",
           (body.userPrompt ?? "").trim(),
         ]
           .filter(Boolean)
