@@ -4,7 +4,8 @@ import { generateMotions, type SceneInput } from "@/lib/sceneFill";
 import { formatKrw } from "@/lib/cost";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 120; // 씬 수십 개 모션 생성 — 60초를 넘길 수 있다
+
 
 // 5단계 — 씬별 영문 모션 프롬프트 생성·저장. 편집 저장과 달리 단계 상태는 안 건드림.
 // body: { projectId, scenes: [{ index, narration }] }

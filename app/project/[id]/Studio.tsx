@@ -967,7 +967,20 @@ export default function Studio({
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
     });
-    const data = await r.json();
+    // 에러 응답이 JSON 이 아닐 수 있다(예: Vercel 타임아웃의 텍스트 페이지) — 텍스트로 읽고
+    // 파싱을 시도해, 실패해도 "not valid JSON" 대신 사람이 읽을 메시지를 낸다.
+    const raw = await r.text();
+    let data: { ok?: boolean; error?: string } & Record<string, unknown>;
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      const timeout = /FUNCTION_INVOCATION_TIMEOUT|An error occurred/i.test(raw);
+      throw new Error(
+        timeout
+          ? "서버 처리 시간이 초과됐어요 — 잠시 후 다시 시도해주세요"
+          : `서버 응답 오류 (HTTP ${r.status}): ${raw.slice(0, 120)}`
+      );
+    }
     if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
     bumpMutation(); // 로컬이 곧 갱신됨 → 진행 중이던 /state 동기화는 낡은 것으로 무효화
     void refreshCost(); // 생성·리롤 등 모든 액션 후 누적 비용 갱신

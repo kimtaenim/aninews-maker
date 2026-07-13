@@ -5,7 +5,9 @@ import { canStart } from "@/lib/stepMachine";
 import type { SourceMaterial } from "@/lib/source";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+// [cliche] 줄별 대사+프롬프트+모션+분위기 씬까지 생성해 Claude 호출이 60초를 넘길 수 있다
+// (60이던 시절 Vercel FUNCTION_INVOCATION_TIMEOUT → 클라이언트 "not valid JSON" 에러).
+export const maxDuration = 300;
 
 // 2. script — 소스에서 씬 배열 생성. body: { projectId, userPrompt? }
 // 흐름: 프로젝트 로드 → source 승인 확인 → Claude → scenes[] 저장 →

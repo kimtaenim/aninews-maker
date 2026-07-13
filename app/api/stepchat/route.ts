@@ -7,7 +7,8 @@ import type { SourceMaterial } from "@/lib/source";
 import { estimateDuration } from "@/lib/scenes";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 120; // 스크립트 대화는 씬 재구성까지 — 60초를 넘길 수 있다
+
 
 // StepChat — 단계별 미세조정. body: { projectId, step, userMessage }
 // 현재 keyframe 지원: style bible 을 대화로 갱신 → 저장. 이후 "다시 생성"으로 적용.

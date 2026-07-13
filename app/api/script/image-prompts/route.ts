@@ -4,7 +4,8 @@ import { generateImagePrompts, type SceneInput } from "@/lib/sceneFill";
 import { formatKrw } from "@/lib/cost";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 120; // 씬 수십 개 프롬프트 생성 — 60초를 넘길 수 있다
+
 
 // 3·4단계 — 씬별 한글 이미지 프롬프트 생성·저장(모드=styleBible 반영). 편집 저장
 // (/api/script/scenes)과 달리 단계 상태(script approved 등)는 건드리지 않는다 —
