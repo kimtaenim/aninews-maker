@@ -1086,6 +1086,29 @@ export default function Studio({
   function removeLine(i: number, li: number) {
     saveLines(i, sceneLines(i).filter((_, x) => x !== li));
   }
+  // [cliche] 감정 연기 게이트 — 감정 오디오 태그는 ElevenLabs 전용(Typecast 미지원).
+  // 합성과 같은 규칙(Typecast id = "tc_" 프리픽스)으로 이 줄/씬의 실효 목소리 엔진을 판별해,
+  // Typecast 로 더빙될 대사엔 감정 UI 를 잠근다(선택해봤자 무시되는 걸 명시).
+  function isTypecastVoiceId(vId?: string): boolean {
+    if (vId) return vId.startsWith("tc_");
+    return ttsProvider === "typecast"; // 목소리 미지정이면 프로젝트 엔진 기본을 따라감
+  }
+  // 줄(li)의 실효 목소리 — 화자 캐스케이드(빈 화자는 윗줄 따라감) 후 castVoices → 프로젝트 목소리.
+  // (줄별 더빙 라우트 app/api/audio/scene 의 우선순위와 동일하게 유지할 것.)
+  function lineVoiceId(i: number, li: number): string | undefined {
+    const lines = sceneLines(i);
+    let sp = "";
+    for (let k = 0; k <= li && k < lines.length; k++) {
+      const s = (lines[k].speaker ?? "").trim();
+      if (s) sp = s;
+    }
+    return (sp ? castVoices[sp] : undefined) || voiceId || undefined;
+  }
+  // 씬(레거시 단일 화자 경로)의 실효 목소리 — scene.voiceId → castVoices[speaker] → 프로젝트.
+  function sceneVoiceId(i: number): string | undefined {
+    const s = project.scenes[i];
+    return s?.voiceId || (s?.speaker ? castVoices[s.speaker] : undefined) || voiceId || undefined;
+  }
 
   // [cliche] 효과음 — 설명 → 생성(ElevenLabs) → 씬 저장. 합성 때 목소리 밑에 믹싱.
   const [sfxText, setSfxText] = useState<Record<number, string>>({});
@@ -2450,30 +2473,39 @@ export default function Studio({
                       onStyle={(id) => setCaptionStyle(i, id)}
                     />
                   </div>
-                  {/* [cliche] 감정 연기 칩 — 그 씬 대사의 과장 연기(음성에 오디오 태그로 반영). */}
-                  {project.mode === "cliche" && (
-                    <div className="flex flex-wrap items-center gap-1">
-                      <span className="mr-1 text-[10px] text-zinc-400">감정</span>
-                      {EMOTIONS.map((em) => {
-                        const active = project.scenes[i]?.emotion === em.id;
-                        return (
-                          <button
-                            key={em.id}
-                            type="button"
-                            onClick={() => setEmotion(i, active ? "" : em.id)}
-                            className={
-                              "rounded-md px-2 py-0.5 text-[11px] border transition-colors " +
-                              (active
-                                ? "border-pink-500 bg-pink-50 text-pink-700 dark:bg-pink-950/50 dark:text-pink-300 font-medium"
-                                : "border-zinc-300 dark:border-zinc-700 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900")
-                            }
-                          >
-                            {em.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
+                  {/* [cliche] 감정 연기 칩 — 그 씬 대사의 과장 연기(음성에 오디오 태그로 반영).
+                      감정 태그는 ElevenLabs 전용 — Typecast 목소리로 더빙될 씬에선 잠근다. */}
+                  {project.mode === "cliche" &&
+                    (isTypecastVoiceId(sceneVoiceId(i)) ? (
+                      <p className="text-[10px] text-zinc-400">
+                        감정 연기는 <span className="font-medium">ElevenLabs 목소리 전용</span>이에요 — 이
+                        씬은 Typecast 목소리로 더빙되어 감정 태그가 적용되지 않아요. 감정이 필요하면
+                        출연진에서 ElevenLabs 목소리를 골라주세요.
+                      </p>
+                    ) : (
+                      <div className="flex flex-wrap items-center gap-1">
+                        <span className="mr-1 text-[10px] text-zinc-400">감정</span>
+                        {EMOTIONS.map((em) => {
+                          const active = project.scenes[i]?.emotion === em.id;
+                          return (
+                            <button
+                              key={em.id}
+                              type="button"
+                              onClick={() => setEmotion(i, active ? "" : em.id)}
+                              className={
+                                "rounded-md px-2 py-0.5 text-[11px] border transition-colors " +
+                                (active
+                                  ? "border-pink-500 bg-pink-50 text-pink-700 dark:bg-pink-950/50 dark:text-pink-300 font-medium"
+                                  : "border-zinc-300 dark:border-zinc-700 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900")
+                              }
+                            >
+                              {em.label}
+                            </button>
+                          );
+                        })}
+                        <span className="text-[10px] text-zinc-400">(ElevenLabs 전용)</span>
+                      </div>
+                    ))}
                   <p className="text-[10px] text-zinc-400">
                     길이 ~{estimateDuration(stripMarks(sc.narration))}초 (글자수 기준 자동). 이미지
                     프롬프트·모션은 3~5단계에서 생성합니다.
@@ -3976,7 +4008,9 @@ export default function Studio({
                     {/* [cliche] 대사·내레이션 줄 편집 — 줄마다 화자·텍스트·감정. 줄들을 이어 더빙한다. */}
                     {project.mode === "cliche" && !moodScene && (
                         <div className="mt-1.5 grid gap-1">
-                          <span className="text-[10px] text-zinc-400">대사·내레이션 (줄마다 화자·감정 지정)</span>
+                          <span className="text-[10px] text-zinc-400">
+                            대사·내레이션 (줄마다 화자·감정 지정 — 감정 연기는 ElevenLabs 목소리 전용)
+                          </span>
                           {sceneLines(i).map((ln, li) => (
                             <div key={li} className="flex flex-wrap items-center gap-1.5">
                               <select
@@ -4004,20 +4038,31 @@ export default function Studio({
                                 placeholder="대사 / 내레이션"
                                 className="min-w-[8rem] flex-1 rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1 text-[11px] outline-none focus:border-pink-500 disabled:opacity-50"
                               />
-                              <select
-                                value={ln.emotion ?? ""}
-                                onChange={(e) => editLine(i, li, { emotion: e.target.value })}
-                                disabled={voiceBusy !== null}
-                                title="감정 연기"
-                                className="rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-1.5 py-1 text-[11px] outline-none focus:border-pink-500 disabled:opacity-50"
-                              >
-                                <option value="">감정</option>
-                                {EMOTIONS.map((em) => (
-                                  <option key={em.id} value={em.id}>
-                                    {em.label}
-                                  </option>
-                                ))}
-                              </select>
+                              {/* 감정 태그는 ElevenLabs 전용 — 이 줄이 Typecast 목소리로
+                                  더빙되면 잠금(선택해도 무시되는 걸 명시). */}
+                              {isTypecastVoiceId(lineVoiceId(i, li)) ? (
+                                <span
+                                  title="이 줄은 Typecast 목소리로 더빙돼요 — 감정 연기는 ElevenLabs 목소리 전용입니다. 감정이 필요하면 이 화자에게 ElevenLabs 목소리를 골라주세요."
+                                  className="rounded-md border border-zinc-200 dark:border-zinc-800 px-1.5 py-1 text-[11px] text-zinc-400 cursor-help select-none"
+                                >
+                                  감정 —
+                                </span>
+                              ) : (
+                                <select
+                                  value={ln.emotion ?? ""}
+                                  onChange={(e) => editLine(i, li, { emotion: e.target.value })}
+                                  disabled={voiceBusy !== null}
+                                  title="감정 연기 (ElevenLabs 전용)"
+                                  className="rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-1.5 py-1 text-[11px] outline-none focus:border-pink-500 disabled:opacity-50"
+                                >
+                                  <option value="">감정</option>
+                                  {EMOTIONS.map((em) => (
+                                    <option key={em.id} value={em.id}>
+                                      {em.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => removeLine(i, li)}
