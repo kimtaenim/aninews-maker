@@ -56,21 +56,36 @@ export async function generateImagePrompts(args: {
   projectId: string;
   scenes: SceneInput[];
   styleBible: string;
+  mode?: "news" | "cliche"; // cliche 면 로맨스 클리셰 연출(같은 두 주인공·과장 리액션)로
 }): Promise<{ prompts: Map<number, string>; costUsd: number; raw: string }> {
   const scenes = (args.scenes ?? []).filter((s) => s?.narration?.trim());
   if (scenes.length === 0) return { prompts: new Map(), costUsd: 0, raw: "" };
 
   const client = getAnthropic();
+  // [cliche] 대사(줄들)를 보고 로맨스 클리셰 비주얼을 설계 — 같은 두 주인공이 전 씬 이어지고,
+  // 감정 비트가 화면에 보이게(과장 리액션). 분위기 씬(무대사)은 감성 정경 인서트로.
   const system =
-    "You write Korean image-generation prompts for short-form video scenes. " +
-    "The art style is applied separately (style bible below) — so describe ONLY the scene CONTENT in Korean: " +
-    "what is visible, the subject, setting, composition. Calm, censorship-safe, metaphorical everyday visuals — " +
-    "avoid protests, raised fists, marching crowds, violence, weapons, blood, political slogans/symbols, real public figures. " +
-    "Write ONE natural scene as plain prose and compose it freely — camera angle, framing and subject size are " +
-    "entirely up to you (하나의 자연스러운 장면을 자유롭게 묘사 — 카메라·프레이밍·인물 크기는 자유). " +
-    "Keep on-image text minimal. Keep EACH prompt SHORT — one concise Korean sentence, roughly under 60 Korean " +
-    "characters; describe only the essentials, do NOT over-describe (각 프롬프트는 한 문장·60자 내외로 짧게). " +
-    'Output ONLY JSON: {"items":[{"index":0,"prompt":"..."}]} with the SAME indices, one per scene.';
+    args.mode === "cliche"
+      ? "You write Korean image-generation prompts for a glossy Korean romance-cliché short (ani-cliché). " +
+        "The art style is applied separately (style bible below) — describe ONLY the scene CONTENT in Korean. " +
+        "Scenes are over-the-top romance-cliché beats (벽치기, 심쿵 눈맞춤, 우산, 고백…): keep the SAME two lead " +
+        "characters consistent across every scene (같은 남주·여주 — 머리 모양·복장이 씬마다 이어짐), staged like a " +
+        "romance webtoon: 밀착 구도, 눈맞춤, 얼굴 클로즈업, 설레는 거리감, 역광·보케 같은 분위기 요소. " +
+        "대사가 주어진 씬은 그 감정 비트가 화면에 보이게(커진 눈, 붉어진 볼, 심장 부여잡기 같은 과장 리액션). " +
+        "무대사 분위기 씬(대사 없이 분위기 묘사만 주어진 씬)은 인물 없이 또는 뒷모습·손끝만으로 감성 정경을 " +
+        "묘사(비 내리는 창, 노을 하늘, 스치는 손끝). Never a photoreal likeness of a real person. " +
+        "Keep on-image text minimal. Keep EACH prompt SHORT — one concise Korean sentence, roughly under 60 Korean " +
+        "characters (각 프롬프트는 한 문장·60자 내외로 짧게). " +
+        'Output ONLY JSON: {"items":[{"index":0,"prompt":"..."}]} with the SAME indices, one per scene.'
+      : "You write Korean image-generation prompts for short-form video scenes. " +
+        "The art style is applied separately (style bible below) — so describe ONLY the scene CONTENT in Korean: " +
+        "what is visible, the subject, setting, composition. Calm, censorship-safe, metaphorical everyday visuals — " +
+        "avoid protests, raised fists, marching crowds, violence, weapons, blood, political slogans/symbols, real public figures. " +
+        "Write ONE natural scene as plain prose and compose it freely — camera angle, framing and subject size are " +
+        "entirely up to you (하나의 자연스러운 장면을 자유롭게 묘사 — 카메라·프레이밍·인물 크기는 자유). " +
+        "Keep on-image text minimal. Keep EACH prompt SHORT — one concise Korean sentence, roughly under 60 Korean " +
+        "characters; describe only the essentials, do NOT over-describe (각 프롬프트는 한 문장·60자 내외로 짧게). " +
+        'Output ONLY JSON: {"items":[{"index":0,"prompt":"..."}]} with the SAME indices, one per scene.';
   // 모델이 임의 인덱스를 0-based 로 다시 매기는 일이 있어, 입력은 0..N-1 위치로 주고
   // 결과를 위치→원래 index 로 되매핑한다.
   const userMsg = [

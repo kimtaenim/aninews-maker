@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
       projectId,
       scenes,
       styleBible: project.styleBible,
+      mode: project.mode === "cliche" ? "cliche" : "news",
     });
     if (prompts.size === 0) {
       const snippet = (raw || "(모델이 빈 응답을 보냈어요)").replace(/\s+/g, " ").slice(0, 200);
