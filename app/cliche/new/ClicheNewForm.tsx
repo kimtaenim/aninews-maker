@@ -74,10 +74,9 @@ export default function ClicheNewForm() {
     fetch("/api/tts/voices")
       .then((r) => r.json())
       .then((d) => {
-        // 클리셰 프로젝트 기본 TTS 엔진은 ElevenLabs — 그 목소리만 노출.
-        if (alive && d?.ok) {
-          setVoices(((d.voices ?? []) as Voice[]).filter((v) => v.provider === "elevenlabs"));
-        }
+        // 두 엔진(Typecast·ElevenLabs) 전부 노출 — 합성이 목소리 id(tc_ 프리픽스)로 엔진을
+        // 판별하므로 인물별로 섞어 골라도 된다. (필터로 좁히지 말 것 — 킬리언 누락 사고.)
+        if (alive && d?.ok) setVoices((d.voices ?? []) as Voice[]);
       })
       .catch(() => {});
     return () => {
@@ -180,7 +179,8 @@ export default function ClicheNewForm() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          provider: "elevenlabs",
+          // 엔진은 목소리 id 로 판별(tc_=Typecast) — 합성과 동일 규칙.
+          provider: c.voiceId.startsWith("tc_") ? "typecast" : "elevenlabs",
           voiceId: c.voiceId,
           text: `안녕, ${c.name.trim() || "나"}야. 오늘 왠지 좋은 일이 생길 것 같아.`,
         }),
@@ -408,14 +408,30 @@ export default function ClicheNewForm() {
                 className={`flex-1 min-w-[160px] ${inputCls}`}
               >
                 <option value="">나중에 (스튜디오에서)</option>
-                {voices.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.narration ? "★ " : ""}
-                    {v.name}
-                    {v.gender ? ` · ${v.gender}` : ""}
-                    {v.note ? ` · ${v.note}` : ""}
-                  </option>
-                ))}
+                <optgroup label="Typecast (한국어 캐릭터)">
+                  {voices
+                    .filter((v) => v.provider === "typecast")
+                    .map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.narration ? "★ " : ""}
+                        {v.name}
+                        {v.gender ? ` · ${v.gender}` : ""}
+                        {v.note ? ` · ${v.note}` : ""}
+                      </option>
+                    ))}
+                </optgroup>
+                <optgroup label="ElevenLabs (감정 연기 지원)">
+                  {voices
+                    .filter((v) => v.provider === "elevenlabs")
+                    .map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.narration ? "★ " : ""}
+                        {v.name}
+                        {v.gender ? ` · ${v.gender}` : ""}
+                        {v.note ? ` · ${v.note}` : ""}
+                      </option>
+                    ))}
+                </optgroup>
               </select>
               <button
                 type="button"

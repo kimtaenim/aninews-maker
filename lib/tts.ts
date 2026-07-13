@@ -67,7 +67,16 @@ export async function synthesize(opts: {
   speed?: number; // 보이스오버 속도(1.0 기본). 엔진별 voice_settings.speed / output.tempo 로 전달.
   emotion?: string; // [cliche] 감정 연기 id(lib/emotions). ElevenLabs 에만 오디오 태그로 과장 연기.
 }): Promise<TtsResult> {
-  if (resolveTtsProvider(opts.provider) === "typecast") {
+  // 목소리 id 가 엔진을 명확히 가리키면 프로젝트 엔진 설정보다 우선한다 — Typecast id 는
+  // 항상 "tc_" 프리픽스(카탈로그·API 공통). 이래야 [cliche] 인물별로 다른 엔진 목소리를
+  // 섞어 쓸 수 있다(예: 킬리언=Typecast + Rachel=ElevenLabs). id 가 없으면 기존대로
+  // 프로젝트 선택 → env 기본.
+  const providerById = opts.voiceId
+    ? opts.voiceId.startsWith("tc_")
+      ? "typecast"
+      : "elevenlabs"
+    : undefined;
+  if ((providerById ?? resolveTtsProvider(opts.provider)) === "typecast") {
     // Typecast 는 오디오 태그 미지원 — 감정은 무시(추후 자체 emotion 파라미터로 확장 가능).
     const out = await synthesizeSpeechTypecast({
       text: opts.text,

@@ -3762,6 +3762,8 @@ export default function Studio({
                         className="w-24 shrink-0 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1 text-xs outline-none focus:border-pink-500 disabled:opacity-50"
                       />
                     )}
+                    {/* 출연진 목소리는 두 엔진 전부 노출 — 합성이 목소리 id(tc_ 프리픽스)로
+                        엔진을 판별하므로 인물별로 Typecast·ElevenLabs 를 섞어 써도 된다. */}
                     <select
                       value={castVoices[m] ?? ""}
                       onChange={(e) => saveVoice(e.target.value, m)}
@@ -3769,15 +3771,28 @@ export default function Studio({
                       className="min-w-[9rem] rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1.5 text-xs outline-none focus:border-pink-500 disabled:opacity-50"
                     >
                       <option value="">목소리 선택…</option>
-                      {voices
-                        .filter((v) => v.provider === ttsProvider)
-                        .map((v) => (
-                          <option key={v.id} value={v.id}>
-                            {v.narration ? "★ " : ""}
-                            {v.name}
-                            {v.note ? ` · ${v.note}` : ""}
-                          </option>
-                        ))}
+                      <optgroup label="Typecast (한국어 캐릭터)">
+                        {voices
+                          .filter((v) => v.provider === "typecast")
+                          .map((v) => (
+                            <option key={v.id} value={v.id}>
+                              {v.narration ? "★ " : ""}
+                              {v.name}
+                              {v.note ? ` · ${v.note}` : ""}
+                            </option>
+                          ))}
+                      </optgroup>
+                      <optgroup label="ElevenLabs (감정 연기 지원)">
+                        {voices
+                          .filter((v) => v.provider === "elevenlabs")
+                          .map((v) => (
+                            <option key={v.id} value={v.id}>
+                              {v.narration ? "★ " : ""}
+                              {v.name}
+                              {v.note ? ` · ${v.note}` : ""}
+                            </option>
+                          ))}
+                      </optgroup>
                     </select>
                     <button
                       type="button"
