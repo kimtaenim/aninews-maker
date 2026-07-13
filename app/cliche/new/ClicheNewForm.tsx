@@ -45,12 +45,15 @@ const emptyChar = (): WizardChar => ({
   voiceId: "",
 });
 
+// 위저드 자동 임시저장 키 — 새로고침·이탈해도 생성한 포트레이트·선택이 복원되게.
+const DRAFT_KEY = "cliche-new-draft-v1";
+
 export default function ClicheNewForm() {
   const router = useRouter();
   // 2화면 위저드: 1=클리셰·인물, 2=캐스팅(얼굴·목소리). 캐스팅 확정 후 프로젝트 생성.
   const [step, setStep] = useState<1 | 2>(1);
   // 캐스팅 산출물(포트레이트) Blob 경로용 임시 id — 프로젝트 생성 전이라 projectId 가 없다.
-  const [draftId] = useState(() =>
+  const [draftId, setDraftId] = useState(() =>
     typeof crypto !== "undefined" && crypto.randomUUID
       ? crypto.randomUUID()
       : `d${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -62,6 +65,52 @@ export default function ClicheNewForm() {
   const [userPrompt, setUserPrompt] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // ── 자동 임시저장 — 위저드 상태를 localStorage 에 계속 저장, 재방문 시 복원. ──
+  // (포트레이트 생성이 돈 드는 작업이라 새로고침으로 날아가면 안 됨. 프로젝트 생성 성공 시 비움.)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      const d = JSON.parse(raw) as {
+        draftId?: string;
+        step?: number;
+        characters?: WizardChar[];
+        selected?: string[];
+        free?: string;
+        style?: string;
+        userPrompt?: string;
+      };
+      if (typeof d.draftId === "string" && d.draftId) setDraftId(d.draftId);
+      if (Array.isArray(d.characters) && d.characters.length) {
+        setCharacters(d.characters.map((c) => ({ ...emptyChar(), ...c })));
+      }
+      if (Array.isArray(d.selected)) setSelected(new Set(d.selected.filter((t) => typeof t === "string")));
+      if (typeof d.free === "string") setFree(d.free);
+      if (d.style === "webtoon" || d.style === "realistic") setStyle(d.style);
+      if (typeof d.userPrompt === "string") setUserPrompt(d.userPrompt);
+      if (d.step === 2) setStep(2);
+    } catch {
+      /* 손상된 초안 — 무시하고 새로 시작 */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // 첫 실행(마운트 직후, 복원 반영 전 초기값)은 건너뛴다 — 안 그러면 빈 초기값이 초안을 덮는다.
+  const skipFirstSaveRef = useRef(true);
+  useEffect(() => {
+    if (skipFirstSaveRef.current) {
+      skipFirstSaveRef.current = false;
+      return;
+    }
+    try {
+      localStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({ draftId, step, characters, selected: [...selected], free, style, userPrompt })
+      );
+    } catch {
+      /* 저장 공간 부족 등 — 무시 */
+    }
+  }, [draftId, step, characters, selected, free, style, userPrompt]);
 
   // 캐스팅 화면 상태 — 포트레이트 생성/업로드 busy(한 번에 한 명), 목소리 목록·미리듣기.
   const [castBusy, setCastBusy] = useState<number | null>(null);
@@ -238,6 +287,9 @@ export default function ClicheNewForm() {
       });
       const data = await r.json();
       if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      try {
+        localStorage.removeItem(DRAFT_KEY); // 생성 성공 — 임시 초안 비움
+      } catch {}
       router.push(`/project/${data.projectId}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "생성 실패");

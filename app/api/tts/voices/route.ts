@@ -20,27 +20,45 @@ type Meta = { name?: string; gender?: string; note?: string };
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const s = (x: any) => (typeof x === "string" ? x : x == null ? "" : String(x));
 
-// provider 에서 id → 실제 이름/성별 맵을 만든다(이름 보강용). 실패하면 빈 맵.
-async function elevenMeta(): Promise<Record<string, Meta>> {
+// ElevenLabs 계정 목소리 — id→이름/성별 맵(카탈로그 이름 보강용) + 카탈로그에 없는
+// "내 라이브러리" 목소리 목록(커뮤니티에서 추가한 것 등, premade 제외 — 기본 20여 개
+// 프리메이드로 목록이 넘치지 않게). ElevenLabs 웹에서 Voice Library → 추가만 하면
+// 앱 목록에 자동으로 뜬다. 실패하면 빈 값.
+type ElevenExtra = { id: string; name: string; gender: string; note: string };
+async function elevenAccount(): Promise<{ meta: Record<string, Meta>; extras: ElevenExtra[] }> {
   const key = process.env.ELEVENLABS_API_KEY;
-  if (!key) return {};
+  if (!key) return { meta: {}, extras: [] };
   try {
     const r = await fetch("https://api.elevenlabs.io/v1/voices", {
       headers: { "xi-api-key": key },
       signal: AbortSignal.timeout(10_000),
     });
-    if (!r.ok) return {};
+    if (!r.ok) return { meta: {}, extras: [] };
     const d = await r.json();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const arr: any[] = Array.isArray(d?.voices) ? d.voices : [];
-    const out: Record<string, Meta> = {};
+    const meta: Record<string, Meta> = {};
+    const extras: ElevenExtra[] = [];
     for (const v of arr) {
       const id = s(v.voice_id);
-      if (id) out[id] = { name: s(v.name), gender: s(v?.labels?.gender) };
+      if (!id) continue;
+      const labels = v?.labels ?? {};
+      meta[id] = { name: s(v.name), gender: s(labels.gender) };
+      if (s(v.category) && s(v.category) !== "premade") {
+        extras.push({
+          id,
+          name: s(v.name),
+          gender: s(labels.gender),
+          note:
+            [s(labels.descriptive || labels.description), s(labels.age), s(labels.use_case)]
+              .filter(Boolean)
+              .join(" · ") || "내 라이브러리",
+        });
+      }
     }
-    return out;
+    return { meta, extras };
   } catch {
-    return {};
+    return { meta: {}, extras: [] };
   }
 }
 
@@ -82,7 +100,7 @@ async function typecastMeta(): Promise<Record<string, Meta>> {
 
 export async function GET() {
   const raw = ((catalog as { voices?: CatalogVoice[] }).voices ?? []) as CatalogVoice[];
-  const [el, tc] = await Promise.all([elevenMeta(), typecastMeta()]);
+  const [{ meta: el, extras }, tc] = await Promise.all([elevenAccount(), typecastMeta()]);
 
   const voices = raw
     .filter((v) => v && typeof v.id === "string" && v.id && !v.id.startsWith("REPLACE_ME"))
@@ -100,5 +118,20 @@ export async function GET() {
         narration: v.narration === true,
       };
     });
+
+  // ElevenLabs "내 라이브러리" 목소리(커뮤니티 추가분 등) — 카탈로그에 없으면 뒤에 붙인다.
+  const known = new Set(voices.map((v) => v.id));
+  for (const ev of extras) {
+    if (known.has(ev.id)) continue;
+    voices.push({
+      id: ev.id,
+      name: ev.name,
+      provider: "elevenlabs",
+      lang: "multi",
+      gender: ev.gender,
+      note: ev.note,
+      narration: false,
+    });
+  }
   return NextResponse.json({ ok: true, voices });
 }
