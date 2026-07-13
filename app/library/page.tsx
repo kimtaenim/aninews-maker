@@ -2,7 +2,12 @@ import Link from "next/link";
 import DeleteButton from "./DeleteButton";
 import DriveUploadButton from "./DriveUploadButton";
 import DailySeqControl from "./DailySeqControl";
-import { listRecentProjects, getProject } from "@/lib/projectStore";
+import {
+  countProjects,
+  listProjectIds,
+  listAllProjectIds,
+  getProjectsBulk,
+} from "@/lib/projectStore";
 import { STEP_ORDER, type Project } from "@/lib/types";
 import { getLang } from "@/lib/languages";
 import { ADMIN_EMAIL } from "@/lib/auth";
@@ -47,23 +52,35 @@ function matchesQuery(p: Project, terms: string[]): boolean {
 export default async function LibraryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; page?: string; n?: string }>;
 }) {
-  const q = ((await searchParams).q ?? "").trim();
+  const sp = await searchParams;
+  const q = (sp.q ?? "").trim();
   const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
+  // 페이지네이션: ?page=(1부터) & ?n=(페이지 크기, 기본 60 — "더 보기"가 +60씩 키움).
+  const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
+  const size = Math.min(300, Math.max(60, parseInt(sp.n ?? "60", 10) || 60));
 
   let projects: Project[] = [];
   let loadError = false;
+  let total = 0;
   try {
-    // 검색 시엔 더 많이 읽어 과거 프로젝트도 포함.
-    const ids = await listRecentProjects(q ? 200 : 60);
-    const loaded = await Promise.all(
-      ids.map((id) => getProject(id).catch(() => null))
-    );
-    projects = loaded.filter((p): p is Project => p !== null);
+    if (q) {
+      // 검색은 옛날 것까지 전부 대상 — 전체 id 를 받아 mget 배치로 로드 후 필터.
+      const ids = await listAllProjectIds();
+      total = ids.length;
+      projects = await getProjectsBulk(ids);
+    } else {
+      total = await countProjects();
+      projects = await getProjectsBulk(await listProjectIds((page - 1) * size, size));
+    }
   } catch {
     loadError = true;
   }
+  const totalPages = Math.max(1, Math.ceil(total / size));
+  // 페이지 링크 href — 기본 크기(60)면 n 생략해 URL 을 짧게.
+  const pageHref = (p: number, n = size) =>
+    `/library?${[p > 1 ? `page=${p}` : "", n !== 60 ? `n=${n}` : ""].filter(Boolean).join("&")}`.replace(/\?$/, "");
 
   // 드라이브 업로드 완료(재합성 안 됨)는 뒤로, 아직 안 올린 것·재업로드 필요한 것은
   // 앞으로. 그룹 안에서는 기존 순서(최신순) 유지(Array.sort 는 안정 정렬).
@@ -124,7 +141,7 @@ export default async function LibraryPage({
       </form>
       {q && (
         <p className="mt-2 text-xs text-zinc-500">
-          &lsquo;{q}&rsquo; 검색 결과 {shown.length}개
+          &lsquo;{q}&rsquo; 검색 결과 {shown.length}개 (전체 {total}개 대상 — 옛날 것 포함)
         </p>
       )}
 
@@ -187,6 +204,39 @@ export default async function LibraryPage({
             </li>
           ))}
         </ul>
+      )}
+
+      {/* 페이지네이션 + 더 보기 — 검색 중엔 숨김(검색은 이미 전체 대상). */}
+      {!q && !loadError && total > 0 && (
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-2 text-sm">
+          {page > 1 && (
+            <Link
+              href={pageHref(page - 1)}
+              className="rounded-lg border border-zinc-200 dark:border-zinc-800 px-3 py-1.5 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-900"
+            >
+              ← 이전
+            </Link>
+          )}
+          <span className="px-2 text-xs text-zinc-500">
+            {page} / {totalPages} 페이지 · 전체 {total}개
+          </span>
+          {page < totalPages && (
+            <Link
+              href={pageHref(page + 1)}
+              className="rounded-lg border border-zinc-200 dark:border-zinc-800 px-3 py-1.5 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-900"
+            >
+              다음 →
+            </Link>
+          )}
+          {page === 1 && total > size && size < 300 && (
+            <Link
+              href={pageHref(1, size + 60)}
+              className="rounded-lg border border-accent px-3 py-1.5 text-accent hover:bg-accent/10"
+            >
+              더 보기 +60
+            </Link>
+          )}
+        </div>
       )}
     </main>
   );

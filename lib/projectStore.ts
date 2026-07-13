@@ -125,6 +125,34 @@ export async function listRecentProjects(limit = 30): Promise<string[]> {
   return getRedis().zrange<string[]>(INDEX, 0, limit - 1, { rev: true });
 }
 
+// 전체 프로젝트 수 — 라이브러리 페이지네이션("전체 N개")용.
+export async function countProjects(): Promise<number> {
+  return getRedis().zcard(INDEX);
+}
+
+// 최신순 id 목록(offset 부터 limit 개) — 라이브러리 페이지네이션용.
+export async function listProjectIds(offset: number, limit: number): Promise<string[]> {
+  return getRedis().zrange<string[]>(INDEX, offset, offset + limit - 1, { rev: true });
+}
+
+// 전체 id 목록(최신순) — 라이브러리 검색이 옛날 것까지 전부 뒤지게.
+export async function listAllProjectIds(): Promise<string[]> {
+  return getRedis().zrange<string[]>(INDEX, 0, -1, { rev: true });
+}
+
+// 여러 프로젝트 일괄 로드 — mget 배치로 REST 왕복을 줄인다(개별 get N회 → N/20회).
+// 없는 키(삭제 흔적)는 건너뛴다.
+export async function getProjectsBulk(ids: string[]): Promise<Project[]> {
+  const redis = getRedis();
+  const out: Project[] = [];
+  for (let i = 0; i < ids.length; i += 20) {
+    const chunk = ids.slice(i, i + 20);
+    const rows = await redis.mget<(Project | null)[]>(...chunk.map(KEY));
+    for (const p of rows) if (p) out.push(normalizeScene0(p));
+  }
+  return out;
+}
+
 // 워커가 Redis(compose:progress:<id>)에 쓴 합성 진행 로그의 마지막 줄. UI 표시용.
 export async function getComposeProgressLine(id: string): Promise<string> {
   try {
