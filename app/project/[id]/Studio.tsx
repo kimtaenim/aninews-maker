@@ -1422,6 +1422,8 @@ export default function Studio({
   // 씬 편집(2·4·5단계)·스타일(3단계)은 고칠 때마다 디바운스로 조용히 저장된다.
   // busy 를 막지 않아(타이핑 중 UI 멈춤·버퍼 덮어쓰기 방지) 작은 상태 표시만 한다.
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  // 저장 실패의 서버 메시지 — "저장 실패"만 떠서 원인을 모르던 문제(예: 나레이션 필수 422).
+  const [saveErrMsg, setSaveErrMsg] = useState<string | null>(null);
   const scenesRef = useRef(scenes);
   scenesRef.current = scenes;
   const savingScenesRef = useRef(false);
@@ -1449,7 +1451,9 @@ export default function Studio({
       // 저장 동안 추가 편집이 없었으면 dirty 해제(버퍼는 안 덮어써 입력 보존).
       if (scenesRef.current === snapshot) setDirty(false);
       setSaveState("saved");
-    } catch {
+      setSaveErrMsg(null);
+    } catch (e) {
+      setSaveErrMsg(e instanceof Error ? e.message : null);
       setSaveState("error"); // busy 안 막음 — 다음 편집/플러시 때 재시도
     } finally {
       savingScenesRef.current = false;
@@ -1486,7 +1490,9 @@ export default function Studio({
       bumpMutation();
       if (editBibleRef.current === snapshot) setBibleDirty(false);
       setSaveState("saved");
-    } catch {
+      setSaveErrMsg(null);
+    } catch (e) {
+      setSaveErrMsg(e instanceof Error ? e.message : null);
       setSaveState("error");
     } finally {
       savingBibleRef.current = false;
@@ -1521,7 +1527,12 @@ export default function Studio({
   // 자동저장 상태 표시(작게). 편집저장 버튼 자리에 들어간다.
   function renderSaveStatus() {
     if (saveState === "saving") return <span className="text-[11px] text-zinc-400">자동 저장 중…</span>;
-    if (saveState === "error") return <span className="text-[11px] text-red-600">저장 실패 — 다시 편집하면 재시도</span>;
+    if (saveState === "error")
+      return (
+        <span className="text-[11px] text-red-600">
+          저장 실패{saveErrMsg ? `: ${saveErrMsg}` : ""} — 다시 편집하면 재시도
+        </span>
+      );
     if (saveState === "saved") return <span className="text-[11px] text-zinc-400">자동 저장됨 ✓</span>;
     return null;
   }
@@ -2443,7 +2454,10 @@ export default function Studio({
                   className="rounded-xl bg-zinc-50 dark:bg-zinc-900 p-3 grid gap-2 scroll-mt-4"
                 >
                   <div className="flex items-center justify-between text-xs text-zinc-500">
-                    <span className="font-medium">씬 {i + 1}</span>
+                    <span className="font-medium">
+                      씬 {i + 1}
+                      {project.scenes[i]?.mood && <span className="ml-1 text-pink-500">💫 분위기 씬</span>}
+                    </span>
                     <div className="flex items-center gap-1">
                       <button
                         type="button"
@@ -2475,7 +2489,14 @@ export default function Studio({
                   </div>
 
                   <label className="grid gap-1">
-                    <span className="text-[11px] text-zinc-500">나레이션</span>
+                    {project.scenes[i]?.mood ? (
+                      <span className="text-[11px] text-pink-500">
+                        💫 분위기 묘사 — 영상에 안 나가요(더빙·자막 없음). 이미지·모션 생성
+                        참고용이라 비워도 됩니다.
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-zinc-500">나레이션</span>
+                    )}
                     <textarea
                       ref={(el) => {
                         narrRefs.current[i] = el;

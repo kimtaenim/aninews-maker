@@ -84,7 +84,8 @@ export async function POST(req: NextRequest) {
 
   // 나레이션만 필수. 이미지 프롬프트(3·4단계)·모션(5단계)은 이후 단계에서 생성하므로
   // 2단계 저장 시점엔 비어 있는 게 정상이다(생성 버튼이 비었을 때 막아준다).
-  const invalid = scenes.find((s) => !s.narration);
+  // [cliche] 분위기 씬(mood)은 예외 — narration 은 분위기 묘사(생성 참고용)라 비워도 된다.
+  const invalid = scenes.find((s) => !s.narration && !s.mood);
   if (invalid) {
     return NextResponse.json(
       { ok: false, error: `씬${invalid.index + 1}: 나레이션은 비울 수 없어요` },
