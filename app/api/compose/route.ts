@@ -8,10 +8,11 @@ export const runtime = "nodejs";
 
 // 7. compose — 최종 합성 작업을 worker 에 위임(Redis 큐). ffmpeg 는 Vercel 에서
 // 못 돌리므로 별도 worker 가 처리. 언어(ko 또는 더빙 언어 en/es/ja…) 하나를 골라 굽는다.
-//   POST { projectId, lang? }  → 큐 적재 → { jobId }
-//   GET  ?projectId            → { status, finalVideoUrl?, error? }
+//   POST { projectId, lang?, clean? }  → 큐 적재 → { jobId }. clean=true 는 "영상만"
+//     합성(보이스·자막·효과음·워터마크 제외 — 소재용) → cleanVideoUrl 에 저장.
+//   GET  ?projectId            → { status, finalVideoUrl?, cleanVideoUrl?, error? }
 export async function POST(req: NextRequest) {
-  let body: { projectId?: string; lang?: string };
+  let body: { projectId?: string; lang?: string; clean?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest) {
     id: randomUUID(),
     type: "compose",
     projectId,
-    payload: { lang },
+    payload: { lang, ...(body.clean === true ? { clean: true } : {}) },
     status: "queued",
     createdAt: now,
     updatedAt: now,
@@ -89,6 +90,7 @@ export async function GET(req: NextRequest) {
     ok: true,
     status: project.steps.compose.status,
     finalVideoUrl: project.finalVideoUrl,
+    cleanVideoUrl: project.cleanVideoUrl, // "영상만" 합성본(있으면)
     error: project.steps.compose.error,
     updatedAt: project.steps.compose.updatedAt, // 합성 시작 시각(경과시간 복원용)
     progress, // 워커 진행 로그 마지막 줄 (예: "씬 6/8: 인코딩…")

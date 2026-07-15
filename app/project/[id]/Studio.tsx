@@ -548,11 +548,12 @@ export default function Studio({
             return d.progress;
           });
         }
-        if (d.status === "generated" && d.finalVideoUrl) {
-          bumpMutation(); // 확정된 finalVideoUrl — 낡은 /state 동기화가 못 지우게
+        if (d.status === "generated" && (d.finalVideoUrl || d.cleanVideoUrl)) {
+          bumpMutation(); // 확정된 합성본 URL — 낡은 /state 동기화가 못 지우게
           setProject((p) => ({
             ...p,
-            finalVideoUrl: d.finalVideoUrl as string,
+            finalVideoUrl: (d.finalVideoUrl as string) ?? p.finalVideoUrl,
+            cleanVideoUrl: (d.cleanVideoUrl as string) ?? p.cleanVideoUrl,
             steps: { ...p.steps, compose: { ...p.steps.compose, status: "generated" } },
           }));
           return;
@@ -714,7 +715,9 @@ export default function Studio({
 
   // 7단계: 합성 — worker 에 작업 적재. 진행 추적은 서버 상태 + runComposePoll 이 담당하므로
   // 이 함수가 끝나도(페이지를 떠나도) 합성은 계속되고, 돌아오면 자동으로 이어진다.
-  async function startCompose() {
+  // clean=true 는 "영상만" 합성(보이스·자막·효과음·워터마크 제외 — 소재용 다운로드).
+  // 결과는 cleanVideoUrl 에 저장돼 정식 합성본(finalVideoUrl)을 덮지 않는다.
+  async function startCompose(clean = false) {
     setError(null);
     setBusy("compose");
     try {
@@ -722,12 +725,12 @@ export default function Studio({
       // 변경(예: "작게")이 아직 Redis 에 안 닿아 worker 가 이전 값으로 구울 수 있다.
       // → 현재 화면의 자막 설정을 먼저 확실히 저장한 뒤 합성 큐에 넣는다.
       await call("/api/project/subtitle", { projectId: project.id, subtitle: sub });
-      await call("/api/compose", { projectId: project.id, lang: "ko" });
+      await call("/api/compose", { projectId: project.id, lang: "ko", ...(clean ? { clean: true } : {}) });
       const now = Date.now();
       composeStartRef.current = now;
       setProject((p) => ({
         ...p,
-        finalVideoUrl: undefined,
+        ...(clean ? { cleanVideoUrl: undefined } : { finalVideoUrl: undefined }),
         steps: {
           ...p.steps,
           compose: { ...p.steps.compose, status: "generating", error: undefined, updatedAt: now },
@@ -1020,6 +1023,7 @@ export default function Studio({
       speaker?: string | null;
       voiceId?: string | null;
       lines?: { text: string; speaker?: string; emotion?: string }[];
+      mood?: boolean;
     }
   ) {
     const data = await call("/api/scene/source", {
@@ -1098,6 +1102,16 @@ export default function Studio({
   }
   function removeLine(i: number, li: number) {
     saveLines(i, sceneLines(i).filter((_, x) => x !== li));
+  }
+  // [cliche] 분위기 씬 ↔ 일반 씬 전환 — 스크립트가 자동으로 넣은 분위기 씬에 대사를 넣고
+  // 싶을 때(반대로도) 쓴다. mood=true 전환 시 서버가 낡은 더빙도 무효화한다.
+  async function toggleMood(i: number, mood: boolean) {
+    setError(null);
+    try {
+      await patchSceneSource(i, { mood });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "분위기 씬 전환 실패");
+    }
   }
   // [cliche] 감정 연기 게이트 — 감정 오디오 태그는 ElevenLabs 전용(Typecast 미지원).
   // 합성과 같은 규칙(Typecast id = "tc_" 프리픽스)으로 이 줄/씬의 실효 목소리 엔진을 판별해,
@@ -3991,6 +4005,17 @@ export default function Studio({
                         )}
                         <span className="ml-1 text-zinc-300">✎</span>
                       </button>
+                      {moodScene && (
+                        <button
+                          type="button"
+                          onClick={() => toggleMood(i, false)}
+                          disabled={voiceBusy !== null}
+                          title="분위기 씬을 일반 씬으로 되돌립니다 — 대사를 넣고 더빙·자막을 쓸 수 있게 됩니다"
+                          className="shrink-0 text-[11px] rounded-md border border-pink-300 dark:border-pink-800 px-2 py-0.5 text-pink-600 dark:text-pink-300 hover:bg-pink-50 dark:hover:bg-pink-950/40 disabled:opacity-40"
+                        >
+                          🔊 일반 씬으로
+                        </button>
+                      )}
                       {!moodScene && (
                         <div className="shrink-0 grid justify-items-end gap-0.5">
                           <div className="flex items-center gap-1">
@@ -4021,9 +4046,20 @@ export default function Studio({
                     {/* [cliche] 대사·내레이션 줄 편집 — 줄마다 화자·텍스트·감정. 줄들을 이어 더빙한다. */}
                     {project.mode === "cliche" && !moodScene && (
                         <div className="mt-1.5 grid gap-1">
-                          <span className="text-[10px] text-zinc-400">
-                            대사·내레이션 (줄마다 화자·감정 지정 — 감정 연기는 ElevenLabs 목소리 전용)
-                          </span>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[10px] text-zinc-400">
+                              대사·내레이션 (줄마다 화자·감정 지정 — 감정 연기는 ElevenLabs 목소리 전용)
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => toggleMood(i, true)}
+                              disabled={voiceBusy !== null}
+                              title="이 씬을 무대사 분위기 씬으로 — 더빙·자막 없이 영상+효과음만 나갑니다"
+                              className="shrink-0 text-[10px] text-zinc-400 hover:text-pink-500 hover:underline disabled:opacity-40"
+                            >
+                              💫 분위기 씬으로
+                            </button>
+                          </div>
                           {sceneLines(i).map((ln, li) => (
                             <div key={li} className="flex flex-wrap items-center gap-1.5">
                               <select
@@ -4391,12 +4427,21 @@ export default function Studio({
                 </p>
                 <button
                   type="button"
-                  onClick={startCompose}
+                  onClick={() => startCompose()}
                   disabled={busy !== null}
                   className="mt-2 w-full rounded-xl bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-semibold py-3 transition-colors"
                 >
                   {project.finalVideoUrl ? "🎬 다시 합성" : "🎬 최종 합성하기"} (
                   {composeLangLabel})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => startCompose(true)}
+                  disabled={busy !== null}
+                  title="보이스·자막·효과음·워터마크 없이 영상만 이어 붙입니다. 씬 길이는 음성 기준 그대로라 편집기에서 풀버전과 타이밍이 맞아요."
+                  className="mt-2 w-full rounded-xl border border-accent text-accent hover:bg-accent/10 disabled:opacity-40 font-medium py-2.5 text-sm transition-colors"
+                >
+                  🎞️ 영상만 합성 (보이스·자막 제외 — 소재용)
                 </button>
               </>
             );
@@ -4422,6 +4467,17 @@ export default function Studio({
               <p className="mt-1 text-[10px] text-zinc-400">
                 아이폰: 받은 뒤 파일 앱 → 다운로드. 사진 앱에 넣으려면 영상 길게 눌러 “비디오 저장”.
               </p>
+            </div>
+          )}
+          {project.cleanVideoUrl && (
+            <div className="mt-3 flex items-center justify-center gap-2">
+              <a
+                href={`/api/download?projectId=${encodeURIComponent(project.id)}&kind=clean`}
+                download
+                className="inline-block text-xs rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-1.5 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-900"
+              >
+                ⬇ 영상만(클린) 다운로드 — 보이스·자막 없음
+              </a>
             </div>
           )}
         </section>

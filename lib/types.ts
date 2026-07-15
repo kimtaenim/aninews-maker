@@ -178,6 +178,7 @@ export interface Project {
   credit?: string; // 제작 크레딧 이름 — 마지막 2씬에 "제작 : {credit}"을 워터마크 옆에 크게.
   userPrompt?: string; // 소스 단계에서 입력한 의도("어떤 식으로 만들까요?") — 스크립트 생성에 주입.
   finalVideoUrl?: string;
+  cleanVideoUrl?: string; // "영상만" 합성본(보이스·자막·효과음·워터마크 제외, 타이밍은 동일). 소재용 다운로드.
   lang?: string; // 이 프로젝트 나레이션 언어. 원본(한국어)은 비움, 다국어판은 en/es/ja/vi.
   sourceProjectId?: string; // 다국어판이면 원본 프로젝트 id (라이브러리 그룹·검색용).
   ownerEmail?: string; // 만든 사람(로그인 이메일). 비면 관리자(ADMIN_EMAIL) 소유로 본다.

@@ -20,7 +20,7 @@ async function tick() {
   try {
     await updateJob(job.id, { status: "running" });
     const url = await Promise.race([
-      composeProject(job.projectId, job.payload?.lang ?? "ko"),
+      composeProject(job.projectId, job.payload?.lang ?? "ko", job.payload),
       new Promise((_, rej) =>
         setTimeout(() => rej(new Error("합성 타임아웃(10분) — 워커가 어딘가에서 매달림")), COMPOSE_TIMEOUT_MS)
       ),
@@ -37,7 +37,7 @@ async function tick() {
 
 // 배포 검증용 버전 표식 — Render 로그 + Redis(worker:build)에 남긴다.
 // Redis 에 쓰면 대시보드 없이 원격에서 "새 코드가 떴는지" 확인 가능.
-const BUILD = "cliche-v12 (sfx amix 볼륨보정 + mood 자막생략)";
+const BUILD = "cliche-v13 (클린 합성[영상만] + mood 자막생략)";
 console.log(`[worker] BUILD = ${BUILD}`);
 console.log("[worker] 시작 — jobq:compose 폴링 중…");
 try {

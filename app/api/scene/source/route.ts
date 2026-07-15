@@ -25,6 +25,7 @@ type Body = {
   speaker?: string | null; // [cliche] 대사 화자(인물 이름 또는 "내레이션")
   voiceId?: string | null; // [cliche] 이 씬 전용 목소리 오버라이드 ("" 또는 null = 화자 기본)
   lines?: { text?: unknown; speaker?: unknown; emotion?: unknown }[]; // [cliche] 씬 줄 배열 편집
+  mood?: boolean; // [cliche] 분위기 씬 토글 — true=무대사 인서트로, false=일반 씬으로 전환
   sfx?: string | null; // [cliche] 효과음 설명(생성은 /api/audio/sfx). "" 또는 null=제거
   sfxUrl?: string | null; // [cliche] 효과음 오디오 URL — null 이면 효과음 끄기
   sfxVolume?: number; // [cliche] 효과음 볼륨(0~1)
@@ -84,6 +85,13 @@ export async function POST(req: NextRequest) {
   if (body.voiceId !== undefined) scene.voiceId = clear(body.voiceId);
   // [cliche] 줄 배열 편집 — 자막(narration)도 줄들을 이어 동기화.
   if (Array.isArray(body.lines)) {
+    const prevLines = JSON.stringify(
+      (project.scenes[sceneIndex].lines ?? []).map((l) => ({
+        text: l.text,
+        speaker: l.speaker,
+        emotion: l.emotion,
+      }))
+    );
     const lines = body.lines
       .map((l) => ({
         text: typeof l?.text === "string" ? l.text.trim() : "",
@@ -93,6 +101,21 @@ export async function POST(req: NextRequest) {
       .filter((l) => l.text);
     scene.lines = lines.length ? lines : undefined;
     if (lines.length) scene.narration = lines.map((l) => l.text).join("\n");
+    // 대사가 실제로 바뀌었으면 낡은 더빙을 무효화 — 안 그러면 지운 대사가 합성에 계속
+    // 들어가고("열두번이요" 사고), 자막(새 대사)과 음성(옛 대사) 싱크도 어긋난다.
+    if (JSON.stringify(lines) !== prevLines) {
+      scene.audioUrl = undefined;
+      scene.ttsTimestamps = undefined;
+    }
+  }
+  // [cliche] 분위기 씬 토글 — mood=true 는 무대사(더빙 무의미 → 오디오 무효화), false 는
+  // 일반 씬으로 복귀(줄 편집으로 대사를 넣고 더빙하면 됨).
+  if (typeof body.mood === "boolean") {
+    scene.mood = body.mood || undefined;
+    if (body.mood) {
+      scene.audioUrl = undefined;
+      scene.ttsTimestamps = undefined;
+    }
   }
   if (body.sfx !== undefined) scene.sfx = clear(body.sfx);
   if (body.sfxUrl !== undefined) scene.sfxUrl = clear(body.sfxUrl); // null 이면 효과음 끄기

@@ -71,7 +71,11 @@ async function download(url, dest) {
   }
 }
 
-export async function composeProject(projectId, lang) {
+// opts.clean=true → "영상만" 합성: 보이스·자막·효과음·워터마크·크레딧 전부 제외.
+// 단, 씬 길이는 음성 길이 기준 그대로(외부 편집기에서 풀버전과 타이밍이 맞게).
+// 결과는 finalVideoUrl 이 아닌 cleanVideoUrl 에 저장(정식 합성본을 안 덮음).
+export async function composeProject(projectId, lang, opts = {}) {
+  const clean = opts?.clean === true;
   // 진행 로그 — stderr + Redis(원격에서 lrange 로 추적). await 로 확실히 기록해서
   // 프로세스가 죽어도(OOM 등) 어느 단계까지 갔는지 Redis에 남게 한다.
   await resetProgress(projectId);
@@ -96,9 +100,10 @@ export async function composeProject(projectId, lang) {
   );
   const dir = await mkdtemp(join(tmpdir(), "compose-"));
   try {
+    if (clean) await log("클린 합성 모드 — 보이스·자막·효과음·워터마크 제외(영상만)");
     // 워터마크는 모든 씬에 동일하게 들어가므로 한 번만 렌더(전체프레임 투명 PNG).
     let wmPath = null;
-    if (project.watermark?.text?.trim()) {
+    if (!clean && project.watermark?.text?.trim()) {
       const wmPng = await renderWatermarkPng(project.watermark, { W, H });
       wmPath = join(dir, "watermark.png");
       await writeFile(wmPath, wmPng);
@@ -106,7 +111,7 @@ export async function composeProject(projectId, lang) {
     }
     // 제작 크레딧 — 마지막 2씬에만. 워터마크 위치 기준 옆에 1.5배로. (워터마크 유무와 무관)
     let creditPath = null;
-    const creditName = (project.credit ?? "").trim();
+    const creditName = clean ? "" : (project.credit ?? "").trim();
     if (creditName) {
       const cPng = await renderCreditPng(creditName, project.watermark ?? { position: "br" }, { W, H });
       creditPath = join(dir, "credit.png");
@@ -130,9 +135,9 @@ export async function composeProject(projectId, lang) {
         aPath = join(dir, `a${i}.mp3`);
         await download(audioUrl, aPath);
       }
-      // [cliche] 효과음 — 목소리 밑에 깔 사운드(있으면 다운로드해 뒤에서 믹싱).
+      // [cliche] 효과음 — 목소리 밑에 깔 사운드(있으면 다운로드해 뒤에서 믹싱). 클린 모드 제외.
       let sfxPath = null;
-      if (s.sfxUrl) {
+      if (!clean && s.sfxUrl) {
         try {
           sfxPath = join(dir, `sfx${i}.mp3`);
           await download(s.sfxUrl, sfxPath);
@@ -148,7 +153,8 @@ export async function composeProject(projectId, lang) {
       const dubText =
         lang === "ko" ? "" : s.dub?.[lang]?.narration ?? (lang === "en" ? s.narrationEn : "");
       // [cliche] 분위기 씬(mood) — 자막 없이 영상+효과음만 나간다(narration 은 분위기 묘사라 안 그림).
-      const text = s.mood ? "" : (lang === "ko" ? s.narration : dubText || s.narration) ?? "";
+      // 클린 모드는 전 씬 자막 생략(음성 길이 기반 타이밍은 아래에서 그대로 유지).
+      const text = s.mood || clean ? "" : (lang === "ko" ? s.narration : dubText || s.narration) ?? "";
       // 긴 나레이션은 캡션 여러 개로 분할(미리보기와 동일 알고리즘) → 씬 안에서 순차 표시.
       const caps = segmentCaptions(text, sub.size);
       await log(`씬 ${i + 1}: 자막 캡션 ${caps.length}컷 렌더(canvas)…`);
@@ -212,7 +218,8 @@ export async function composeProject(projectId, lang) {
 
       const out = join(dir, `scene${i}.mp4`);
       const args = ["-y", "-i", vPath];
-      if (aPath) args.push("-i", aPath);
+      // 클린 모드: 음성 파일은 길이 측정에만 쓰고 트랙엔 안 싣는다(무음) — 타이밍 동일 유지.
+      if (aPath && !clean) args.push("-i", aPath);
       else args.push("-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100");
       // 자막 PNG는 -loop 1 로 연속 스트림화(단일 프레임 입력 + overlay 체인은 데드락).
       // 출력 -t 가 전체 길이를 제한하므로 입력은 무한 루프로 둬도 안전(v6 검증됨).
@@ -264,14 +271,16 @@ export async function composeProject(projectId, lang) {
     await log("Blob 업로드…");
     // 스트리밍 업로드 — 최종 영상을 통째로 메모리에 읽지 않는다(OOM 방지).
     const { url } = await put(
-      `project/${projectId}/final-${lang}-${Date.now()}.mp4`,
+      `project/${projectId}/${clean ? "clean" : "final"}-${lang}-${Date.now()}.mp4`,
       createReadStream(finalPath),
       { access: "public", contentType: "video/mp4", addRandomSuffix: false }
     );
 
     const p2 = await getProject(projectId);
     if (p2) {
-      p2.finalVideoUrl = url;
+      // 클린 합성본은 별도 보관 — 정식 합성본(finalVideoUrl)을 덮지 않는다.
+      if (clean) p2.cleanVideoUrl = url;
+      else p2.finalVideoUrl = url;
       p2.steps.compose.status = "generated";
       p2.steps.compose.error = undefined;
       p2.steps.compose.updatedAt = Date.now();
