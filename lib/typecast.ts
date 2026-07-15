@@ -15,6 +15,13 @@ const API_URL = "https://api.typecast.ai/v1/text-to-speech";
 const DEFAULT_MODEL = process.env.TYPECAST_MODEL || "ssfm-v30";
 const TTS_TIMEOUT_MS = 60_000;
 const MAX_CHARS = 2000; // Typecast 1회 텍스트 상한
+// Typecast 는 ElevenLabs 대비 출력이 크다 — output.volume(0~200, 100=기본)으로 낮춘다.
+// TYPECAST_VOLUME 로 조정(값 낮출수록 조용). 잘못된 값은 기본 80으로 폴백.
+const OUTPUT_VOLUME = (() => {
+  const v = Number(process.env.TYPECAST_VOLUME);
+  if (!Number.isFinite(v)) return 80;
+  return Math.min(200, Math.max(0, Math.round(v)));
+})();
 
 export function getTypecastKey(): string {
   const key = process.env.TYPECAST_API_KEY;
@@ -87,7 +94,7 @@ export async function synthesizeSpeechTypecast(opts: {
       text,
       model,
       ...(language ? { language } : {}),
-      output: { audio_format: "mp3", tempo },
+      output: { audio_format: "mp3", tempo, volume: OUTPUT_VOLUME },
     }),
     signal: AbortSignal.timeout(TTS_TIMEOUT_MS),
   });
