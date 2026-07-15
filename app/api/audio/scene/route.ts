@@ -90,7 +90,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const speed = project.voiceSpeed ?? 1.2; // 기본 1.2배(미설정 프로젝트도 동일하게).
+    // 씬 오버라이드 우선(뉴스 구독 마무리 씬 1.4배 등) → 프로젝트 → 기본 1.2배.
+    // ElevenLabs 는 API 상한 1.2 로 클램프됨(lib/elevenlabs) — 1.4 는 Typecast 목소리에서만 유효.
+    const speed = scene?.ttsSpeed ?? project.voiceSpeed ?? 1.2;
     let audio: Buffer;
     let costUsd = 0;
     let vendor: "elevenlabs" | "typecast" = "elevenlabs";

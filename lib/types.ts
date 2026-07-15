@@ -53,6 +53,7 @@ export interface Scene {
   speaker?: string; // [cliche·레거시] 씬 단일 화자. lines 있으면 lines 가 우선.
   emotion?: string; // [cliche] 감정 연기 id (lib/emotions). TTS 에 오디오 태그로 과장 연기.
   voiceId?: string; // [cliche] 이 씬(대사) 전용 목소리 오버라이드. 없으면 화자(castVoices)→프로젝트 목소리.
+  ttsSpeed?: number; // 이 씬 전용 보이스 속도 오버라이드. 없으면 project.voiceSpeed. (뉴스 구독 마무리 씬 1.4배 등. ElevenLabs 는 API 상한 1.2)
   ttsScript?: string; // 음성(TTS) 전용 오버라이드. 비면 narration 사용. 자막엔 영향 없음.
   narrationEn?: string; // [레거시] 영문 번역 — 신규는 dub.en.narration 사용(읽기 폴백용 유지)
   // 다국어 더빙 트랙. 언어코드(en/es/ja…) → { 번역문, 더빙 오디오 }. lib/languages.ts 참고.
@@ -187,6 +188,63 @@ export interface Project {
   driveLink?: string; // Drive 업로드된 파일 보기 링크.
   driveFileName?: string; // 마지막 업로드 파일명(날짜-번호-분야-언어). UI 표시·번호 확인용.
   driveUploadedUrl?: string; // 업로드 당시의 finalVideoUrl — 이게 현재 값과 다르면(재합성) 다시 업로드 버튼.
+  createdAt: number;
+  updatedAt: number;
+}
+
+// ── 시뮬 제조기 (연애 미니게임) ───────────────────────────────────────────────
+// ani-cliché 위에 얹는 미니 게임. castMembers 를 상대 캐릭터로 재사용하고,
+// 친밀도(0~100) 마일스톤에서 완성된 클리셰 영상을 컷씬으로 재생한다.
+// 원본 프로젝트가 수정·삭제돼도 게임이 안 깨지게 포트레이트·영상 URL 은
+// 게임 정의에 스냅샷으로 복사해 둔다(참조 아님).
+
+export interface SimCutscene {
+  at: number; // 친밀도 도달점 (25 | 50 | 75)
+  projectId: string; // 원본 클리셰 프로젝트(재스냅샷용 참조)
+  videoUrl: string; // 스냅샷 — 지정 시점의 cleanVideoUrl ?? finalVideoUrl
+  title?: string; // 원본 프로젝트 제목(제조기 UI 표시용)
+}
+
+export interface SimTarget {
+  name: string; // CastMember.name (화자 키와 동일 문자열)
+  archetype?: string; // 스냅샷 — 페르소나 재생성용
+  portraitUrl?: string; // 스냅샷 — 플레이 화면 아바타
+  voiceId?: string; // 스냅샷 — (후속) 대사 TTS 옵션용
+  persona: string; // Claude 시스템 프롬프트 — 성격·말투·좋아하는/싫어하는 반응. 수정 가능.
+  cutscenes: SimCutscene[]; // 마일스톤 컷씬 (없어도 플레이 가능)
+}
+
+export interface SimGame {
+  id: string;
+  title: string;
+  sourceProjectId: string; // castMembers 를 가져온 클리셰 프로젝트
+  targets: SimTarget[]; // 공략 상대들
+  ownerEmail?: string; // 만든 사람(로그인 이메일)
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface SimTurn {
+  role: "user" | "assistant";
+  text: string;
+  affinityDelta?: number; // assistant 턴 — 직전 플레이어 반응의 채점 결과
+  judge?: string; // assistant 턴 — 채점 사유 한 줄(화면 비노출, 밸런싱 로그용)
+  situationId?: string; // 이 턴에 발동된 상황 이벤트 id (simSituations)
+  ts: number;
+}
+
+export interface SimPlay {
+  id: string;
+  gameId: string;
+  targetName: string; // 공략 중인 상대 (SimTarget.name)
+  affinity: number; // 친밀도 0~100
+  turns: SimTurn[];
+  milestonesSeen: number[]; // 이미 재생한 컷씬 도달점 [25, 50, ...]
+  situationsUsed: string[]; // 이미 발동한 상황 id (중복 방지)
+  nextSituationAtTurn: number; // 다음 상황을 발동할 assistant 턴 번호(코드가 주사위)
+  status: "playing" | "won" | "lost";
+  endedReason?: string; // 엔딩 사유(고백 성공/거절 등) — 엔딩 화면 표시용
+  ownerEmail?: string;
   createdAt: number;
   updatedAt: number;
 }
