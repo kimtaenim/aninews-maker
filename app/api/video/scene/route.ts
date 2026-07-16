@@ -28,6 +28,7 @@ export async function POST(req: NextRequest) {
     prompt?: string;
     videoModelId?: string;
     motionScale?: "subtle" | "large";
+    videoCommonPrompt?: string; // 전 씬 공통 지시(없으면 project.videoCommonPrompt 사용)
   };
   try {
     body = await req.json();
@@ -97,7 +98,10 @@ export async function POST(req: NextRequest) {
             ? "cliche"
             : "subtle";
     const guidance = getVideoMotion(scale);
-    const prompt = motion ? `${motion}. ${guidance}` : guidance;
+    // 전 씬 공통 프롬프트 — 요청 바디 우선, 없으면 프로젝트 저장값. 씬 motion 뒤·톤 가이드 앞.
+    const common = (body.videoCommonPrompt ?? project.videoCommonPrompt ?? "").trim();
+    const lead = [motion, common].filter(Boolean).join(". ");
+    const prompt = lead ? `${lead}. ${guidance}` : guidance;
     const { jobId } = await submitVideo(modelId, {
       imageUrl: scene.imageUrl,
       prompt,

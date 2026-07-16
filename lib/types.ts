@@ -175,6 +175,7 @@ export interface Project {
   castVoices?: Record<string, string>; // [cliche] 화자(speaker "A"/"B"…)별 목소리. 없으면 voiceId 폴백.
   voiceSpeed?: number; // 보이스오버 속도 배율(1.0 기본 / 1.2 빠르게). 음성 생성 시 적용.
   videoModelId: string; // config/video-models.json (기본 Seedance)
+  videoCommonPrompt?: string; // 5단계 영상 생성에 전 씬 공통으로 덧붙는 지시(영문/한글). 씬 motion 뒤, 톤 가이드 앞에 들어감.
   subtitle?: SubtitleSettings; // 자막 디자인(일괄). 없으면 DEFAULT_SUBTITLE.
   watermark?: Watermark; // 최종 영상에 새길 워터마크(텍스트+위치). 없으면 안 새김.
   credit?: string; // 제작 크레딧 이름 — 마지막 2씬에 "제작 : {credit}"을 워터마크 옆에 크게.

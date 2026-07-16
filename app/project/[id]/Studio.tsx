@@ -329,6 +329,16 @@ export default function Studio({
   const [videoModelId, setVideoModelId] = useState(
     initial.videoModelId || videoModels[0]?.id || ""
   );
+  // 5단계 영상 생성 공통 프롬프트 — 전 씬 영상에 공통으로 덧붙는 지시. 프로젝트별 저장.
+  const [videoCommonPrompt, setVideoCommonPrompt] = useState(initial.videoCommonPrompt ?? "");
+  async function saveVideoCommonPrompt(v: string) {
+    try {
+      await call("/api/project/video-prompt", { projectId: project.id, prompt: v });
+      setProject((p) => ({ ...p, videoCommonPrompt: v.trim() || undefined }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "공통 프롬프트 저장 실패");
+    }
+  }
   // 씬별 모션 크기 — 뉴스는 기본 잔잔, 클리셰는 기본 크게(MV 카메라). 씬별로 바꿀 수 있다.
   const [motionScale, setMotionScale] = useState<Record<number, "subtle" | "large">>({});
   const defaultMotionScale: "subtle" | "large" = initial.mode === "cliche" ? "large" : "subtle";
@@ -2055,6 +2065,7 @@ export default function Studio({
       sceneIndex,
       videoModelId,
       motionScale: motionScale[sceneIndex] ?? defaultMotionScale,
+      videoCommonPrompt: videoCommonPrompt.trim() || undefined,
     });
     setProject((p) => ({
       ...p,
@@ -3656,6 +3667,25 @@ export default function Studio({
               fal 막히면 Grok으로 바꿔서 생성/리롤
             </span>
           </label>
+        )}
+        {imagesApproved && (
+          <div className="mt-2 grid gap-1">
+            <span className="text-xs font-medium text-zinc-600 dark:text-zinc-300">
+              🎬 공통 영상 지시 <span className="font-normal text-zinc-400">(전 씬 공통)</span>
+            </span>
+            <textarea
+              value={videoCommonPrompt}
+              onChange={(e) => setVideoCommonPrompt(e.target.value)}
+              onBlur={(e) => saveVideoCommonPrompt(e.target.value)}
+              disabled={busy !== null}
+              rows={2}
+              placeholder="예: cinematic film grain, warm color grade, subtle handheld feel (모든 씬 영상에 공통으로 들어갑니다)"
+              className={fieldCls + " resize-y"}
+            />
+            <span className="text-[11px] text-zinc-400">
+              모든 씬 영상 생성에 공통으로 붙는 지시예요. 씬별 카메라·모션 뒤, 톤 가이드 앞에 들어갑니다. 비우면 없음.
+            </span>
+          </div>
         )}
         {!imagesApproved && (
           <p className="mt-2 text-xs text-zinc-500">이미지를 먼저 승인해주세요.</p>
