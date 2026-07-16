@@ -80,12 +80,12 @@ export default async function SimHomePage() {
                 <span className="text-xs text-zinc-500">
                   {new Date(g.createdAt).toLocaleDateString("ko-KR")}
                 </span>
-                <span
-                  className="rounded-lg bg-zinc-100 dark:bg-zinc-900 px-3 py-1.5 text-xs text-zinc-400"
-                  title="플레이 화면은 다음 업데이트에서 열려요"
+                <Link
+                  href={`/sim/${g.id}/play`}
+                  className="rounded-lg bg-accent hover:bg-accent-strong text-white px-3 py-1.5 text-xs font-medium transition-colors"
                 >
-                  ▶ 플레이 — 준비 중
-                </span>
+                  ▶ 플레이
+                </Link>
               </div>
             </div>
           </li>
