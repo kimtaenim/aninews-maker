@@ -16,7 +16,7 @@ export const maxDuration = 300;
 // 인사하는 컷 + 이 자막 + 1.4배 목소리. 1.4배는 Typecast 만 가능(ElevenLabs API
 // 상한 1.2)이라, 프로젝트 목소리가 Typecast 가 아니면 이 씬만 지정 목소리로 교체.
 const OUTRO_NARRATION = "아침 저녁으로 경제 교양 정보를 받아보실 수 있어요. 구독 눌러주세요!";
-const OUTRO_TYPECAST_VOICE = "tc_603513d91860484c4dcb6a11"; // 미남 (config/voices.json)
+const OUTRO_TYPECAST_VOICE = "tc_603513d91860484c4dcb6a11"; // 여성 성우 (config/voices.json, 사용자 선호)
 
 function newsOutroScene(project: Project, index: number): Scene {
   const projectUsesTypecast =

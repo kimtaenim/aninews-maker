@@ -1,7 +1,7 @@
 {
   "_help": "보이스오버 목소리 카탈로그(프로젝트당 하나 선택). voice_id 는 공개값이라 여기서 관리한다(env·API 조회 대신). 6단계에서 프로젝트 엔진(typecast/eleven)에 맞는 목록을 골라 project.voiceId 로 저장. 실제 합성은 lib/tts 가 provider 키로 수행. provider=typecast|eleven, id=voice_id, name, lang, gender, note. narration:true=내레이션 추천.",
   "voices": [
-    { "provider": "typecast", "id": "tc_603513d91860484c4dcb6a11", "name": "미남", "lang": "ko", "gender": "male", "note": "미남 목소리" },
+    { "provider": "typecast", "id": "tc_603513d91860484c4dcb6a11", "name": "여성 성우", "lang": "ko", "gender": "female", "note": "따뜻한 여성 목소리" },
     { "provider": "typecast", "id": "tc_69e0462f3e5413d26878521e", "name": "성우 1", "lang": "ko", "note": "미리듣기로 확인" },
     { "provider": "typecast", "id": "tc_68d49c1e02c83f1fd4cdeaae", "name": "성우 2", "lang": "ko", "note": "미리듣기로 확인" },
     { "provider": "typecast", "id": "tc_689450bdcce4027c2f06eee8", "name": "성우 3", "lang": "ko", "note": "미리듣기로 확인" },

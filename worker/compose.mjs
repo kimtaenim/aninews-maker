@@ -109,14 +109,15 @@ export async function composeProject(projectId, lang, opts = {}) {
       await writeFile(wmPath, wmPng);
       await log(`워터마크 "${project.watermark.text}" (${project.watermark.position})`);
     }
-    // 제작 크레딧 — 마지막 2씬에만. 워터마크 위치 기준 옆에 1.5배로. (워터마크 유무와 무관)
+    // 제작 크레딧 — 마지막 3씬에만. 워터마크 위치 기준 옆에 1.5배로. (워터마크 유무와 무관)
+    const CREDIT_LAST_SCENES = 3; // 크레딧을 노출할 끝 씬 개수
     let creditPath = null;
     const creditName = clean ? "" : (project.credit ?? "").trim();
     if (creditName) {
       const cPng = await renderCreditPng(creditName, project.watermark ?? { position: "br" }, { W, H });
       creditPath = join(dir, "credit.png");
       await writeFile(creditPath, cPng);
-      await log(`제작 크레딧 "${creditName}" (마지막 2씬)`);
+      await log(`제작 크레딧 "${creditName}" (마지막 ${CREDIT_LAST_SCENES}씬)`);
     }
 
     const sceneFiles = [];
@@ -196,8 +197,8 @@ export async function composeProject(projectId, lang, opts = {}) {
         enable: `between(t,${spans[j][0].toFixed(3)},${spans[j][1].toFixed(3)})`,
       }));
       if (wmPath) overlays.push({ inIdx: 2 + capPaths.length, enable: null });
-      // 제작 크레딧: 마지막 2씬에만. 입력 순서는 (자막들 → 워터마크 → 크레딧).
-      const showCredit = creditPath && i >= scenes.length - 2;
+      // 제작 크레딧: 마지막 N씬에만. 입력 순서는 (자막들 → 워터마크 → 크레딧).
+      const showCredit = creditPath && i >= scenes.length - CREDIT_LAST_SCENES;
       if (showCredit) {
         overlays.push({ inIdx: 2 + capPaths.length + (wmPath ? 1 : 0), enable: null });
       }
