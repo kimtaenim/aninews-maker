@@ -5,14 +5,18 @@
 // 갱신 → 호출부가 저장하고 해당 단계 재생성. 다른 단계도 같은 패턴으로 확장.
 // ============================================================================
 
+import type Anthropic from "@anthropic-ai/sdk";
 import { getAnthropic, MODELS } from "./anthropic";
 import { anthropicCostUsd, recordCost } from "./cost";
 import type { SourceMaterial } from "./source";
 
-// ── 팩트체크 (2단계) — 씬 나레이션의 사실관계를 검증한다 ─────────────────────────
-// 소스 본문을 근거로, 스크립트가 소스를 왜곡·과장·오류 없이 담았는지 + 일반 상식/
-// 알려진 사실과 어긋나는 곳이 없는지 씬 번호별로 지적한다. 씬을 고치지는 않고(리포트만),
-// 고치기는 대화창에서 runScriptChat 으로 이어간다. 양질 모델(opus).
+// ── 팩트체크 (2단계) — 씬 나레이션의 사실관계를 웹 검색으로 검증한다 ──────────────
+// 소스를 "정답"으로 놓고 대조만 하면 소스가 틀렸을 때 그대로 통과된다 → web_search 도구로
+// 실제 사실을 확인한다. 소스는 초안 근거(그 자체도 검증 대상)로만 넘긴다. 씬을 고치지는
+// 않고(리포트만), 고치기는 대화창에서 runScriptChat 으로 이어간다. 양질 모델(opus).
+// Anthropic 웹 검색 요금: 1,000회당 $10 (= 1회 $0.01).
+const WEB_SEARCH_USD_PER_CALL = 0.01;
+
 export async function runFactCheck(args: {
   projectId: string;
   narrations: string[];
@@ -22,47 +26,72 @@ export async function runFactCheck(args: {
   const client = getAnthropic();
 
   const system =
-    "You are a fact-checker for a short-form Korean news video script. You are given the SOURCE material " +
-    "(the ground-truth article, Korean) and the SCRIPT as a numbered list of scene narrations (Korean). " +
-    "Check each scene for: (1) claims that contradict or distort the source, (2) exaggerations, numbers, " +
-    "dates, names or quotes that don't match the source, (3) statements that are factually wrong or misleading " +
-    "against well-known facts, (4) missing critical context that makes a scene misleading. " +
-    "Reply in KOREAN as a concise, scannable report: for each problem, cite the scene number (씬 N), quote the " +
-    "issue briefly, explain why, and suggest the fix. If a scene is fine, don't list it. If the whole script is " +
-    "accurate, say so clearly. End with one line telling the user they can ask you to apply any fix in this chat. " +
+    "You are a fact-checker for a short-form Korean news video script. You have a web_search tool — USE IT to " +
+    "verify the script's claims against current, reputable real-world sources. Do NOT rely only on the provided " +
+    "draft source: it is just what the script was drafted from and may itself be outdated, biased, or wrong — " +
+    "treat it as a claim to check, not ground truth. For each scene, search the web to confirm names, numbers, " +
+    "dates, quotes and events against up-to-date sources, and flag anything the script gets wrong, exaggerates, " +
+    "or that cannot be verified. Search in Korean or English as fits the topic. " +
+    "Reply in KOREAN as a concise, scannable report: for each problem cite the scene number (씬 N), quote the " +
+    "issue briefly, state what the web sources actually say (name the outlet/source), and suggest the fix. If a " +
+    "claim checks out, don't list it. If you genuinely can't verify something after searching, say so explicitly " +
+    "(미확인). End with one line telling the user they can ask you to apply any fix in this chat. " +
     "Do NOT rewrite the whole script here — this is a review, not an edit. Plain text, no JSON, no markdown headers.";
 
   const userMsg =
     (material
-      ? `소스 제목: ${material.title}\n\n소스 본문(사실 근거):\n${material.body}\n\n`
-      : "(소스 본문 없음 — 일반 상식·알려진 사실 기준으로만 검증)\n\n") +
-    "스크립트 씬 나레이션:\n" +
+      ? `참고용 초안 소스 제목: ${material.title}\n\n참고용 초안 소스 본문(이 자체도 검증 대상 — 정답 아님):\n${material.body}\n\n`
+      : "(초안 소스 없음 — 웹 검색으로만 검증)\n\n") +
+    "검증할 스크립트 씬 나레이션:\n" +
     narrations.map((n, i) => `${i + 1}. ${n}`).join("\n");
 
-  const r = await client.messages.create({
-    model: MODELS.opus,
-    max_tokens: 4000,
-    system,
-    messages: [{ role: "user", content: userMsg }],
-  });
+  // 웹 검색 서버 도구. 검색 횟수 상한으로 비용/시간 폭주 방지.
+  const tools = [
+    { type: "web_search_20260209", name: "web_search", max_uses: 8 },
+  ] as unknown as Anthropic.Messages.ToolUnion[];
 
-  const raw = textOf(r.content);
-  const costUsd = anthropicCostUsd({
-    inputTokens: r.usage.input_tokens,
-    outputTokens: r.usage.output_tokens,
-    cacheReadTokens: r.usage.cache_read_input_tokens ?? undefined,
-    cacheWriteTokens: r.usage.cache_creation_input_tokens ?? undefined,
-    model: MODELS.opus,
-  });
+  // 서버 도구 루프가 10회 반복 상한에 걸리면 stop_reason=pause_turn 으로 끊긴다 → 이어서 재요청.
+  const messages: Anthropic.Messages.MessageParam[] = [{ role: "user", content: userMsg }];
+  let costUsd = 0;
+  let searches = 0;
+  const textParts: string[] = [];
+  for (let turn = 0; turn < 6; turn++) {
+    const r = await client.messages.create({
+      model: MODELS.opus,
+      max_tokens: 6000,
+      system,
+      messages,
+      tools,
+    });
+    costUsd += anthropicCostUsd({
+      inputTokens: r.usage.input_tokens,
+      outputTokens: r.usage.output_tokens,
+      cacheReadTokens: r.usage.cache_read_input_tokens ?? undefined,
+      cacheWriteTokens: r.usage.cache_creation_input_tokens ?? undefined,
+      model: MODELS.opus,
+    });
+    searches +=
+      (r.usage as { server_tool_use?: { web_search_requests?: number } }).server_tool_use
+        ?.web_search_requests ?? 0;
+    const t = textOf(r.content);
+    if (t) textParts.push(t);
+    if (r.stop_reason === "pause_turn") {
+      messages.push({ role: "assistant", content: r.content });
+      continue;
+    }
+    break;
+  }
+  costUsd += searches * WEB_SEARCH_USD_PER_CALL;
+
   await recordCost({
     projectId,
     vendor: "anthropic",
     model: MODELS.opus,
     costUsd,
-    meta: { kind: "factcheck" },
+    meta: { kind: "factcheck", webSearches: searches },
   }).catch(() => {});
 
-  const reply = raw || "팩트체크 결과를 받지 못했어요 — 다시 시도해 주세요.";
+  const reply = textParts.join("\n\n").trim() || "팩트체크 결과를 받지 못했어요 — 다시 시도해 주세요.";
   return { reply, costUsd };
 }
 

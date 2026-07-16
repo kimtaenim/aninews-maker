@@ -7,7 +7,7 @@ import type { Scene, StepChatTurn } from "@/lib/types";
 import type { SourceMaterial } from "@/lib/source";
 
 export const runtime = "nodejs";
-export const maxDuration = 120; // 팩트체크·씬 재구성은 60초를 넘길 수 있다
+export const maxDuration = 300; // 팩트체크는 웹 검색을 여러 번 돌려 60초를 넘길 수 있다
 
 // 스크립트 팩트체크(2단계) — 전 씬 나레이션을 모아 Claude(opus)에 검증 의뢰.
 // body: { projectId, userMessage? }

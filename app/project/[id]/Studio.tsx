@@ -1829,15 +1829,18 @@ export default function Studio({
     }
   }
 
-  // 팩트체크 대략 비용(원) — 나레이션+소스 길이로 opus 토큰·요금 추정(대충). 실측은 실행 후.
+  // 팩트체크 대략 비용(원) — opus 토큰 + 웹 검색료. 검색은 씬 수만큼 대략 잡는다(대충).
+  // 실제 검색 횟수·재검색에 따라 달라지므로 범위로 보여준다. 실측은 실행 후.
   function factCheckEstimateKrw(): string {
     const chars =
       project.scenes.reduce((n, s) => n + (s.narration?.length ?? 0), 0) +
       (material?.body?.length ?? 0);
-    const inTok = chars * 0.7 + 400; // 한국어 대략 토큰 + 시스템
-    const outTok = 900; // 리포트 분량 대략
-    const usd = (inTok * 15 + outTok * 75) / 1_000_000; // opus $15/$75 per 1M
-    return `₩${Math.round(usd * 1400).toLocaleString("ko-KR")}`;
+    const inTok = chars * 0.7 + 600; // 한국어 대략 토큰 + 시스템(검색 결과 되먹임 포함 대략)
+    const outTok = 1200; // 리포트 분량 대략
+    const tokenUsd = (inTok * 15 + outTok * 75) / 1_000_000; // opus $15/$75 per 1M
+    const searches = Math.min(8, Math.max(2, project.scenes.length)); // 씬당 대략 1회, 2~8
+    const searchUsd = searches * 0.01; // 웹 검색 $10/1000회
+    return `₩${Math.round((tokenUsd + searchUsd) * 1400).toLocaleString("ko-KR")}`;
   }
 
   // 씬 한 장 생성/리롤. 성공하면 project.scenes 갱신 + 비용 라벨 저장.
@@ -2779,7 +2782,8 @@ export default function Studio({
                 🔍 팩트체크
               </p>
               <p className="mt-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">
-                전체 씬의 나레이션을 소스 본문과 대조해 왜곡·과장·틀린 숫자·오류를 씬 번호별로 짚어줍니다.
+                전체 씬의 나레이션을 <span className="font-medium">웹 검색으로 실제 사실과 대조</span>해
+                왜곡·과장·틀린 숫자·오류를 씬 번호별로 짚어줍니다(소스도 검증 대상 — 정답으로 두지 않아요).
                 지적 내용은 아래 대화에 뜨고, “3번 씬 수치 고쳐줘”처럼 요청하면 씬이 바로 수정됩니다.
               </p>
               <button
@@ -2798,7 +2802,7 @@ export default function Studio({
               </button>
               <p className="mt-1.5 text-[11px] text-zinc-400">
                 대략 <span className="font-medium text-zinc-500 dark:text-zinc-300">{factCheckEstimateKrw()}</span>{" "}
-                예상 (스크립트·소스 길이에 따라 달라짐){factCost ? ` · 방금 실행: ${factCost}` : ""}
+                예상 (웹 검색료 포함 — 검색 횟수에 따라 달라짐){factCost ? ` · 방금 실행: ${factCost}` : ""}
               </p>
 
               {factChat.length > 0 && (
