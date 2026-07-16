@@ -81,6 +81,24 @@ const SUBTITLE_POSITIONS = [
   ["bottom", "하단"],
 ] as const;
 
+// 자막 위치 → 인물·주요 물체가 생성될 영역 안내(사용자에게 보여줄 한국어). 이미지 프롬프트의
+// edgeSafe(lib/image.ts)와 같은 규칙: 중앙 자막=상·하단, 상단/⅓=중앙보다 아래, ⅔/¾/하단=중앙보다 위.
+function subtitleContentHint(pos?: string): string {
+  switch (pos) {
+    case "center":
+      return "자막이 중앙 → 인물·주요 물체가 화면 상단과 하단에 생성돼요(가운데는 비움).";
+    case "top":
+    case "one-third":
+      return "자막이 위쪽 → 인물·주요 물체가 화면 중앙보다 아래에 생성돼요.";
+    case "two-thirds":
+    case "three-quarters":
+    case "bottom":
+      return "자막이 아래쪽 → 인물·주요 물체가 화면 중앙보다 위에 생성돼요.";
+    default:
+      return "인물·주요 물체가 자막 반대편에 생성되도록 반영돼요.";
+  }
+}
+
 // 5단계 카메라 워크 프리셋 — 고르면 그 씬 모션 프롬프트(영문)를 이 문구로 채운다.
 // 모두 "카메라만 움직이고 인물·오브젝트는 거의 정지"를 명시(과한 피사체 움직임 방지).
 const CAMERA_MOVES = [
@@ -2907,6 +2925,9 @@ export default function Studio({
             <span className="text-[11px] text-zinc-400">
               주요 정보·인물 없이 배경·소품만 두는 자리 — 자막이 들어갈 빈 영역이에요. 키프레임·이미지 생성에 반영됩니다(자막 위치와 동일).
             </span>
+            <p className="w-full mt-1 text-[11px] font-medium text-accent">
+              🖼️ {subtitleContentHint(sub.position)}
+            </p>
           </div>
         )}
         {(scenes[0]?.narration ?? "").trim() && (

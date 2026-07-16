@@ -18,21 +18,26 @@ const REF_FETCH_TIMEOUT_MS = 30_000;
 const NO_TEXT =
   "Keep on-image text minimal: avoid signs, banners, paragraphs, or lots of words. A few short words are okay if natural, but no heavy text overlays.";
 
-// 이미지 모델 전용(Claude 비노출). 자막(subtitlePosition) 자리에만 얼굴·머리·손이 오지
-// 않게 하는 짧은 안전 지시. 인물 크기·위치·카메라 앵글은 강제하지 않고 자연스럽게 둔다.
+// 이미지 모델 전용(Claude 비노출). 자막(subtitlePosition) 자리는 비우고, 인물·주요 물체는
+// 자막 반대편에 오도록 능동 배치 지시. (사용자 규칙: 중앙 자막=상·하단에, 상단/⅓ 자막=중앙보다
+// 아래, ⅔/¾/하단 자막=중앙보다 위.) 카메라 앵글·프레이밍은 그 안에서 자연스럽게.
 function edgeSafe(position?: string): string {
-  const area: Record<string, string> = {
-    top: "top",
-    center: "central",
-    "two-thirds": "lower",
-    "three-quarters": "lower",
-    bottom: "bottom",
+  const rules: Record<string, { clear: string; place: string }> = {
+    top: { clear: "top", place: "below the center, in the lower half of the frame" },
+    "one-third": { clear: "upper third", place: "below the center, in the lower half of the frame" },
+    center: {
+      clear: "central/middle",
+      place: "in the top and bottom areas, keeping the middle band clear",
+    },
+    "two-thirds": { clear: "lower third", place: "above the center, in the upper half of the frame" },
+    "three-quarters": { clear: "lower", place: "above the center, in the upper half of the frame" },
+    bottom: { clear: "bottom", place: "above the center, in the upper half of the frame" },
   };
-  const where = area[position ?? ""] ?? "bottom";
+  const r = rules[position ?? ""] ?? rules.bottom;
   return (
-    `Keep faces, heads, and hands clear of the ${where} area of the frame (an overlay may be placed there). ` +
-    "The rest of the composition is unconstrained — compose naturally with whatever camera angle, framing, and " +
-    "subject size fits the scene."
+    `A subtitle overlay will sit in the ${r.clear} area of the frame — keep that band free of the main subject ` +
+    `(no faces, heads, hands, or key objects there). Place the MAIN CONTENT (people and key objects) ${r.place}. ` +
+    "Otherwise compose naturally with whatever camera angle, framing, and subject size fit the scene."
   );
 }
 
