@@ -168,6 +168,7 @@ export interface Project {
   keyframeReferenceUrl?: string; // 키프레임 생성 시 참조할 업로드 이미지(있으면 img2img로 후보 생성)
   scenes: Scene[];
   steps: Record<StepKind, StepState>;
+  factCheckChat?: StepChatTurn[]; // 스크립트 팩트체크 전용 대화 로그(2단계, 스크립트 다듬기와 별개). 없으면 [].
   ttsEnabled: boolean;
   ttsProvider?: "elevenlabs" | "typecast"; // 보이스오버 엔진(프로젝트별). 없으면 env TTS_PROVIDER.
   voiceId?: string; // 보이스오버 목소리(프로젝트당 하나). config/voices.json 의 voice id. 없으면 env 기본.
