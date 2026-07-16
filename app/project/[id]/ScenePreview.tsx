@@ -20,6 +20,8 @@ export default function ScenePreview({
   sub,
   captionStyle,
   onCaptionStyle,
+  onSaveLines,
+  onReRecord,
 }: {
   index: number;
   videoUrl?: string;
@@ -29,6 +31,8 @@ export default function ScenePreview({
   sub: SubtitleSettings;
   captionStyle?: string;
   onCaptionStyle?: (id: string) => void;
+  onSaveLines?: (text: string) => void; // 자막 줄바꿈(행) 편집 저장 — 결과는 다시 싱크됨
+  onReRecord?: () => void; // 음성 다시 녹음 — 6단계 그 씬으로 이동
 }) {
   const st = resolveSubtitleStyle(sub);
   const recipe = resolveCaptionRecipe(sub, captionStyle);
@@ -54,6 +58,9 @@ export default function ScenePreview({
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
   const [capIdx, setCapIdx] = useState(0);
+  // 자막 줄 조절(행 편집) — 열면 현재 자막을 초기값으로. 저장하면 위 미리보기가 다시 싱크됨.
+  const [editLines, setEditLines] = useState(false);
+  const [draft, setDraft] = useState(subtitle);
 
   // 현재 캡션(언어별).
   const lines =
@@ -202,6 +209,64 @@ export default function ScenePreview({
           {playing ? "■ 정지" : "▶ 재생"}
         </button>
       </div>
+
+      {/* 자막 줄 조절(행 편집) + 다시 녹음. 줄바꿈(Enter)이 자막 캡션 경계 → 저장하면 위
+          미리보기가 그 줄 나눔으로 다시 싱크된다. 다시 녹음은 6단계 그 씬으로 보낸다. */}
+      {(onSaveLines || onReRecord) && (
+        <div className="grid gap-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {onSaveLines && (
+              <button
+                type="button"
+                onClick={() => {
+                  setDraft(subtitle);
+                  setEditLines((v) => !v);
+                }}
+                className="text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+              >
+                {editLines ? "− 닫기" : "✏️ 자막 줄 조절"}
+              </button>
+            )}
+            {onReRecord && (
+              <button
+                type="button"
+                onClick={onReRecord}
+                title="이 씬의 음성(6단계)으로 이동해서 다시 녹음·생성할 수 있어요"
+                className="text-[11px] rounded-md border border-accent text-accent px-2 py-0.5 hover:bg-accent/10"
+              >
+                🎙️ 다시 녹음
+              </button>
+            )}
+          </div>
+          {editLines && onSaveLines && (
+            <div className="grid gap-1">
+              <textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                rows={3}
+                className="w-full resize-y rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1.5 text-xs outline-none focus:border-accent"
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const t = draft.replace(/^\n+|\n+$/g, "");
+                    if (!t.trim()) return;
+                    onSaveLines(t);
+                    setEditLines(false);
+                  }}
+                  className="text-[11px] rounded-md bg-accent hover:bg-accent-strong text-white font-medium px-2.5 py-0.5"
+                >
+                  저장 (싱크 반영)
+                </button>
+                <span className="text-[10px] text-zinc-400">
+                  ⏎ Enter = 자막 줄 나눔 (음성엔 영향 없음). 저장하면 위 미리보기가 다시 싱크돼요.
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 자막 스타일 프리셋(위 미리보기·최종 합성에 즉시 반영). 강조는 2단계에서 [[ ]]로. */}
       {onCaptionStyle && (

@@ -500,6 +500,22 @@ export default function Studio({
     el.scrollIntoView({ behavior: "smooth", block: "center" });
     (el.querySelector("textarea") as HTMLTextAreaElement | null)?.focus();
   }
+  // 미리보기 "다시 녹음" → 6단계(음성) 그 씬으로 스크롤 — 거기서 녹음/음성 생성.
+  function goToVoiceScene(i: number) {
+    const el = document.getElementById(`voice-scene-${i}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+  // 미리보기에서 자막 줄바꿈(행) 편집 저장 — 2단계 편집과 같은 경로(patchScene→자동저장)로
+  // 나레이션 갱신. 캡션은 나레이션의 줄바꿈으로 분할되므로 저장 즉시 미리보기가 다시 싱크된다.
+  // (줄바꿈은 발음에 영향 없음 — 음성 재생성 불필요.) 미리보기 즉시 반영 위해 project 도 낙관적 갱신.
+  function saveSubtitleLines(i: number, text: string) {
+    patchScene(i, { narration: text });
+    setProject((p) => ({
+      ...p,
+      scenes: p.scenes.map((s, idx) => (idx === i ? { ...s, narration: text } : s)),
+    }));
+  }
   async function saveWatermark(
     text: string,
     position: "tl" | "tr" | "bl" | "br",
@@ -4185,7 +4201,8 @@ export default function Studio({
                 return (
                   <li
                     key={i}
-                    className={`min-w-0 rounded-xl bg-zinc-50 dark:bg-zinc-900 p-3${skipped ? " opacity-50" : ""}`}
+                    id={`voice-scene-${i}`}
+                    className={`min-w-0 rounded-xl bg-zinc-50 dark:bg-zinc-900 p-3 scroll-mt-4${skipped ? " opacity-50" : ""}`}
                   >
                     <div className="flex items-center gap-3">
                       <span className="shrink-0 text-[11px] text-zinc-500 w-10">씬 {i + 1}</span>
@@ -4484,6 +4501,8 @@ export default function Studio({
                   sub={sub}
                   captionStyle={sc.captionStyle}
                   onCaptionStyle={(id) => setCaptionStyle(i, id)}
+                  onSaveLines={sc.mood ? undefined : (text) => saveSubtitleLines(i, text)}
+                  onReRecord={sc.mood ? undefined : () => goToVoiceScene(i)}
                 />
               ) : null
             )}
