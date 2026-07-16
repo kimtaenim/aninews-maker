@@ -84,12 +84,12 @@ const SUBTITLE_POSITIONS = [
 // 5단계 카메라 워크 프리셋 — 고르면 그 씬 모션 프롬프트(영문)를 이 문구로 채운다.
 // 모두 "카메라만 움직이고 인물·오브젝트는 거의 정지"를 명시(과한 피사체 움직임 방지).
 const CAMERA_MOVES = [
-  ["orbit", "⟳ 120° 오비트", "120-degree orbit around the subject, smooth steady arc — camera moves while the subject and objects stay still."],
+  ["orbit", "⟳ 120° 오비트", "120-degree orbit: the camera travels in a wide arc AROUND the subject, revolving to the side so the background sweeps horizontally behind them — a clearly circular, revolving move. It must NOT look like a zoom or push-in: the distance to the subject stays constant and the subject stays the same size; only the viewing angle rotates around them. The subject and objects stay still while the camera circles."],
   ["zoom-in", "＋ 줌인", "Slow zoom in (push-in) toward the subject — camera only; the subject and objects barely move."],
   ["zoom-out", "－ 줌아웃", "Slow zoom out (pull-back) revealing more of the scene — camera only; the subject and objects barely move."],
   ["pan-h", "↔ 수평 팬", "Slow horizontal pan (left to right) across the scene — camera only; the subject and objects stay mostly still."],
   ["pan-v", "↕ 수직 팬", "Slow vertical pan/tilt (up and down) across the scene — camera only; the subject and objects stay mostly still."],
-  ["dolly-zoom", "🎥 달리 줌", "Dolly zoom (vertigo / Hitchcock effect): the camera dollies in while zooming out (or dollies out while zooming in) so the subject stays the SAME size while the background perspective stretches dramatically. Camera only; the subject stays still."],
+  ["dolly-zoom", "🎥 달리 줌", "Dolly-zoom (Vertigo effect): push the camera IN toward the subject so the SUBJECT GROWS bigger and fills more of the frame, while at the SAME TIME the BACKGROUND pulls AWAY and recedes into the distance — the sense of depth expands and the space behind the subject stretches back. A strong, deliberate perspective warp: the subject stays put while the world behind them rushes backward. Make the effect big and obvious, not subtle."],
   ["static", "■ 고정", "Locked-off static camera, no camera movement — only very subtle ambient motion; the subject stays still."],
 ] as const;
 
