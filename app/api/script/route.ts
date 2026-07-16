@@ -3,7 +3,7 @@ import { getProject, saveProject } from "@/lib/projectStore";
 import { generateScript, generateClicheScript } from "@/lib/script";
 import { canStart } from "@/lib/stepMachine";
 import { estimateDuration } from "@/lib/scenes";
-import type { Project, Scene } from "@/lib/types";
+import type { Scene } from "@/lib/types";
 import type { SourceMaterial } from "@/lib/source";
 
 export const runtime = "nodejs";
@@ -13,15 +13,12 @@ export const maxDuration = 300;
 
 // ── 뉴스 고정 마무리 씬(구독 유도) ───────────────────────────────────────────
 // 뉴스 스크립트 생성 때마다 마지막에 붙는다(재생성 포함). 등장인물들이 손 흔들며
-// 인사하는 컷 + 이 자막 + 1.4배 목소리. 1.4배는 Typecast 만 가능(ElevenLabs API
-// 상한 1.2)이라, 프로젝트 목소리가 Typecast 가 아니면 이 씬만 지정 목소리로 교체.
+// 인사하는 컷 + 이 자막. 목소리·속도는 다른 씬과 동일하게 프로젝트 기본을 그대로 쓴다
+// (예전엔 1.4배용 Typecast 목소리를 강제로 물렸으나, 그 씬만 목소리가 튀고 기본
+// 목소리로 리롤해도 안 바뀌는 문제 → voiceId·ttsSpeed 오버라이드 제거. 본문과 통일).
 const OUTRO_NARRATION = "아침 저녁으로 경제 교양 정보를 받아보실 수 있어요. 구독 눌러주세요!";
-const OUTRO_TYPECAST_VOICE = "tc_603513d91860484c4dcb6a11"; // 여성 성우 (config/voices.json, 사용자 선호)
 
-function newsOutroScene(project: Project, index: number): Scene {
-  const projectUsesTypecast =
-    (project.voiceId ?? "").startsWith("tc_") ||
-    (!project.voiceId && project.ttsProvider === "typecast");
+function newsOutroScene(index: number): Scene {
   return {
     index,
     narration: OUTRO_NARRATION,
@@ -31,8 +28,6 @@ function newsOutroScene(project: Project, index: number): Scene {
       "Characters smile warmly and wave goodbye at the camera, gentle push-in, soft bright lighting",
     durationSec: estimateDuration(OUTRO_NARRATION),
     status: "generated",
-    ttsSpeed: 1.4,
-    ...(projectUsesTypecast ? {} : { voiceId: OUTRO_TYPECAST_VOICE }),
   };
 }
 
@@ -93,7 +88,7 @@ export async function POST(req: NextRequest) {
           });
     // 뉴스 모드: 구독 유도 마무리 씬을 항상 마지막에 추가.
     if (project.mode !== "cliche") {
-      scenes.push(newsOutroScene(project, scenes.length));
+      scenes.push(newsOutroScene(scenes.length));
     }
     project.scenes = scenes;
     project.steps.script.status = "generated";
