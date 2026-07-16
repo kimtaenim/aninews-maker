@@ -1,0 +1,126 @@
+import { NextRequest, NextResponse } from "next/server";
+import { createSimGame } from "@/lib/simStore";
+import { getProject, getProjectsBulk } from "@/lib/projectStore";
+import { getSessionEmail } from "@/lib/auth";
+import type { SimCutscene, SimTarget } from "@/lib/types";
+
+export const runtime = "nodejs";
+export const maxDuration = 30;
+
+// 시뮬 게임 생성. 클라이언트는 참조(이름·projectId)만 보내고, 포트레이트·목소리·
+// 컷씬 영상 URL 스냅샷은 서버가 원본 프로젝트를 다시 읽어 뜬다 — 클라이언트가
+// 들고 있던 낡은 URL 이 굳는 걸 막는다.
+// body: {
+//   title?: string,
+//   sourceProjectId: string,
+//   targets: [{ name, persona, cutscenes?: [{ at: 25|50|75, projectId }] }]
+// }
+export async function POST(req: NextRequest) {
+  let body: {
+    title?: string;
+    sourceProjectId?: string;
+    targets?: unknown;
+  };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ ok: false, error: "invalid JSON" }, { status: 400 });
+  }
+
+  const sourceProjectId = (body.sourceProjectId ?? "").trim();
+  if (!sourceProjectId) {
+    return NextResponse.json({ ok: false, error: "sourceProjectId 필요" }, { status: 400 });
+  }
+  const source = await getProject(sourceProjectId);
+  if (!source) {
+    return NextResponse.json({ ok: false, error: "원본 프로젝트 없음" }, { status: 404 });
+  }
+  const members = source.castMembers ?? [];
+
+  const rawTargets = (Array.isArray(body.targets) ? body.targets : []).filter(
+    (t): t is Record<string, unknown> => !!t && typeof t === "object"
+  );
+  if (rawTargets.length === 0) {
+    return NextResponse.json({ ok: false, error: "상대를 한 명 이상 골라주세요" }, { status: 400 });
+  }
+
+  // 컷씬 원본 프로젝트를 한 번에 로드해 videoUrl 스냅샷.
+  const cutsceneProjectIds = [
+    ...new Set(
+      rawTargets.flatMap((t) =>
+        (Array.isArray(t.cutscenes) ? t.cutscenes : [])
+          .map((c) => (c && typeof c === "object" ? String((c as Record<string, unknown>).projectId ?? "").trim() : ""))
+          .filter(Boolean)
+      )
+    ),
+  ];
+  const cutsceneProjects = await getProjectsBulk(cutsceneProjectIds);
+  const byId = new Map(cutsceneProjects.map((p) => [p.id, p]));
+
+  const targets: SimTarget[] = [];
+  for (const t of rawTargets) {
+    const name = String(t.name ?? "").trim();
+    const persona = String(t.persona ?? "").trim();
+    if (!name) {
+      return NextResponse.json({ ok: false, error: "상대 이름이 비었어요" }, { status: 400 });
+    }
+    if (!persona) {
+      return NextResponse.json(
+        { ok: false, error: `"${name}" 페르소나가 비었어요 — 생성하거나 직접 입력해주세요` },
+        { status: 400 }
+      );
+    }
+    const member = members.find((m) => m.name === name);
+
+    const cutscenes: SimCutscene[] = [];
+    for (const raw of Array.isArray(t.cutscenes) ? t.cutscenes : []) {
+      if (!raw || typeof raw !== "object") continue;
+      const c = raw as Record<string, unknown>;
+      const at = Number(c.at);
+      const projectId = String(c.projectId ?? "").trim();
+      if (![25, 50, 75].includes(at) || !projectId) continue;
+      const p = byId.get(projectId);
+      if (!p) {
+        return NextResponse.json(
+          { ok: false, error: `컷씬 프로젝트를 찾을 수 없어요: ${projectId}` },
+          { status: 400 }
+        );
+      }
+      const videoUrl = p.cleanVideoUrl || p.finalVideoUrl;
+      if (!videoUrl) {
+        return NextResponse.json(
+          { ok: false, error: `"${p.title}" 는 아직 완성 영상이 없어요 — 합성까지 끝난 프로젝트만 컷씬으로 쓸 수 있어요` },
+          { status: 400 }
+        );
+      }
+      cutscenes.push({ at, projectId, videoUrl, title: p.title });
+    }
+    cutscenes.sort((a, b) => a.at - b.at);
+
+    targets.push({
+      name,
+      ...(member?.archetype ? { archetype: member.archetype } : {}),
+      ...(member?.portraitUrl ? { portraitUrl: member.portraitUrl } : {}),
+      ...(member?.voiceId ? { voiceId: member.voiceId } : {}),
+      persona,
+      cutscenes,
+    });
+  }
+
+  try {
+    const game = await createSimGame({
+      title:
+        (body.title ?? "").trim() ||
+        `💞 ${targets.map((t) => t.name).join("·")} 공략`,
+      sourceProjectId,
+      targets,
+      ownerEmail: (await getSessionEmail()) ?? undefined,
+    });
+    return NextResponse.json({ ok: true, gameId: game.id });
+  } catch (e) {
+    return NextResponse.json(
+      { ok: false, error: e instanceof Error ? e.message : "생성 실패" },
+      { status: 500 }
+    );
+  }
+}
