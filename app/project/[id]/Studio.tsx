@@ -954,23 +954,55 @@ export default function Studio({
     }));
     setDirty(true);
   }
-  function moveScene(i: number, dir: -1 | 1) {
+  // 씬 순서 변경 — 서버가 씬 객체를 통째로 옮긴다(모든 단계 산출물이 함께 이동·싱크).
+  // 어느 단계에서든 호출 가능. 미저장 편집을 먼저 flush 한 뒤 재정렬해 최신 기준으로 옮긴다.
+  async function moveScene(i: number, dir: -1 | 1) {
     const j = i + dir;
-    setScenes((prev) => {
-      if (j < 0 || j >= prev.length) return prev;
-      const next = [...prev];
-      [next[i], next[j]] = [next[j], next[i]];
-      return next;
-    });
-    // 미디어도 함께 스왑 + index 재부여 — 텍스트만 이동하고 이미지/영상이 제자리에
-    // 남는 desync 와 저장 시 carry 오정렬을 막는다.
-    setProject((p) => {
-      if (j < 0 || j >= p.scenes.length) return p;
-      const next = [...p.scenes];
-      [next[i], next[j]] = [next[j], next[i]];
-      return { ...p, scenes: next.map((s, idx) => ({ ...s, index: idx })) };
-    });
-    setDirty(true);
+    if (j < 0 || j >= project.scenes.length || busy !== null) return;
+    setError(null);
+    setBusy("script-reorder");
+    try {
+      await flushScenes();
+      const data = await call("/api/scene/reorder", { projectId: project.id, from: i, to: j });
+      const saved = data.scenes as Scene[];
+      setProject((p) => ({ ...p, scenes: saved }));
+      setScenes(saved.map(toEdit));
+      setDirty(false);
+      bumpMutation(); // 진행 중이던 /state 동기화가 재정렬 결과를 덮지 않도록
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "순서 변경 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+  // 씬 순서 ↑↓ 버튼 — 어느 단계에서든 재사용. 재정렬은 모든 단계에 함께 반영된다.
+  // minIndex: 이 인덱스 밑으로는 못 내려감(4단계 이미지는 씬0=키프레임 앵커라 minIndex=1).
+  function renderReorder(i: number, minIndex = 0) {
+    const reordering = busy === "script-reorder";
+    return (
+      <span className="inline-flex items-center gap-0.5">
+        <button
+          type="button"
+          onClick={() => moveScene(i, -1)}
+          disabled={i <= minIndex || busy !== null}
+          title="위 씬과 순서 바꾸기 (이미지·영상·음성 모두 함께 이동)"
+          className="rounded px-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800 disabled:opacity-30"
+          aria-label="위로"
+        >
+          {reordering ? "…" : "↑"}
+        </button>
+        <button
+          type="button"
+          onClick={() => moveScene(i, 1)}
+          disabled={i === project.scenes.length - 1 || busy !== null}
+          title="아래 씬과 순서 바꾸기 (이미지·영상·음성 모두 함께 이동)"
+          className="rounded px-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800 disabled:opacity-30"
+          aria-label="아래로"
+        >
+          {reordering ? "…" : "↓"}
+        </button>
+      </span>
+    );
   }
   // 빈 씬을 afterIndex 뒤에 삽입 — 서버가 직접 splice 해 뒤 씬 산출물(imageUrl/videoUrl/
   // audioUrl)을 배열과 함께 보존(중간 삽입 시 클라이언트 index carry 어긋남 회피).
@@ -3372,17 +3404,20 @@ export default function Studio({
                     </div>
                     <div className="grid gap-1.5 min-w-0">
                       <div className="flex items-center justify-between gap-2">
-                        <label className="flex items-center gap-1.5 text-[11px] font-medium text-zinc-500">
-                          <input
-                            type="checkbox"
-                            checked={selectedScenes.has(i)}
-                            onChange={() => toggleScene(i)}
-                            disabled={busy !== null}
-                            className="size-3.5 accent-[var(--color-accent)]"
-                          />
-                          씬 {i + 1} · {sc.durationSec}s
-                          {skipped && <span className="ml-1 text-amber-600">· 건너뜀</span>}
-                        </label>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <label className="flex items-center gap-1.5 text-[11px] font-medium text-zinc-500">
+                            <input
+                              type="checkbox"
+                              checked={selectedScenes.has(i)}
+                              onChange={() => toggleScene(i)}
+                              disabled={busy !== null}
+                              className="size-3.5 accent-[var(--color-accent)]"
+                            />
+                            씬 {i + 1} · {sc.durationSec}s
+                            {skipped && <span className="ml-1 text-amber-600">· 건너뜀</span>}
+                          </label>
+                          {renderReorder(i, 1)}
+                        </div>
                         <div className="flex items-center gap-1.5">
                           <button
                             type="button"
@@ -3756,16 +3791,19 @@ export default function Studio({
                       )}
                     </div>
                     <div className="flex items-center justify-between gap-1.5">
-                      <label className="flex items-center gap-1.5 text-[11px] text-zinc-500">
-                        <input
-                          type="checkbox"
-                          checked={selectedScenes.has(i)}
-                          onChange={() => toggleScene(i)}
-                          disabled={busy !== null}
-                          className="size-3.5 accent-[var(--color-accent)]"
-                        />
-                        씬 {i + 1}
-                      </label>
+                      <div className="flex items-center gap-1.5">
+                        <label className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+                          <input
+                            type="checkbox"
+                            checked={selectedScenes.has(i)}
+                            onChange={() => toggleScene(i)}
+                            disabled={busy !== null}
+                            className="size-3.5 accent-[var(--color-accent)]"
+                          />
+                          씬 {i + 1}
+                        </label>
+                        {renderReorder(i)}
+                      </div>
                       <select
                         value={vidMode}
                         onChange={(e) => setVideoMode(i, e.target.value as VideoSourceMode)}
@@ -4205,7 +4243,8 @@ export default function Studio({
                     className={`min-w-0 rounded-xl bg-zinc-50 dark:bg-zinc-900 p-3 scroll-mt-4${skipped ? " opacity-50" : ""}`}
                   >
                     <div className="flex items-center gap-3">
-                      <span className="shrink-0 text-[11px] text-zinc-500 w-10">씬 {i + 1}</span>
+                      <span className="shrink-0 text-[11px] text-zinc-500">씬 {i + 1}</span>
+                      {renderReorder(i)}
                       <button
                         type="button"
                         onClick={() => goToScriptScene(i)}
