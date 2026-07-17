@@ -14,6 +14,7 @@ export interface SourceCandidate {
   id: string;
   title: string;
   members: { name: string; archetype?: string; portraitUrl?: string }[];
+  hasVideo: boolean; // 완성 영상 유무 — 게임화 조건은 아니고, 컷씬을 붙일 수 있는지 표시용
 }
 
 export interface CutsceneCandidate {
@@ -120,6 +121,10 @@ export default function SimNewForm({
         <div className="mt-5 grid gap-4">
           <div>
             <h2 className="text-sm font-semibold">인물을 데려올 클리셰 프로젝트</h2>
+            <p className="mt-1 text-xs text-zinc-500">
+              영상이 완성되지 않아도 됩니다 — 인물만 정해져 있으면 바로 게임으로 만들 수
+              있어요.
+            </p>
             <div className="mt-2 grid gap-2">
               {sources.map((s) => (
                 <label
@@ -141,6 +146,15 @@ export default function SimNewForm({
                   />
                   <span className="text-sm">
                     {s.title}
+                    <span
+                      className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                        s.hasVideo
+                          ? "bg-pink-100 dark:bg-pink-950/50 text-pink-600 dark:text-pink-400"
+                          : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500"
+                      }`}
+                    >
+                      {s.hasVideo ? "영상 완성 · 컷씬 가능" : "인물만 · 컷씬 없이"}
+                    </span>
                     <span className="ml-2 text-xs text-zinc-500">
                       {s.members.map((m) => m.name).join(", ")}
                     </span>

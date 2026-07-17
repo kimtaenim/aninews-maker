@@ -15,17 +15,30 @@ export default async function SimNewPage() {
   try {
     const projects = await getProjectsBulk(await listAllProjectIds());
     const cliche = projects.filter((p) => p.mode === "cliche");
+    // 게임화 문턱 = "인물이 있는가" 뿐. 영상 완성도, 포트레이트도 필요 없다.
+    // castMembers(캐스팅 위저드 산출물)가 원천이고, 없으면 cast(이름 목록)에서 시드한다
+    // — 캐스팅 위저드 이전에 만든 프로젝트도 게임으로 만들 수 있게.
     sources = cliche
-      .filter((p) => p.castMembers?.length)
-      .map((p) => ({
-        id: p.id,
-        title: p.title,
-        members: (p.castMembers ?? []).map((m) => ({
-          name: m.name,
-          archetype: m.archetype,
-          portraitUrl: m.portraitUrl,
-        })),
-      }));
+      .map((p) => {
+        const members = p.castMembers?.length
+          ? p.castMembers.map((m) => ({
+              name: m.name,
+              archetype: m.archetype,
+              portraitUrl: m.portraitUrl,
+            }))
+          : (p.cast ?? []).map((name) => ({
+              name,
+              archetype: undefined,
+              portraitUrl: undefined,
+            }));
+        return {
+          id: p.id,
+          title: p.title,
+          members,
+          hasVideo: !!(p.cleanVideoUrl || p.finalVideoUrl),
+        };
+      })
+      .filter((s) => s.members.length > 0);
     videos = cliche
       .filter((p) => p.cleanVideoUrl || p.finalVideoUrl)
       .map((p) => ({ id: p.id, title: p.title }));
@@ -51,9 +64,9 @@ export default async function SimNewPage() {
           <p>
             상대로 데려올 인물이 없어요. 먼저{" "}
             <Link href="/cliche/new" className="text-accent underline">
-              연애 클리셰 영상
+              연애 클리셰
             </Link>
-            을 만들어 캐스팅(얼굴·목소리)을 확정해 주세요.
+            에서 인물만 정해두면 — 영상까지 만들지 않아도 — 바로 게임으로 만들 수 있어요.
           </p>
         </div>
       ) : (
