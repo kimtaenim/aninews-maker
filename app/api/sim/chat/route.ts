@@ -53,10 +53,15 @@ export async function POST(req: NextRequest) {
 
   // 상태 반영.
   play.affinity = result.affinity;
+  play.mood = result.mood;
+  play.sulking = result.sulking;
+  play.sulkReason = result.sulkReason;
   play.turns.push({
     role: "assistant",
     text: result.reply,
     affinityDelta: result.affinityDelta,
+    moodDelta: result.moodDelta,
+    sulking: result.sulking,
     judge: result.judge,
     situationId: result.situationId,
     ts: Date.now(),
@@ -90,6 +95,11 @@ export async function POST(req: NextRequest) {
     reply: result.reply,
     affinity: play.affinity,
     affinityDelta: result.affinityDelta,
+    mood: play.mood,
+    moodDelta: result.moodDelta,
+    sulking: play.sulking,
+    justSulked: result.justSulked,
+    justSoothed: result.justSoothed,
     situationLabel,
     crossedMilestone: result.crossedMilestone,
     cutscene: cutscene

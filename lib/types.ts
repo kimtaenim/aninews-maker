@@ -229,7 +229,9 @@ export interface SimGame {
 export interface SimTurn {
   role: "user" | "assistant";
   text: string;
-  affinityDelta?: number; // assistant 턴 — 직전 플레이어 반응의 채점 결과
+  affinityDelta?: number; // assistant 턴 — 호감(장기) 증감
+  moodDelta?: number; // assistant 턴 — 기분(실시간) 증감. 느끼함·지뢰면 호감+라도 기분-.
+  sulking?: boolean; // assistant 턴 직후 삐짐 상태(UI 스냅샷)
   judge?: string; // assistant 턴 — 채점 사유 한 줄(화면 비노출, 밸런싱 로그용)
   situationId?: string; // 이 턴에 발동된 상황 이벤트 id (simSituations)
   ts: number;
@@ -239,7 +241,10 @@ export interface SimPlay {
   id: string;
   gameId: string;
   targetName: string; // 공략 중인 상대 (SimTarget.name)
-  affinity: number; // 친밀도 0~100
+  affinity: number; // 호감 0~100 (장기 — 승리 지표)
+  mood: number; // 기분 -50~+50 (실시간). -25 밑이면 삐짐 진입, -50 이면 파탄.
+  sulking: boolean; // 삐짐 상태 — 호감이 안 오르고, 정확한 사과로만 풀린다.
+  sulkReason?: string; // 삐진 이유(내부) — 사과가 이걸 정확히 짚어야 풀린다.
   turns: SimTurn[];
   milestonesSeen: number[]; // 이미 재생한 컷씬 도달점 [25, 50, ...]
   situationsUsed: string[]; // 이미 발동한 상황 id (중복 방지)

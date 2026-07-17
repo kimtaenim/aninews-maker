@@ -53,6 +53,7 @@ export async function POST(req: NextRequest) {
         portraitUrl: target.portraitUrl ?? "",
       },
       affinity: play.affinity,
+      mood: play.mood,
       opening,
     });
   } catch (e) {

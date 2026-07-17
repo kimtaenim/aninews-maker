@@ -94,7 +94,9 @@ export async function createSimPlay(args: {
     id: randomUUID(),
     gameId: args.gameId,
     targetName: args.targetName,
-    affinity: 20, // 시작 친밀도 — 갓 알게 된 사이
+    affinity: 20, // 시작 호감 — 갓 알게 된 사이
+    mood: 0, // 시작 기분 — 평온
+    sulking: false,
     turns: [],
     milestonesSeen: [],
     situationsUsed: [],

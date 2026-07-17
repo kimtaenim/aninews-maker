@@ -14,7 +14,19 @@ export interface PlayTarget {
 interface ChatMsg {
   role: "user" | "assistant";
   text: string;
-  delta?: number; // assistant 턴 친밀도 증감(표시용)
+  delta?: number; // assistant 턴 호감 증감(표시용)
+  moodDelta?: number; // assistant 턴 기분 증감(표시용)
+  sulking?: boolean; // 이 대사가 삐진 상태의 대사인지(말풍선 톤)
+}
+
+// 기분(-50~50)을 표정 이모지로.
+function moodFace(mood: number, sulking: boolean): string {
+  if (sulking) return "😤";
+  if (mood >= 25) return "😊";
+  if (mood >= 8) return "🙂";
+  if (mood > -8) return "😐";
+  if (mood > -20) return "😕";
+  return "😠";
 }
 
 interface Cutscene {
@@ -38,6 +50,8 @@ export default function PlayClient({
   );
   const [playId, setPlayId] = useState("");
   const [affinity, setAffinity] = useState(20);
+  const [mood, setMood] = useState(0);
+  const [sulking, setSulking] = useState(false);
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -71,6 +85,8 @@ export default function PlayClient({
       if (!data.ok) throw new Error(data.error || `시작 실패 (${res.status})`);
       setPlayId(data.playId);
       setAffinity(data.affinity);
+      setMood(data.mood ?? 0);
+      setSulking(false);
       setMsgs([{ role: "assistant", text: data.opening }]);
       setPhase("playing");
     } catch (e) {
@@ -96,15 +112,24 @@ export default function PlayClient({
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || `전송 실패 (${res.status})`);
       setAffinity(data.affinity);
+      setMood(data.mood ?? mood);
+      setSulking(!!data.sulking);
       setMsgs((m) => [
         ...m,
-        { role: "assistant", text: data.reply, delta: data.affinityDelta },
+        {
+          role: "assistant",
+          text: data.reply,
+          delta: data.affinityDelta,
+          moodDelta: data.moodDelta,
+          sulking: data.sulking,
+        },
       ]);
-      if (data.situationLabel) setBanner(`💬 ${data.situationLabel}`);
-      if (data.crossedMilestone) {
-        setBanner(`💞 친밀도 ${data.crossedMilestone} 돌파!`);
-        if (data.cutscene?.videoUrl) setCutscene(data.cutscene);
-      }
+      // 배너 우선순위: 화해 > 삐짐 > 마일스톤 > 상황
+      if (data.justSoothed) setBanner("💗 마음이 풀렸다 — 화해!");
+      else if (data.justSulked) setBanner("💢 토라졌다… 왜 그러는지 눈치껏 사과해야 해");
+      else if (data.crossedMilestone) setBanner(`💞 호감 ${data.crossedMilestone} 돌파!`);
+      else if (data.situationLabel) setBanner(`💬 ${data.situationLabel}`);
+      if (data.crossedMilestone && data.cutscene?.videoUrl) setCutscene(data.cutscene);
       if (data.status === "won" || data.status === "lost") {
         setEnding({ won: data.status === "won", reason: data.endedReason || "" });
       }
@@ -145,13 +170,23 @@ export default function PlayClient({
 
   return (
     <div className="mt-4">
-      {/* 친밀도 게이지 */}
+      {/* 호감 게이지 + 기분 표정 */}
       <div className="flex items-center gap-3">
         {target && <Avatar t={target} size={36} />}
         <div className="flex-1">
           <div className="flex items-center justify-between text-xs">
-            <span className="font-medium">{target?.name}</span>
-            <span className="text-zinc-500">친밀도 {affinity}/100</span>
+            <span className="font-medium">
+              {target?.name}
+              <span className="ml-1.5" title={`기분 ${mood}`}>
+                {moodFace(mood, sulking)}
+              </span>
+              {sulking && (
+                <span className="ml-1.5 rounded-full bg-red-100 dark:bg-red-950/50 px-2 py-0.5 text-[10px] font-medium text-red-600 dark:text-red-400">
+                  삐짐
+                </span>
+              )}
+            </span>
+            <span className="text-zinc-500">호감 {affinity}/100</span>
           </div>
           <div className="mt-1 h-2 rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
             <div
@@ -209,17 +244,26 @@ export default function PlayClient({
               className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${
                 m.role === "user"
                   ? "bg-accent text-white"
-                  : "bg-zinc-100 dark:bg-zinc-800"
+                  : m.sulking
+                    ? "bg-red-50 dark:bg-red-950/30 border border-red-200/60 dark:border-red-900/40"
+                    : "bg-zinc-100 dark:bg-zinc-800"
               }`}
             >
               {m.text}
-              {m.role === "assistant" && typeof m.delta === "number" && m.delta !== 0 && (
-                <span
-                  className={`ml-2 text-[11px] font-medium ${
-                    m.delta > 0 ? "text-rose-500" : "text-zinc-400"
-                  }`}
-                >
-                  {m.delta > 0 ? `+${m.delta}` : m.delta}
+              {m.role === "assistant" && (
+                <span className="ml-2 whitespace-nowrap text-[11px] font-medium">
+                  {typeof m.delta === "number" && m.delta !== 0 && (
+                    <span className={m.delta > 0 ? "text-rose-500" : "text-zinc-400"}>
+                      호감{m.delta > 0 ? `+${m.delta}` : m.delta}
+                    </span>
+                  )}
+                  {typeof m.moodDelta === "number" && m.moodDelta !== 0 && (
+                    <span
+                      className={`ml-1 ${m.moodDelta > 0 ? "text-emerald-500" : "text-amber-500"}`}
+                    >
+                      기분{m.moodDelta > 0 ? `+${m.moodDelta}` : m.moodDelta}
+                    </span>
+                  )}
                 </span>
               )}
             </div>
