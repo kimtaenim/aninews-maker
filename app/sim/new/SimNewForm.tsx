@@ -24,6 +24,17 @@ export interface CutsceneCandidate {
 
 const MILESTONES = [25, 50, 75] as const;
 
+// 직접 만들기용 아키타입 프리셋 — 클리셰 폼과 동일 세트(칩으로 빠르게, 자유 입력도 가능).
+const ARCHETYPES = [
+  "마초남", "소심남", "츤데레남", "오타쿠남", "재벌남", "나쁜남자", "순정남", "능글남",
+  "저돌적인 여자", "청순녀", "4차원녀", "새침녀", "발랄녀", "카리스마녀", "백치미녀", "대장부녀",
+];
+
+interface DirectChar {
+  name: string;
+  archetype: string;
+}
+
 export default function SimNewForm({
   sources,
   videos,
@@ -33,8 +44,16 @@ export default function SimNewForm({
 }) {
   const router = useRouter();
   const [step, setStep] = useState<1 | 2 | 3>(1);
+  // 인물 출처: "project"=클리셰 프로젝트에서, "direct"=직접 만들기.
+  // 클리셰 프로젝트가 하나도 없으면 바로 직접 만들기로 시작.
+  const [mode, setMode] = useState<"project" | "direct">(
+    sources.length ? "project" : "direct"
+  );
   const [sourceId, setSourceId] = useState(sources[0]?.id ?? "");
-  const [picked, setPicked] = useState<string[]>([]); // 공략 상대 이름들
+  const [picked, setPicked] = useState<string[]>([]); // 공략 상대 이름들(project 모드)
+  const [directChars, setDirectChars] = useState<DirectChar[]>([
+    { name: "", archetype: "" },
+  ]);
   const [personas, setPersonas] = useState<Record<string, string>>({});
   const [personaBusy, setPersonaBusy] = useState<Record<string, boolean>>({});
   // cutscenes[상대이름][마일스톤] = 컷씬 프로젝트 id ("" = 없음)
@@ -44,12 +63,29 @@ export default function SimNewForm({
   const [error, setError] = useState("");
 
   const source = sources.find((s) => s.id === sourceId);
-  const targets = (source?.members ?? []).filter((m) => picked.includes(m.name));
+
+  // 공략 상대 목록 — 모드에 따라 파생. 두 모드 모두 {name, archetype?, portraitUrl?} 형태로.
+  const targets: { name: string; archetype?: string; portraitUrl?: string }[] =
+    mode === "project"
+      ? (source?.members ?? []).filter((m) => picked.includes(m.name))
+      : directChars
+          .map((c) => ({ name: c.name.trim(), archetype: c.archetype.trim() || undefined }))
+          .filter((c) => c.name);
+
+  // 직접 입력 유효성: 이름 하나 이상 + 이름 중복 없음.
+  const directNames = directChars.map((c) => c.name.trim()).filter(Boolean);
+  const directValid =
+    directNames.length > 0 && new Set(directNames).size === directNames.length;
+  const step1Valid = mode === "project" ? picked.length > 0 : directValid;
 
   function togglePick(name: string) {
     setPicked((prev) =>
       prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]
     );
+  }
+
+  function updateDirect(i: number, patch: Partial<DirectChar>) {
+    setDirectChars((prev) => prev.map((c, idx) => (idx === i ? { ...c, ...patch } : c)));
   }
 
   async function generatePersona(name: string, archetype?: string) {
@@ -81,9 +117,10 @@ export default function SimNewForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: title.trim() || undefined,
-          sourceProjectId: sourceId,
+          sourceProjectId: mode === "project" ? sourceId : undefined,
           targets: targets.map((t) => ({
             name: t.name,
+            archetype: t.archetype, // 직접 만든 인물의 아키타입(클리셰면 서버가 원본 사용)
             persona: (personas[t.name] ?? "").trim(),
             cutscenes: MILESTONES.filter((at) => cutscenes[t.name]?.[at])
               .map((at) => ({ at, projectId: cutscenes[t.name][at] })),
@@ -116,9 +153,110 @@ export default function SimNewForm({
     <div className="mt-5">
       <div className="flex gap-2">{stepChip(1, "상대 고르기")}{stepChip(2, "페르소나")}{stepChip(3, "컷씬·완성")}</div>
 
-      {/* ── 1단계: 인물 프로젝트 + 공략 상대 ── */}
+      {/* ── 1단계: 인물 출처(클리셰/직접) + 공략 상대 ── */}
       {step === 1 && (
         <div className="mt-5 grid gap-4">
+          {/* 출처 토글 */}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setMode("project")}
+              disabled={sources.length === 0}
+              className={`flex-1 rounded-xl border px-3 py-2 text-sm font-medium disabled:opacity-40 ${
+                mode === "project"
+                  ? "border-accent bg-accent/10"
+                  : "border-zinc-200 dark:border-zinc-800"
+              }`}
+            >
+              클리셰에서 데려오기
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("direct")}
+              className={`flex-1 rounded-xl border px-3 py-2 text-sm font-medium ${
+                mode === "direct"
+                  ? "border-accent bg-accent/10"
+                  : "border-zinc-200 dark:border-zinc-800"
+              }`}
+            >
+              직접 만들기
+            </button>
+          </div>
+
+          {/* 직접 만들기 */}
+          {mode === "direct" && (
+            <div>
+              <h2 className="text-sm font-semibold">인물 직접 추가</h2>
+              <p className="mt-1 text-xs text-zinc-500">
+                이름과 성격(아키타입)만 정하면 됩니다. 클리셰 프로젝트 없이 바로 게임이 돼요.
+              </p>
+              <div className="mt-3 grid gap-3">
+                {directChars.map((c, i) => (
+                  <div
+                    key={i}
+                    className="rounded-2xl border border-zinc-200 dark:border-zinc-800 p-3"
+                  >
+                    <div className="flex items-center gap-2">
+                      <input
+                        value={c.name}
+                        onChange={(e) => updateDirect(i, { name: e.target.value })}
+                        placeholder="이름 (예: 서준)"
+                        className="flex-1 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-transparent px-3 py-2 text-sm"
+                      />
+                      {directChars.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setDirectChars((prev) => prev.filter((_, idx) => idx !== i))
+                          }
+                          className="shrink-0 rounded-lg px-2 py-1 text-xs text-zinc-400 hover:text-red-500"
+                        >
+                          삭제
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      value={c.archetype}
+                      onChange={(e) => updateDirect(i, { archetype: e.target.value })}
+                      placeholder="성격 (예: 츤데레남) — 아래에서 골라도 돼요"
+                      className="mt-2 w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-transparent px-3 py-2 text-sm"
+                    />
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {ARCHETYPES.map((a) => (
+                        <button
+                          key={a}
+                          type="button"
+                          onClick={() => updateDirect(i, { archetype: a })}
+                          className={`rounded-full border px-2.5 py-0.5 text-xs ${
+                            c.archetype === a
+                              ? "border-accent bg-accent/10"
+                              : "border-zinc-200 dark:border-zinc-800 text-zinc-500"
+                          }`}
+                        >
+                          {a}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  setDirectChars((prev) => [...prev, { name: "", archetype: "" }])
+                }
+                className="mt-2 text-sm text-accent hover:underline"
+              >
+                + 인물 추가
+              </button>
+              {directNames.length !== new Set(directNames).size && (
+                <p className="mt-2 text-xs text-red-500">이름이 겹쳐요 — 다르게 지어주세요.</p>
+              )}
+            </div>
+          )}
+
+          {/* 클리셰에서 데려오기 */}
+          {mode === "project" && (
           <div>
             <h2 className="text-sm font-semibold">인물을 데려올 클리셰 프로젝트</h2>
             <p className="mt-1 text-xs text-zinc-500">
@@ -163,8 +301,9 @@ export default function SimNewForm({
               ))}
             </div>
           </div>
+          )}
 
-          {source && (
+          {mode === "project" && source && (
             <div>
               <h2 className="text-sm font-semibold">
                 공략 상대 <span className="text-zinc-400">(1명 이상)</span>
@@ -205,7 +344,7 @@ export default function SimNewForm({
 
           <button
             type="button"
-            disabled={picked.length === 0}
+            disabled={!step1Valid}
             onClick={() => setStep(2)}
             className="rounded-2xl bg-accent hover:bg-accent-strong text-white font-semibold px-5 py-3 disabled:opacity-40"
           >

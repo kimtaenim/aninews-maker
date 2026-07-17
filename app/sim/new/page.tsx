@@ -59,17 +59,8 @@ export default async function SimNewPage() {
         <p className="mt-6 text-sm text-red-500">
           프로젝트 목록을 불러오지 못했어요. 잠시 후 새로고침해 주세요.
         </p>
-      ) : sources.length === 0 ? (
-        <div className="mt-6 rounded-2xl border border-dashed border-zinc-300 dark:border-zinc-700 p-6 text-sm text-zinc-500">
-          <p>
-            상대로 데려올 인물이 없어요. 먼저{" "}
-            <Link href="/cliche/new" className="text-accent underline">
-              연애 클리셰
-            </Link>
-            에서 인물만 정해두면 — 영상까지 만들지 않아도 — 바로 게임으로 만들 수 있어요.
-          </p>
-        </div>
       ) : (
+        // 클리셰 프로젝트가 없어도 '직접 만들기'로 게임을 만들 수 있으니 항상 폼을 띄운다.
         <SimNewForm sources={sources} videos={videos} />
       )}
     </main>

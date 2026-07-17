@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createSimGame } from "@/lib/simStore";
 import { getProject, getProjectsBulk } from "@/lib/projectStore";
 import { getSessionEmail } from "@/lib/auth";
-import type { SimCutscene, SimTarget } from "@/lib/types";
+import type { CastMember, SimCutscene, SimTarget } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -27,15 +27,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "invalid JSON" }, { status: 400 });
   }
 
+  // sourceProjectId 는 선택 — 있으면 클리셰 인물(포트레이트·목소리)을 가져오고,
+  // 없으면 제조기에서 직접 만든 인물(이름·아키타입만)로 게임을 만든다.
   const sourceProjectId = (body.sourceProjectId ?? "").trim();
-  if (!sourceProjectId) {
-    return NextResponse.json({ ok: false, error: "sourceProjectId 필요" }, { status: 400 });
+  let members: CastMember[] = [];
+  if (sourceProjectId) {
+    const source = await getProject(sourceProjectId);
+    if (!source) {
+      return NextResponse.json({ ok: false, error: "원본 프로젝트 없음" }, { status: 404 });
+    }
+    members = source.castMembers ?? [];
   }
-  const source = await getProject(sourceProjectId);
-  if (!source) {
-    return NextResponse.json({ ok: false, error: "원본 프로젝트 없음" }, { status: 404 });
-  }
-  const members = source.castMembers ?? [];
 
   const rawTargets = (Array.isArray(body.targets) ? body.targets : []).filter(
     (t): t is Record<string, unknown> => !!t && typeof t === "object"
@@ -71,6 +73,8 @@ export async function POST(req: NextRequest) {
       );
     }
     const member = members.find((m) => m.name === name);
+    // 아키타입: 클리셰 인물이면 member 에서, 직접 만든 인물이면 바디에서.
+    const archetype = member?.archetype || String(t.archetype ?? "").trim() || undefined;
 
     const cutscenes: SimCutscene[] = [];
     for (const raw of Array.isArray(t.cutscenes) ? t.cutscenes : []) {
@@ -99,7 +103,7 @@ export async function POST(req: NextRequest) {
 
     targets.push({
       name,
-      ...(member?.archetype ? { archetype: member.archetype } : {}),
+      ...(archetype ? { archetype } : {}),
       ...(member?.portraitUrl ? { portraitUrl: member.portraitUrl } : {}),
       ...(member?.voiceId ? { voiceId: member.voiceId } : {}),
       persona,
