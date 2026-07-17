@@ -20,7 +20,7 @@ import type { SourceMaterial } from "@/lib/source";
 import { resolveLang, otherLanguages } from "@/lib/languages";
 import Spinner from "@/components/Spinner";
 import ScenePreview from "./ScenePreview";
-import SceneVideoThumb from "./SceneVideoThumb";
+import SceneVideoThumb, { useActiveRow } from "./SceneVideoThumb";
 import CaptionControls from "./CaptionControls";
 import { EMOTIONS } from "@/lib/emotions";
 import MiniAudio from "./MiniAudio";
@@ -344,6 +344,12 @@ export default function Studio({
   // 5단계 비디오 모델 (프로바이더 교차: fal / grok)
   const [videoModelId, setVideoModelId] = useState(
     initial.videoModelId || videoModels[0]?.id || ""
+  );
+  // 5단계 영상 그리드 — 크롬 부담 줄이려고 "보이는 한 줄"만 재생한다(2열=2개, 3열=3개).
+  const videoGridRef = useRef<HTMLOListElement>(null);
+  const { cols: videoCols, activeRow: videoActiveRow } = useActiveRow(
+    videoGridRef,
+    project.scenes.length
   );
   // 5단계 영상 생성 공통 프롬프트 — 전 씬 영상에 공통으로 덧붙는 지시. 프로젝트별 저장.
   const [videoCommonPrompt, setVideoCommonPrompt] = useState(initial.videoCommonPrompt ?? "");
@@ -3817,7 +3823,7 @@ export default function Studio({
 
         {imagesApproved && (
           <>
-            <ol className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <ol ref={videoGridRef} className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
               {project.scenes.map((sc, i) => {
                 const vidMode = scenes[i]?.videoSource ?? "generate";
                 const vidUploading = uploading === `vid-${i}`;
@@ -3830,11 +3836,12 @@ export default function Studio({
                   <li key={i} className="grid gap-1.5">
                     <div className="relative flex aspect-[9/16] items-center justify-center overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900">
                       {sc.videoUrl ? (
-                        // 전부 autoPlay 하면 크롬이 무거워져서, 화면에 보이는 것만 재생한다.
+                        // 전부 autoPlay 하면 크롬이 무거워져서, 보이는 "한 줄"만 재생한다.
                         <SceneVideoThumb
                           src={sc.videoUrl}
                           poster={sc.imageUrl}
                           className="h-full w-full object-cover"
+                          play={videoActiveRow >= 0 && Math.floor(i / videoCols) === videoActiveRow}
                         />
                       ) : sc.imageUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
