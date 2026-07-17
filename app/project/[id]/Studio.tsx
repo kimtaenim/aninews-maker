@@ -314,7 +314,7 @@ export default function Studio({
     };
   }, [initial.id]);
 
-  // 4단계: 선택한 씬만 일괄 생성/리롤 (선택 안 된 건 그대로)
+  // 4단계: 선택한 씬만 일괄 생성/리롤 (선택 안 된 건 그대로). 5단계와 공유.
   const [selectedScenes, setSelectedScenes] = useState<Set<number>>(new Set());
   function toggleScene(i: number) {
     setSelectedScenes((prev) => {
@@ -323,6 +323,21 @@ export default function Studio({
       else next.add(i);
       return next;
     });
+  }
+  function clearSelectedScenes() {
+    setSelectedScenes(new Set());
+  }
+  // 전체 선택 — 각 단계에서 실제 생성 대상이 되는 씬만 고른다(생성 함수 필터와 동일 기준).
+  // 이미지(4): 씬0=키프레임 제외 + 프롬프트 없음·업로드·건너뜀 제외(skipInBatch). 비디오(5): 업로드 모드만 제외.
+  function selectAllImageScenes() {
+    setSelectedScenes(
+      new Set(project.scenes.map((_, i) => i).filter((i) => i >= 1 && !skipInBatch(i)))
+    );
+  }
+  function selectAllVideoScenes() {
+    setSelectedScenes(
+      new Set(project.scenes.map((s, i) => i).filter((i) => project.scenes[i].videoSource !== "upload"))
+    );
   }
 
   // 5단계 비디오 모델 (프로바이더 교차: fal / grok)
@@ -3303,6 +3318,22 @@ export default function Studio({
             </button>
             <button
               type="button"
+              onClick={selectAllImageScenes}
+              disabled={busy !== null}
+              className="text-xs rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
+            >
+              전체 선택
+            </button>
+            <button
+              type="button"
+              onClick={clearSelectedScenes}
+              disabled={busy !== null || selectedScenes.size === 0}
+              className="text-xs rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
+            >
+              전체 해제
+            </button>
+            <button
+              type="button"
               onClick={generateSelectedScenes}
               disabled={busy !== null || selectedScenes.size === 0}
               className="text-xs rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-medium px-3 py-1.5"
@@ -3658,7 +3689,7 @@ export default function Studio({
             5. 비디오 (씬별)
             {videosApproved && <span className="ml-2 text-xs text-accent">승인됨</span>}
           </h2>
-          <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             <button
               type="button"
               onClick={() =>
@@ -3668,6 +3699,22 @@ export default function Studio({
               className="shrink-0 text-xs rounded-lg border border-accent text-accent px-3 py-1.5 hover:bg-accent/10 disabled:opacity-40"
             >
               {busy === "video-motion" ? <Busy>생성 중…</Busy> : "모션 생성"}
+            </button>
+            <button
+              type="button"
+              onClick={selectAllVideoScenes}
+              disabled={!imagesApproved || busy !== null || project.scenes.length === 0}
+              className="shrink-0 text-xs rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
+            >
+              전체 선택
+            </button>
+            <button
+              type="button"
+              onClick={clearSelectedScenes}
+              disabled={busy !== null || selectedScenes.size === 0}
+              className="shrink-0 text-xs rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-40"
+            >
+              전체 해제
             </button>
             <button
               type="button"
