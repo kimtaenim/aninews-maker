@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
       ownerEmail: (await getSessionEmail()) ?? undefined,
     });
 
-    const opening = await generateOpening(game, target);
+    const { reply: opening, costUsd } = await generateOpening(game, target);
     play.turns.push({ role: "assistant", text: opening, ts: Date.now() });
     play.updatedAt = Date.now();
     await saveSimPlay(play);
@@ -52,8 +52,9 @@ export async function POST(req: NextRequest) {
         archetype: target.archetype ?? "",
         portraitUrl: target.portraitUrl ?? "",
       },
-      affinity: play.affinity,
-      mood: play.mood,
+      like: play.like,
+      dislike: play.dislike,
+      costUsd,
       opening,
     });
   } catch (e) {

@@ -52,17 +52,17 @@ export async function POST(req: NextRequest) {
   }
 
   // 상태 반영.
-  play.affinity = result.affinity;
-  play.mood = result.mood;
+  play.like = result.like;
+  play.dislike = result.dislike;
   play.sulking = result.sulking;
   play.sulkReason = result.sulkReason;
+  play.memory = result.memory;
   play.turns.push({
     role: "assistant",
     text: result.reply,
-    affinityDelta: result.affinityDelta,
-    moodDelta: result.moodDelta,
+    likeDelta: result.likeDelta,
+    dislikeDelta: result.dislikeDelta,
     sulking: result.sulking,
-    judge: result.judge,
     situationId: result.situationId,
     ts: Date.now(),
   });
@@ -93,10 +93,9 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     ok: true,
     reply: result.reply,
-    affinity: play.affinity,
-    affinityDelta: result.affinityDelta,
-    mood: play.mood,
-    moodDelta: result.moodDelta,
+    like: play.like,
+    dislike: play.dislike,
+    costUsd: result.costUsd,
     sulking: play.sulking,
     justSulked: result.justSulked,
     justSoothed: result.justSoothed,

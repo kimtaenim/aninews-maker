@@ -14,19 +14,16 @@ export interface PlayTarget {
 interface ChatMsg {
   role: "user" | "assistant";
   text: string;
-  delta?: number; // assistant 턴 호감 증감(표시용)
-  moodDelta?: number; // assistant 턴 기분 증감(표시용)
   sulking?: boolean; // 이 대사가 삐진 상태의 대사인지(말풍선 톤)
 }
 
-// 기분(-50~50)을 표정 이모지로.
-function moodFace(mood: number, sulking: boolean): string {
+// 상대의 표정 — 좋음·싫음·삐짐을 종합한 소프트 신호(정확한 숫자는 감춘다).
+function moodFace(like: number, dislike: number, sulking: boolean): string {
   if (sulking) return "😤";
-  if (mood >= 25) return "😊";
-  if (mood >= 8) return "🙂";
-  if (mood > -8) return "😐";
-  if (mood > -20) return "😕";
-  return "😠";
+  if (dislike >= 25) return "😕";
+  if (like >= 60 && dislike < 10) return "😊";
+  if (like >= 35) return "🙂";
+  return "😐";
 }
 
 interface Cutscene {
@@ -49,8 +46,8 @@ export default function PlayClient({
     targets.length === 1 ? targets[0] : null
   );
   const [playId, setPlayId] = useState("");
-  const [affinity, setAffinity] = useState(20);
-  const [mood, setMood] = useState(0);
+  const [like, setLike] = useState(20);
+  const [dislike, setDislike] = useState(0);
   const [sulking, setSulking] = useState(false);
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
@@ -59,6 +56,9 @@ export default function PlayClient({
   const [cutscene, setCutscene] = useState<Cutscene | null>(null);
   const [ending, setEnding] = useState<{ won: boolean; reason: string } | null>(null);
   const [error, setError] = useState("");
+  // 개발자용 비용 추적 — 이번 판 누적 USD + 대화 턴 수.
+  const [costUsd, setCostUsd] = useState(0);
+  const [turnCount, setTurnCount] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // 상대 하나면 자동 시작.
@@ -84,9 +84,11 @@ export default function PlayClient({
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || `시작 실패 (${res.status})`);
       setPlayId(data.playId);
-      setAffinity(data.affinity);
-      setMood(data.mood ?? 0);
+      setLike(data.like ?? 20);
+      setDislike(data.dislike ?? 0);
       setSulking(false);
+      setCostUsd(data.costUsd ?? 0);
+      setTurnCount(0);
       setMsgs([{ role: "assistant", text: data.opening }]);
       setPhase("playing");
     } catch (e) {
@@ -111,23 +113,19 @@ export default function PlayClient({
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || `전송 실패 (${res.status})`);
-      setAffinity(data.affinity);
-      setMood(data.mood ?? mood);
+      setLike(data.like ?? like);
+      setDislike(data.dislike ?? dislike);
       setSulking(!!data.sulking);
+      setCostUsd((c) => c + (data.costUsd ?? 0));
+      setTurnCount((n) => n + 1);
       setMsgs((m) => [
         ...m,
-        {
-          role: "assistant",
-          text: data.reply,
-          delta: data.affinityDelta,
-          moodDelta: data.moodDelta,
-          sulking: data.sulking,
-        },
+        { role: "assistant", text: data.reply, sulking: data.sulking },
       ]);
-      // 배너 우선순위: 화해 > 삐짐 > 마일스톤 > 상황
+      // 배너 우선순위: 화해 > 삐짐 > 마일스톤 > 상황 (숫자는 감추고 상태만 알린다)
       if (data.justSoothed) setBanner("💗 마음이 풀렸다 — 화해!");
       else if (data.justSulked) setBanner("💢 토라졌다… 왜 그러는지 눈치껏 사과해야 해");
-      else if (data.crossedMilestone) setBanner(`💞 호감 ${data.crossedMilestone} 돌파!`);
+      else if (data.crossedMilestone) setBanner("💞 사이가 한 뼘 가까워졌다!");
       else if (data.situationLabel) setBanner(`💬 ${data.situationLabel}`);
       if (data.crossedMilestone && data.cutscene?.videoUrl) setCutscene(data.cutscene);
       if (data.status === "won" || data.status === "lost") {
@@ -170,29 +168,38 @@ export default function PlayClient({
 
   return (
     <div className="mt-4">
-      {/* 호감 게이지 + 기분 표정 */}
+      {/* 좋음·싫음 두 바 + 표정 — 정확한 숫자는 감춘다(바 채워지는 정도만) */}
       <div className="flex items-center gap-3">
-        {target && <Avatar t={target} size={36} />}
+        {target && <Avatar t={target} size={40} />}
         <div className="flex-1">
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-medium">
-              {target?.name}
-              <span className="ml-1.5" title={`기분 ${mood}`}>
-                {moodFace(mood, sulking)}
+          <div className="flex items-center gap-1.5 text-xs">
+            <span className="font-medium">{target?.name}</span>
+            <span>{moodFace(like, dislike, sulking)}</span>
+            {sulking && (
+              <span className="rounded-full bg-red-100 dark:bg-red-950/50 px-2 py-0.5 text-[10px] font-medium text-red-600 dark:text-red-400">
+                삐짐
               </span>
-              {sulking && (
-                <span className="ml-1.5 rounded-full bg-red-100 dark:bg-red-950/50 px-2 py-0.5 text-[10px] font-medium text-red-600 dark:text-red-400">
-                  삐짐
-                </span>
-              )}
-            </span>
-            <span className="text-zinc-500">호감 {affinity}/100</span>
+            )}
           </div>
-          <div className="mt-1 h-2 rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-pink-400 to-rose-500 transition-all duration-500"
-              style={{ width: `${affinity}%` }}
-            />
+          {/* 좋음 */}
+          <div className="mt-1.5 flex items-center gap-2">
+            <span className="w-8 shrink-0 text-[10px] text-rose-500">좋음</span>
+            <div className="h-2 flex-1 rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-pink-400 to-rose-500 transition-all duration-500"
+                style={{ width: `${like}%` }}
+              />
+            </div>
+          </div>
+          {/* 싫음 */}
+          <div className="mt-1 flex items-center gap-2">
+            <span className="w-8 shrink-0 text-[10px] text-slate-500">싫음</span>
+            <div className="h-2 flex-1 rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-slate-400 to-slate-600 transition-all duration-500"
+                style={{ width: `${dislike}%` }}
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -206,7 +213,7 @@ export default function PlayClient({
       {cutscene && (
         <div className="mt-3 rounded-2xl border border-pink-200 dark:border-pink-900 p-3">
           <div className="text-xs font-medium text-pink-600 dark:text-pink-400">
-            🎬 컷씬 · 친밀도 {cutscene.at}
+            🎬 컷씬
             {cutscene.title ? ` — ${cutscene.title}` : ""}
           </div>
           <video
@@ -250,22 +257,6 @@ export default function PlayClient({
               }`}
             >
               {m.text}
-              {m.role === "assistant" && (
-                <span className="ml-2 whitespace-nowrap text-[11px] font-medium">
-                  {typeof m.delta === "number" && m.delta !== 0 && (
-                    <span className={m.delta > 0 ? "text-rose-500" : "text-zinc-400"}>
-                      호감{m.delta > 0 ? `+${m.delta}` : m.delta}
-                    </span>
-                  )}
-                  {typeof m.moodDelta === "number" && m.moodDelta !== 0 && (
-                    <span
-                      className={`ml-1 ${m.moodDelta > 0 ? "text-emerald-500" : "text-amber-500"}`}
-                    >
-                      기분{m.moodDelta > 0 ? `+${m.moodDelta}` : m.moodDelta}
-                    </span>
-                  )}
-                </span>
-              )}
             </div>
           </div>
         ))}
@@ -287,7 +278,27 @@ export default function PlayClient({
             {ending.won ? "이어졌다!" : "여기까지…"}
           </div>
           <p className="mt-1 text-sm text-zinc-500">{ending.reason}</p>
-          <p className="mt-1 text-xs text-zinc-400">최종 친밀도 {affinity}/100</p>
+          {/* 최종 좋음·싫음 요약 — 숫자 없이 바로만 */}
+          <div className="mx-auto mt-3 max-w-[220px] space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="w-8 shrink-0 text-left text-[10px] text-rose-500">좋음</span>
+              <div className="h-2 flex-1 rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-pink-400 to-rose-500"
+                  style={{ width: `${like}%` }}
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-8 shrink-0 text-left text-[10px] text-slate-500">싫음</span>
+              <div className="h-2 flex-1 rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-slate-400 to-slate-600"
+                  style={{ width: `${dislike}%` }}
+                />
+              </div>
+            </div>
+          </div>
           <div className="mt-4 flex justify-center gap-2">
             <button
               type="button"
@@ -326,6 +337,17 @@ export default function PlayClient({
           </button>
         </div>
       )}
+
+      {/* 개발자용 비용 푸터 — 이번 판 누적 Claude 비용. */}
+      <div className="mt-2 flex items-center justify-between text-[11px] text-zinc-400">
+        <span>🛠 개발자용</span>
+        <span>
+          이번 판 {turnCount}턴 · ₩{Math.round(costUsd * 1400).toLocaleString("ko-KR")}
+          <span className="ml-1 text-zinc-300 dark:text-zinc-600">
+            (${costUsd.toFixed(4)})
+          </span>
+        </span>
+      </div>
     </div>
   );
 }

@@ -226,13 +226,20 @@ export interface SimGame {
   updatedAt: number;
 }
 
+// 관계 기억 한 조각 — type 은 config/sim-memory-ontology.json 의 타입 id.
+export interface SimMemory {
+  type: string; // "fact" | "preference" | "sensitive" | "promise" | "moment" | "bond"
+  text: string; // 기억 내용 (예: "강아지 '콩이'를 키운다")
+  key?: string; // 갱신 키 — 같은 type+key 면 덮어쓴다(예: "반려동물")
+  turn: number; // 이 기억이 생긴 대략의 턴
+}
+
 export interface SimTurn {
   role: "user" | "assistant";
   text: string;
-  affinityDelta?: number; // assistant 턴 — 호감(장기) 증감
-  moodDelta?: number; // assistant 턴 — 기분(실시간) 증감. 느끼함·지뢰면 호감+라도 기분-.
+  likeDelta?: number; // assistant 턴 — 좋음 증감
+  dislikeDelta?: number; // assistant 턴 — 싫음 증감. 한 말이 좋음·싫음 동시 상승 가능(느끼함·지뢰).
   sulking?: boolean; // assistant 턴 직후 삐짐 상태(UI 스냅샷)
-  judge?: string; // assistant 턴 — 채점 사유 한 줄(화면 비노출, 밸런싱 로그용)
   situationId?: string; // 이 턴에 발동된 상황 이벤트 id (simSituations)
   ts: number;
 }
@@ -241,10 +248,11 @@ export interface SimPlay {
   id: string;
   gameId: string;
   targetName: string; // 공략 중인 상대 (SimTarget.name)
-  affinity: number; // 호감 0~100 (장기 — 승리 지표)
-  mood: number; // 기분 -50~+50 (실시간). -25 밑이면 삐짐 진입, -50 이면 파탄.
-  sulking: boolean; // 삐짐 상태 — 호감이 안 오르고, 정확한 사과로만 풀린다.
+  like: number; // 좋음 0~100 (쌓인 호감 — 승리 지표)
+  dislike: number; // 싫음 0~100 (쌓인 거부감·서운함). 높으면 삐짐, 최대면 파탄.
+  sulking: boolean; // 삐짐 상태 — 좋음이 안 오르고, 정확한 사과로 싫음을 풀어야만 벗어난다.
   sulkReason?: string; // 삐진 이유(내부) — 사과가 이걸 정확히 짚어야 풀린다.
+  memory: SimMemory[]; // 관계 기억 온톨로지 — 잘려나간 옛 대화에서 뽑은 '영구 기억'. 매 턴 상대에게 주입돼 "옛날 얘기를 기억하는 연인"을 만든다. config/sim-memory-ontology.json 참고.
   turns: SimTurn[];
   milestonesSeen: number[]; // 이미 재생한 컷씬 도달점 [25, 50, ...]
   situationsUsed: string[]; // 이미 발동한 상황 id (중복 방지)
