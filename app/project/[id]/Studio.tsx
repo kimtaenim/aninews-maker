@@ -20,6 +20,7 @@ import type { SourceMaterial } from "@/lib/source";
 import { resolveLang, otherLanguages } from "@/lib/languages";
 import Spinner from "@/components/Spinner";
 import ScenePreview from "./ScenePreview";
+import SceneVideoThumb from "./SceneVideoThumb";
 import CaptionControls from "./CaptionControls";
 import { EMOTIONS } from "@/lib/emotions";
 import MiniAudio from "./MiniAudio";
@@ -3829,13 +3830,11 @@ export default function Studio({
                   <li key={i} className="grid gap-1.5">
                     <div className="relative flex aspect-[9/16] items-center justify-center overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900">
                       {sc.videoUrl ? (
-                        <video
+                        // 전부 autoPlay 하면 크롬이 무거워져서, 화면에 보이는 것만 재생한다.
+                        <SceneVideoThumb
                           src={sc.videoUrl}
+                          poster={sc.imageUrl}
                           className="h-full w-full object-cover"
-                          autoPlay
-                          loop
-                          muted
-                          playsInline
                         />
                       ) : sc.imageUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
