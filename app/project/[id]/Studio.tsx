@@ -1699,6 +1699,25 @@ export default function Studio({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [imagesApproved, project.scenes]);
 
+  // 4단계 진입(키프레임 승인) 시, 이미지 프롬프트가 빈 씬(씬0=키프레임 제외)을 한 번 자동
+  // 생성한다. "전체 프롬프트 생성" 버튼을 안 눌러도 채워지게. 이미 프롬프트 있으면 안 건드림(리롤 수동).
+  const autoImgPromptRef = useRef(false);
+  useEffect(() => {
+    if (!keyframeApproved || autoImgPromptRef.current || busyRef.current) return;
+    const need = project.scenes
+      .map((s, i) => ({ i, s }))
+      .filter(
+        ({ i, s }) =>
+          i >= 1 && !s.skipped && (s.narration ?? "").trim() && !(s.imagePrompt ?? "").trim()
+      )
+      .map(({ i }) => i);
+    if (need.length === 0) return;
+    autoImgPromptRef.current = true;
+    void genImagePrompts(need, "scene-prompts");
+    // genImagePrompts 는 매 렌더 재생성되므로 deps 에서 제외(autoImgPromptRef 가 1회 보장).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keyframeApproved, project.scenes]);
+
   async function approveScript() {
     setError(null);
     setBusy("approve-script");
