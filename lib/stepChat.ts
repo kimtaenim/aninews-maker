@@ -261,7 +261,10 @@ export async function runScriptChat(args: {
     "add or remove a scene, reorder, sharpen the hook, adjust tone — and return the FULL updated list of scene " +
     "narrations. Each narration is natural Korean speech (one or two short sentences) that works for both " +
     "voiceover and on-screen subtitles. Keep 5-9 scenes unless the user asks otherwise. Do NOT write image " +
-    "prompts or motion — narration only. Also write a short Korean reply summarizing what changed. " +
+    "prompts or motion — narration only. IMPORTANT: a narration may contain manual newlines (\\n) — these are " +
+    "the user's on-screen SUBTITLE LINE BREAKS. Preserve every newline exactly where it is; do not remove, add, " +
+    "or move them unless your edit changes that exact line. Keep newlines as real \\n inside the JSON strings. " +
+    "Also write a short Korean reply summarizing what changed. " +
     'Return ONLY JSON: {"reply":"...","scenes":["나레이션1","나레이션2", ...]}';
 
   const userMsg =
@@ -303,10 +306,19 @@ export async function runScriptChat(args: {
     ? parsed.scenes.map((x) => (typeof x === "string" ? x.trim() : "")).filter(Boolean)
     : [];
   const next = nextList.length > 0 ? nextList : narrations;
+  // 줄바꿈(수동 자막 경계) 보존 안전망: 씬 개수가 그대로고 그 씬 내용이 (공백·줄바꿈 무시)
+  // 안 바뀌었으면 원본 나레이션을 유지해 사용자의 줄바꿈을 지킨다. 실제로 고쳐진 씬만
+  // 모델 출력을 쓴다(그 씬은 내용이 달라졌으니 줄 조절이 필요할 수 있음). 개수가 바뀌면(분할·
+  // 병합) index 정렬이 깨지므로 그대로 둔다.
+  const norm = (s: string) => s.replace(/\s+/g, " ").trim();
+  const preserved =
+    next.length === narrations.length
+      ? next.map((n, i) => (norm(n) === norm(narrations[i]) ? narrations[i] : n))
+      : next;
   const reply =
     typeof parsed.reply === "string" && parsed.reply.trim()
       ? parsed.reply.trim()
       : "반영했어요. 씬을 확인해 주세요.";
 
-  return { reply, narrations: next, costUsd };
+  return { reply, narrations: preserved, costUsd };
 }
