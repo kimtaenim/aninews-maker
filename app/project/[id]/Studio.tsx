@@ -1913,8 +1913,8 @@ export default function Studio({
       (material?.body?.length ?? 0);
     const inTok = chars * 0.7 + 600; // 한국어 대략 토큰 + 시스템(검색 결과 되먹임 포함 대략)
     const outTok = 1200; // 리포트 분량 대략
-    const tokenUsd = (inTok * 15 + outTok * 75) / 1_000_000; // opus $15/$75 per 1M
-    const searches = Math.min(8, Math.max(2, project.scenes.length)); // 씬당 대략 1회, 2~8
+    const tokenUsd = (inTok * 3 + outTok * 15) / 1_000_000; // sonnet $3/$15 per 1M
+    const searches = Math.min(4, Math.max(2, project.scenes.length)); // 씬당 대략 1회, 2~4(상한)
     const searchUsd = searches * 0.01; // 웹 검색 $10/1000회
     return `₩${Math.round((tokenUsd + searchUsd) * 1400).toLocaleString("ko-KR")}`;
   }

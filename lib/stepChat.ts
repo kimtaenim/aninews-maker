@@ -47,9 +47,13 @@ export async function runFactCheck(args: {
 
   // 웹 검색 서버 도구. 검색 횟수 상한으로 비용/시간 폭주 방지.
   const tools = [
-    { type: "web_search_20260209", name: "web_search", max_uses: 8 },
+    // 웹 검색료·토큰 절감 위해 4회로 상한. Sonnet 4.6 은 최신(dynamic filtering) 변형 지원.
+    { type: "web_search_20260209", name: "web_search", max_uses: 4 },
   ] as unknown as Anthropic.Messages.ToolUnion[];
 
+  // 비용 절감: 팩트체크는 Sonnet(웹 검색 대조 작업엔 충분·Opus 대비 저렴). 모델 바꾸면
+  // 웹 검색 변형 지원 여부 확인 필요(Sonnet 4.6/5·Opus 4.6+ 만 web_search_20260209 지원).
+  const model = MODELS.sonnet;
   // 서버 도구 루프가 10회 반복 상한에 걸리면 stop_reason=pause_turn 으로 끊긴다 → 이어서 재요청.
   const messages: Anthropic.Messages.MessageParam[] = [{ role: "user", content: userMsg }];
   let costUsd = 0;
@@ -57,7 +61,7 @@ export async function runFactCheck(args: {
   const textParts: string[] = [];
   for (let turn = 0; turn < 6; turn++) {
     const r = await client.messages.create({
-      model: MODELS.opus,
+      model,
       max_tokens: 6000,
       system,
       messages,
@@ -68,7 +72,7 @@ export async function runFactCheck(args: {
       outputTokens: r.usage.output_tokens,
       cacheReadTokens: r.usage.cache_read_input_tokens ?? undefined,
       cacheWriteTokens: r.usage.cache_creation_input_tokens ?? undefined,
-      model: MODELS.opus,
+      model,
     });
     searches +=
       (r.usage as { server_tool_use?: { web_search_requests?: number } }).server_tool_use
@@ -86,7 +90,7 @@ export async function runFactCheck(args: {
   await recordCost({
     projectId,
     vendor: "anthropic",
-    model: MODELS.opus,
+    model,
     costUsd,
     meta: { kind: "factcheck", webSearches: searches },
   }).catch(() => {});

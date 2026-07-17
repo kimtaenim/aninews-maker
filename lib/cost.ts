@@ -41,7 +41,7 @@ interface AnthropicPricing {
 export const ANTHROPIC_PRICING: Record<string, AnthropicPricing> = {
   "claude-haiku-4-5-20251001": { input: 1.0, output: 5.0, cacheRead: 0.1, cacheWrite: 1.25 },
   "claude-sonnet-4-6": { input: 3.0, output: 15.0, cacheRead: 0.3, cacheWrite: 3.75 },
-  "claude-opus-4-8": { input: 15.0, output: 75.0, cacheRead: 1.5, cacheWrite: 18.75 },
+  "claude-opus-4-8": { input: 5.0, output: 25.0, cacheRead: 0.5, cacheWrite: 6.25 },
 };
 
 // USD per image (gpt-image-2). low 기본.
