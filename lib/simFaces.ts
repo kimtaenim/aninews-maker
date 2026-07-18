@@ -58,29 +58,36 @@ export async function generateExpressionFaces(args: {
 
   const faces: Record<string, string> = { neutral: neutral.url };
 
-  // 2) 중립을 레퍼런스로 표정만 바꿔 edit.
-  for (const expr of FACE_EXPRESSIONS.slice(1)) {
-    const refFile = await toFile(neutralBytes, "neutral.png", { type: "image/png" });
-    const edit = await client.images.edit({
-      model: IMAGE_MODEL,
-      image: refFile,
-      prompt:
-        `이 웹툰 캐릭터의 얼굴·헤어·의상·화풍을 그대로 유지하고, 표정만 '${expr.phrase}'으로 바꿔라. ` +
-        `같은 인물이어야 한다. ${SHEET}`,
-      size: FACE_SIZE,
-      quality: "low",
-      n: 1,
-    });
-    const b64 = edit.data?.[0]?.b64_json;
-    costUsd += openaiImageCostUsd(IMAGE_MODEL, "low", 1);
-    if (!b64) continue; // 한 장 실패해도 나머지는 쓴다
-    const up = await uploadAsset(
-      `${blobPrefix}/face-${expr.id}-${ts}.png`,
-      Buffer.from(b64, "base64"),
-      "image/png"
-    );
-    faces[expr.id] = up.url;
-  }
+  // 2) 중립을 레퍼런스로 표정 4장을 '병렬'로 edit(느려서 타임아웃 나던 걸 방지).
+  const edits = await Promise.all(
+    FACE_EXPRESSIONS.slice(1).map(async (expr) => {
+      try {
+        const refFile = await toFile(neutralBytes, "neutral.png", { type: "image/png" });
+        const edit = await client.images.edit({
+          model: IMAGE_MODEL,
+          image: refFile,
+          prompt:
+            `이 웹툰 캐릭터의 얼굴·헤어·의상·화풍을 그대로 유지하고, 표정만 '${expr.phrase}'으로 바꿔라. ` +
+            `같은 인물이어야 한다. ${SHEET}`,
+          size: FACE_SIZE,
+          quality: "low",
+          n: 1,
+        });
+        const b64 = edit.data?.[0]?.b64_json;
+        if (!b64) return null;
+        const up = await uploadAsset(
+          `${blobPrefix}/face-${expr.id}-${ts}.png`,
+          Buffer.from(b64, "base64"),
+          "image/png"
+        );
+        return [expr.id, up.url] as const;
+      } catch {
+        return null; // 한 장 실패해도 나머지는 쓴다
+      }
+    })
+  );
+  for (const e of edits) if (e) faces[e[0]] = e[1];
+  costUsd += openaiImageCostUsd(IMAGE_MODEL, "low", FACE_EXPRESSIONS.length - 1);
 
   await recordCost({
     projectId,

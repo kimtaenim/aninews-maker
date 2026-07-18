@@ -85,6 +85,10 @@ export default function PlayClient({
   const [sulking, setSulking] = useState(false);
   const [expr, setExpr] = useState("neutral"); // 현재 표정 얼굴 id
   const exprHold = useRef(0);
+  // 얼굴 자동 생성(백필) — 얼굴 없는 인물은 처음 플레이할 때 백그라운드로 만든다.
+  const [genFaces, setGenFaces] = useState<Record<string, string> | null>(null);
+  const [faceGen, setFaceGen] = useState<"idle" | "busy" | "done" | "fail">("idle");
+  const faceGenTried = useRef<Set<string>>(new Set());
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -106,6 +110,27 @@ export default function PlayClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 얼굴이 없는 인물이면 백그라운드로 표정 얼굴을 자동 생성해 게임에 저장한다.
+  async function ensureFaces(t: PlayTarget) {
+    if (pickFaceUrl(t, "neutral")) return; // 이미 얼굴/포트레이트 있음
+    if (faceGenTried.current.has(t.name)) return;
+    faceGenTried.current.add(t.name);
+    setFaceGen("busy");
+    try {
+      const res = await fetch("/api/sim/faces/backfill", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gameId, targetName: t.name }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "얼굴 생성 실패");
+      setGenFaces(data.faces);
+      setFaceGen("done");
+    } catch {
+      setFaceGen("fail");
+    }
+  }
+
   // 기존 세션(관계)을 화면에 복원해 이어서 플레이.
   function hydrateResume(t: PlayTarget, r: ResumeData) {
     setTarget(t);
@@ -115,12 +140,14 @@ export default function PlayClient({
     setSulking(r.sulking);
     exprHold.current = 0;
     setExpr(r.sulking ? "sulk" : r.like >= 55 && r.dislike < 20 ? "blush" : "neutral");
+    setGenFaces(null);
     setCostUsd(0);
     setTurnCount(r.turns.filter((x) => x.role === "user").length);
     setMsgs(r.turns.map((x) => ({ role: x.role, text: x.text, sulking: x.sulking })));
     setEnding(null);
     setError("");
     setPhase("playing");
+    void ensureFaces(t);
   }
 
   useEffect(() => {
@@ -145,10 +172,12 @@ export default function PlayClient({
       setSulking(false);
       exprHold.current = 0;
       setExpr("neutral");
+      setGenFaces(null);
       setCostUsd(data.costUsd ?? 0);
       setTurnCount(0);
       setMsgs([{ role: "assistant", text: data.opening }]);
       setPhase("playing");
+      void ensureFaces(t);
     } catch (e) {
       setError(e instanceof Error ? e.message : "세션 시작 실패");
       setPhase("pick");
@@ -252,7 +281,10 @@ export default function PlayClient({
       <div className="flex flex-col items-center">
         {target &&
           (() => {
-            const url = pickFaceUrl(target, expr);
+            const faceTarget = genFaces
+              ? { ...target, faces: { ...(target.faces ?? {}), ...genFaces } }
+              : target;
+            const url = pickFaceUrl(faceTarget, expr);
             return url ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -261,8 +293,16 @@ export default function PlayClient({
                 className="aspect-square w-full max-w-[300px] rounded-3xl object-cover shadow-sm ring-1 ring-zinc-200/70 dark:ring-zinc-800 transition-all duration-300"
               />
             ) : (
-              <div className="flex aspect-square w-full max-w-[300px] items-center justify-center rounded-3xl bg-zinc-100 dark:bg-zinc-900 text-6xl font-semibold text-zinc-300 dark:text-zinc-700">
-                {target.name.slice(0, 1)}
+              <div className="relative flex aspect-square w-full max-w-[300px] flex-col items-center justify-center gap-2 rounded-3xl bg-zinc-100 dark:bg-zinc-900 text-zinc-300 dark:text-zinc-700">
+                <span className="text-6xl font-semibold">{target.name.slice(0, 1)}</span>
+                {faceGen === "busy" && (
+                  <span className="flex items-center gap-1.5 text-xs text-zinc-400">
+                    <Spinner /> 얼굴 만드는 중…
+                  </span>
+                )}
+                {faceGen === "fail" && (
+                  <span className="text-xs text-zinc-400">얼굴 생성 실패</span>
+                )}
               </div>
             );
           })()}
