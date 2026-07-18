@@ -35,9 +35,11 @@ interface Cutscene {
 export default function PlayClient({
   gameId,
   targets,
+  isAdmin = false,
 }: {
   gameId: string;
   targets: PlayTarget[];
+  isAdmin?: boolean;
 }) {
   const [phase, setPhase] = useState<"pick" | "starting" | "playing">(
     targets.length === 1 ? "starting" : "pick"
@@ -338,16 +340,18 @@ export default function PlayClient({
         </div>
       )}
 
-      {/* 개발자용 비용 푸터 — 이번 판 누적 Claude 비용. */}
-      <div className="mt-2 flex items-center justify-between text-[11px] text-zinc-400">
-        <span>🛠 개발자용</span>
-        <span>
-          이번 판 {turnCount}턴 · ₩{Math.round(costUsd * 1400).toLocaleString("ko-KR")}
-          <span className="ml-1 text-zinc-300 dark:text-zinc-600">
-            (${costUsd.toFixed(4)})
+      {/* 개발자용 비용 푸터 — 관리자에게만(테스터엔 숨김). 이번 판 누적 Claude 비용. */}
+      {isAdmin && (
+        <div className="mt-2 flex items-center justify-between text-[11px] text-zinc-400">
+          <span>🛠 개발자용</span>
+          <span>
+            이번 판 {turnCount}턴 · ₩{Math.round(costUsd * 1400).toLocaleString("ko-KR")}
+            <span className="ml-1 text-zinc-300 dark:text-zinc-600">
+              (${costUsd.toFixed(4)})
+            </span>
           </span>
-        </span>
-      </div>
+        </div>
+      )}
     </div>
   );
 }

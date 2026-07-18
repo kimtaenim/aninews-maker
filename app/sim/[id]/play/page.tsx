@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getSimGame } from "@/lib/simStore";
+import { getSessionEmail, ADMIN_EMAIL } from "@/lib/auth";
 import PlayClient, { type PlayTarget } from "./PlayClient";
 
 export const runtime = "nodejs";
@@ -32,6 +33,9 @@ export default async function SimPlayPage({
     cutsceneCount: t.cutscenes.length,
   }));
 
+  // 개발자 비용 푸터는 관리자에게만 — 테스터에겐 안 보이게.
+  const isAdmin = (await getSessionEmail()) === ADMIN_EMAIL;
+
   return (
     <main className="px-4 py-6 md:max-w-2xl md:mx-auto">
       <div className="flex items-center justify-between gap-2">
@@ -40,7 +44,7 @@ export default async function SimPlayPage({
           ← 목록
         </Link>
       </div>
-      <PlayClient gameId={game.id} targets={targets} />
+      <PlayClient gameId={game.id} targets={targets} isAdmin={isAdmin} />
     </main>
   );
 }
