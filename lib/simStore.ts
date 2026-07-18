@@ -98,8 +98,8 @@ export async function createSimPlay(args: {
     id: randomUUID(),
     gameId: args.gameId,
     targetName: args.targetName,
-    like: 20, // 시작 좋음 — 갓 알게 된 사이
-    dislike: 0, // 시작 싫음 — 앙금 없음
+    like: 15, // 시작 좋음 — 낮게(아직 안 통함)
+    dislike: 35, // 시작 싫음 — 높게. 대부분 인물은 '경계·거부감'에서 시작해 뚫어야 재밌다.
     sulking: false,
     memory: [],
     turns: [],
