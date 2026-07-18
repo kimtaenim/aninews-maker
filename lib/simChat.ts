@@ -337,6 +337,13 @@ export async function judgeTurn(
     }
   }
 
+  // 매 턴 최소한의 변화를 보장하는 '모멘텀' — 아무 변화가 없는 턴엔 '우세 감정'이 1 오른다.
+  // (플레이 화면이 매 턴 호들갑 신호를 낼 수 있게. 삐진 중엔 항상 싫음 쪽으로.)
+  if (likeDelta === 0 && dislikeDelta === 0) {
+    if (sulking || play.dislike > play.like) dislikeDelta = 1;
+    else likeDelta = 1;
+  }
+
   const like = clamp(play.like + likeDelta, 0, 100);
   const dislike = clamp(play.dislike + dislikeDelta, 0, 100);
 

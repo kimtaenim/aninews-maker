@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import Spinner from "@/components/Spinner";
 
@@ -89,9 +89,19 @@ export default function PlayClient({
   const [sulking, setSulking] = useState(false);
   const [expr, setExpr] = useState("neutral"); // 현재 표정 얼굴 id
   const exprHold = useRef(0);
-  // 호감(❤️)·비호감(💀) 변화 호들갑 — 오른 만큼 이모지가 얼굴 위로 뾰롱뾰롱 떠오른다.
+  // 호감(❤️)·비호감(💀) 호들갑 — 매 턴 이모지가 화면 전체에 뾰롱뾰롱 뿌려진다.
   const [bursts, setBursts] = useState<
-    { id: number; type: "like" | "dislike"; left: number; delay: number }[]
+    {
+      id: number;
+      type: "like" | "dislike";
+      left: number;
+      top: number;
+      size: number;
+      dx: number;
+      dy: number;
+      rot: number;
+      delay: number;
+    }[]
   >([]);
   const burstId = useRef(0);
   // 얼굴 자동 생성(백필) — 얼굴 없는 인물은 처음 플레이할 때 백그라운드로 만든다.
@@ -221,18 +231,25 @@ export default function PlayClient({
     }
   }
 
-  // 호감/비호감이 오른 만큼 이모지를 뿌린다(오름폭 클수록 더 많이 = 더 호들갑).
-  function spawnBursts(type: "like" | "dislike", amount: number) {
-    const count = Math.max(3, Math.min(9, Math.round(amount / 2) + 3));
-    const items = Array.from({ length: count }, (_, i) => ({
+  // 이모지를 브라우저 화면 전체에 뿌린다. mag(변화 크기)이 클수록 개수↑·크기↑(Δ1이면 작게).
+  // 각자 좌우·상하로 랜덤하게 떠돌다 사라진다.
+  function spawnBursts(type: "like" | "dislike", mag: number) {
+    const count = Math.min(22, 2 + mag * 2); // Δ1→4개, Δ3→8, Δ10→22
+    const size = Math.min(3.4, 1.2 + mag * 0.26); // rem: Δ1→1.46, Δ5→2.5, Δ10→3.4
+    const items = Array.from({ length: count }, () => ({
       id: burstId.current++,
       type,
-      left: 12 + Math.random() * 76, // 12~88%
-      delay: i * 80,
+      left: Math.random() * 94, // 0~94vw (화면 전체)
+      top: Math.random() * 88, // 0~88vh
+      size,
+      dx: Math.round((Math.random() * 2 - 1) * 90), // 좌우로 떠돌기
+      dy: Math.round(-40 - Math.random() * 150), // 위로 떠오르며
+      rot: Math.round((Math.random() * 2 - 1) * 40),
+      delay: Math.round(Math.random() * 500),
     }));
     setBursts((b) => [...b, ...items]);
     const ids = new Set(items.map((x) => x.id));
-    setTimeout(() => setBursts((b) => b.filter((x) => !ids.has(x.id))), 1500 + count * 80);
+    setTimeout(() => setBursts((b) => b.filter((x) => !ids.has(x.id))), 2600);
   }
 
   async function send() {
@@ -253,7 +270,8 @@ export default function PlayClient({
       if (!data.ok) throw new Error(data.error || `전송 실패 (${res.status})`);
       const nl = data.like ?? like;
       const nd = data.dislike ?? dislike;
-      // 변화 호들갑: 오른 축의 이모지를 뿌린다(둘 다 오르면 하트+해골 동시에).
+      // 변화 호들갑: 오른 축의 이모지를 화면 전체에 뿌린다(둘 다 오르면 ❤️+💔 동시에).
+      // 변화 크기(delta)만큼 버스트가 커진다. 서버가 매 턴 최소 +1(우세 감정)을 주므로 매 턴 뜬다.
       if (nl - like > 0) spawnBursts("like", nl - like);
       if (nd - dislike > 0) spawnBursts("dislike", nd - dislike);
       // 표정 갱신(변화량 기준). __keep 이면 직전 표정 유지.
@@ -332,20 +350,30 @@ export default function PlayClient({
   return (
     // 데스크톱=얼굴 왼쪽·대화 오른쪽 2단, 모바일=얼굴 위·대화 아래로 한 화면에 담는다.
     <div className="mt-4 flex flex-col gap-4 md:flex-row md:gap-6 md:items-start">
+      {/* 호감❤️/비호감💔 호들갑 — 브라우저 화면 전체를 이모지가 떠돈다(입력은 통과). */}
+      <div className="pointer-events-none fixed inset-0 z-50 overflow-hidden">
+        {bursts.map((b) => (
+          <span
+            key={b.id}
+            className={b.type === "like" ? "sim-burst" : "sim-burst sim-dark"}
+            style={
+              {
+                left: `${b.left}%`,
+                top: `${b.top}%`,
+                fontSize: `${b.size}rem`,
+                animationDelay: `${b.delay}ms`,
+                "--dx": `${b.dx}px`,
+                "--dy": `${b.dy}px`,
+                "--rot": `${b.rot}deg`,
+              } as CSSProperties
+            }
+          >
+            {b.type === "like" ? "❤️" : "💔"}
+          </span>
+        ))}
+      </div>
       {/* ── 왼쪽(모바일=위): 큰 표정 얼굴 + 이름 + 호감/비호감 바 ── */}
-      <div className="relative flex shrink-0 flex-col items-center md:w-[300px]">
-        {/* 호감❤️/비호감💀 호들갑 오버레이 — 얼굴 위로 이모지가 뾰롱뾰롱 떠오른다 */}
-        <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden">
-          {bursts.map((b) => (
-            <span
-              key={b.id}
-              className="sim-burst"
-              style={{ left: `${b.left}%`, animationDelay: `${b.delay}ms` }}
-            >
-              {b.type === "like" ? "❤️" : "💀"}
-            </span>
-          ))}
-        </div>
+      <div className="flex shrink-0 flex-col items-center md:w-[300px]">
         {target &&
           (() => {
             const faceTarget = genFaces
@@ -411,7 +439,7 @@ export default function PlayClient({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-6 shrink-0 text-center text-lg">💀</span>
+            <span className="sim-dark w-6 shrink-0 text-center text-lg">💔</span>
             <div className="h-4 flex-1 rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden ring-1 ring-slate-300/60 dark:ring-slate-700/40">
               <div
                 className="h-full rounded-full bg-gradient-to-r from-slate-500 to-slate-800 transition-all duration-700 ease-out"
