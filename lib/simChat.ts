@@ -43,13 +43,19 @@ function buildSystem(target: SimTarget) {
     "매 답변은 짧게(2~4문장). 대화를 매번 끝맺지 말고, 플레이어가 반응할 거리를 남겨라.",
     "",
     "감정은 '좋음'과 '싫음' 두 축이며, 둘은 따로 논다. 매 턴 플레이어의 '직전 메시지'를",
-    "보고 둘 다 정한다(각각 -10~+10 정수):",
-    "· likeDelta(좋음): 얼마나 더/덜 좋아하게 됐나. 진심 어린 공감·내 성격에 맞는 반응이면 +.",
-    "· dislikeDelta(싫음): 얼마나 거부감·서운함이 쌓였나/풀렸나. 부담·무례·지뢰면 +, 진심 어린",
-    "  사과나 배려로 앙금이 풀리면 -.",
-    "  중요: 한 말이 둘 다 올릴 수 있다. 예) 느끼하거나 과한 칭찬 = 은근 좋지만(like +1~+2)",
-    "  부담스럽다(dislike +4~+7). 예) 내 '지뢰(민감 주제)'를 건드리면 = 좋은 뜻이어도 like 0/-,",
-    "  dislike 크게 +. 성의 없는 단답('ㅇㅇ','그렇구나')·무관심 = like -, dislike +.",
+    "보고 둘 다 정한다(각각 -10~+10 정수). 후하게 주지 말고 냉정하게 채점하라:",
+    "· likeDelta(좋음): '진짜로 마음이 움직였을 때만' 올린다. 진심 어린 공감, 내 성격에 딱 맞는",
+    "  재치, 나를 제대로 봐주는 말일 때 +. 무난하거나 애매하거나 시큰둥한 말엔 좋음을 올리지",
+    "  마라(0). 아래 싫음이 오르는 말이면 좋음은 절대 올리지 마라(0 이하).",
+    "· dislikeDelta(싫음): 다음이면 확실히 +로 올린다 —",
+    "    · 나를 낮잡거나 비꼬기, 무례·빈정('당신 같은 사람을 왜','뭔 소리에요' 류),",
+    "    · 관심 없는 척·밀어내기·차갑게 굴기, 튕기다 못해 상처 주기,",
+    "    · 내 '지뢰(민감 주제)'나 '싫어하는 반응'을 건드리기,",
+    "    · 부담스러운 느끼함·과한 칭찬, 성의 없는 단답('ㅇㅇ','그렇구나')·무관심.",
+    "  진심 어린 사과나 배려로 앙금이 풀리면 -.",
+    "· 한 말이 둘 다 올릴 수 있다(느끼한 칭찬 = like +1·dislike +5). 하지만 '냉담·무례·거절'은",
+    "  좋음이 오르지 않는다 — 플레이어가 계속 시큰둥한데 좋음이 오르는 건 어색하다.",
+    "· 이 게임은 쉽게 안 넘어와야 재밌다. 웬만해선 좋음은 +1~+3, 싫음은 상황 맞으면 주저 말고 +.",
     "",
     "[삐짐] 지금 내가 삐진 상태(아래 상태에 표시)라면, 규칙이 달라진다:",
     "· 더 잘해주거나 칭찬하는 걸로는 안 풀린다(그런 말엔 시큰둥하게, dislike 안 내려감).",
@@ -72,7 +78,8 @@ function buildSystem(target: SimTarget) {
     memoryInstruction(),
     "",
     "반드시 아래 JSON 만 출력한다. 코드펜스(```) 쓰지 말고, 줄바꿈·들여쓰기 없이 '한 줄'로",
-    "압축해서 출력한다. reply 는 2~3문장 이내로 짧게(길면 안 됨).",
+    "압축해서 출력한다. reply 는 2~3문장 이내로 짧게(길면 안 됨). 숫자는 3, -3 처럼 쓰고 앞에",
+    "+ 를 붙이지 마라(+3 은 안 됨).",
     '{"reply":"대사","likeDelta":정수,"dislikeDelta":정수,' +
       '"event":null|"player_confess"|"npc_confess","sooth":null|"correct"|"generic"|"wrong"|"none",' +
       '"upsetAbout":null|"서운한 이유","memoryAdd":null|{"type":"...","text":"...","key":"..."}}',
@@ -112,7 +119,11 @@ interface ParsedTurn {
 
 function parseTurnJson(raw: string): ParsedTurn | null {
   // 코드펜스 제거 후 JSON 덩이 추출.
-  const cleaned = raw.replace(/```(?:json)?/gi, "").trim();
+  const cleaned = raw
+    .replace(/```(?:json)?/gi, "")
+    // 모델이 숫자에 앞 +를 붙이면(예: "dislikeDelta":+3) JSON 이 깨진다 → 콜론 뒤 +숫자의 + 제거.
+    .replace(/:(\s*)\+(\d)/g, ":$1$2")
+    .trim();
   const m = cleaned.match(/\{[\s\S]*\}/);
   if (!m) {
     // JSON 이 잘려 닫는 괄호가 없을 때라도 대사는 살려 대화를 잇는다(델타는 0).
@@ -158,7 +169,7 @@ async function callHaiku(args: {
   const client = getAnthropic();
   const r = await client.messages.create({
     model: MODELS.haiku,
-    max_tokens: 500, // 한국어 대사 + JSON 이 360 에서 가끔 잘려 파싱 실패 → 여유 확보
+    max_tokens: 800, // 한국어 대사(격식체는 더 김) + JSON 이 잘려 파싱 실패하던 걸 방지. 상한일 뿐 실제 출력은 짧다.
     system: args.system,
     messages: args.messages,
   });
