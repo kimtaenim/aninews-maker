@@ -9,7 +9,7 @@ import type { WikiSearchResult } from "@/lib/wikipedia";
 import { ACCEPT_ATTR, MAX_FILE_SIZE, MAX_TOTAL_SIZE } from "@/lib/attachments";
 import trendLangsData from "@/config/languages.json";
 
-type Mode = "rss" | "url" | "wiki" | "trend" | "text" | "file";
+type Mode = "rss" | "url" | "wiki" | "trend" | "text" | "file" | "script";
 
 // 트렌드 언어 목록(config/languages.json) — 버튼용.
 const TREND_LANGS = (trendLangsData as {
@@ -43,6 +43,7 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
   const [trendsLoading, setTrendsLoading] = useState(false);
 
   const [text, setText] = useState("");
+  const [scriptText, setScriptText] = useState(""); // 완성 스크립트 직접 입력(소스·생성 건너뜀)
   const [files, setFiles] = useState<File[]>([]);
 
   // RSS 상태
@@ -305,7 +306,15 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
     setError(null);
     let endpoint = "/api/source/from-url";
     let payload: Record<string, unknown>;
-    if (mode === "rss") {
+    if (mode === "script") {
+      // 완성 스크립트 직접 입력 — 소스→AI 생성 건너뛰고 붙여넣은 글을 씬으로.
+      if (!scriptText.trim()) {
+        setError("스크립트를 입력해주세요");
+        return;
+      }
+      endpoint = "/api/source/from-script";
+      payload = { text: scriptText };
+    } else if (mode === "rss") {
       // 브리핑을 받았으면 거기서 고른 것, 아니면 후보 선택을 그대로 합친다.
       const links = [...(briefings ? briefSelected : candidateLinks)];
       if (links.length === 0) {
@@ -380,6 +389,7 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
         {tab("wiki", "위키")}
         {tab("trend", "트렌드")}
         {tab("text", "텍스트")}
+        {tab("script", "스크립트")}
         {tab("file", "파일")}
       </div>
 
@@ -745,6 +755,23 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
         />
       )}
 
+      {mode === "script" && (
+        <div className="grid gap-1">
+          <textarea
+            placeholder={"완성된 스크립트를 붙여넣으세요.\n\n빈 줄로 나누면 문단마다 한 씬이 됩니다.\n빈 줄이 없으면 한 줄이 한 씬이 됩니다."}
+            value={scriptText}
+            onChange={(e) => setScriptText(e.target.value)}
+            rows={10}
+            className={inputCls + " resize-y"}
+          />
+          <p className="text-[11px] text-zinc-400">
+            🎬 이미 만든 <span className="font-medium">스크립트를 바로 씬으로</span> 넣어요(소스 분석·AI 씬 생성 건너뜀).
+            <span className="font-medium"> 빈 줄</span>로 나누면 문단마다 한 씬, 빈 줄이 없으면 한 줄이 한 씬.
+            2단계에서 나눔을 확인·수정하고 이어가면 됩니다.
+          </p>
+        </div>
+      )}
+
       {mode === "file" && (
         <div className="grid gap-3">
           <label
@@ -814,7 +841,7 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
         >
           {loading ? (
             <span className="inline-flex items-center justify-center gap-1.5">
-              <Spinner /> 소스 분석 중…
+              <Spinner /> {mode === "script" ? "씬 만드는 중…" : "소스 분석 중…"}
             </span>
           ) : (
             "다음 → 스튜디오"
