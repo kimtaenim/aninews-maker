@@ -265,6 +265,45 @@ export interface SimPlay {
   updatedAt: number;
 }
 
+// ── AI 자동극장 (관전 모드) ──────────────────────────────────────────────────
+// 2~3명의 AI 인물을 '상황'에 던져 넣고 '다음' 버튼으로 한 턴씩 자동 대화(연애·싸움)를
+// 시켜 관전한다. 인물 사이 감정은 '방향성 2축' — from 이 to 에게 느끼는 좋음/싫음.
+export interface TheaterCast {
+  name: string;
+  archetype?: string;
+  persona: string; // 시스템 프롬프트용 성격·말투
+  portraitUrl?: string;
+  faces?: Record<string, string>; // 표정 얼굴(있으면)
+}
+
+export interface TheaterTurn {
+  speaker: string; // 이번에 말한 인물 이름
+  text: string;
+  situation?: string; // 이 턴 직전 사용자가 던진 난입 상황(있으면)
+  ts: number;
+}
+
+// 방향성 감정: from 이 to 에게 느끼는 좋음/싫음(0~100).
+export interface TheaterFeeling {
+  from: string;
+  to: string;
+  like: number;
+  dislike: number;
+}
+
+export interface SimTheater {
+  id: string;
+  title: string;
+  situation: string; // 시작 상황(무대 설정)
+  cast: TheaterCast[]; // 2~3명
+  turns: TheaterTurn[];
+  feelings: TheaterFeeling[]; // 방향쌍별 감정 (N명 → N*(N-1)개)
+  nextSpeakerIdx: number; // 라운드로빈 다음 화자 인덱스
+  ownerEmail?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 // ── 비용 추적 (cardnews cost.ts 확장: +fal +elevenlabs) ──────────────────────
 export interface CostEntry {
   id: string;
