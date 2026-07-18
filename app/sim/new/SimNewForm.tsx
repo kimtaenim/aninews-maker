@@ -59,6 +59,10 @@ export default function SimNewForm({
   // cutscenes[상대이름][마일스톤] = 컷씬 프로젝트 id ("" = 없음)
   const [cutscenes, setCutscenes] = useState<Record<string, Record<number, string>>>({});
   const [title, setTitle] = useState("");
+  // 주인공(플레이어) — 게임당 하나. 상대별 관계·만남의 계기(상대이름 → 텍스트).
+  const [protagName, setProtagName] = useState("");
+  const [protagPersona, setProtagPersona] = useState("");
+  const [relationships, setRelationships] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -132,10 +136,15 @@ export default function SimNewForm({
         body: JSON.stringify({
           title: title.trim() || undefined,
           sourceProjectId: mode === "project" ? sourceId : undefined,
+          protagonist:
+            protagName.trim() && protagPersona.trim()
+              ? { name: protagName.trim(), persona: protagPersona.trim() }
+              : undefined,
           targets: targets.map((t) => ({
             name: t.name,
             archetype: t.archetype, // 직접 만든 인물의 아키타입(클리셰면 서버가 원본 사용)
             persona: (personas[t.name] ?? "").trim(),
+            relationship: (relationships[t.name] ?? "").trim() || undefined,
             cutscenes: MILESTONES.filter((at) => cutscenes[t.name]?.[at])
               .map((at) => ({ at, projectId: cutscenes[t.name][at] })),
           })),
@@ -374,6 +383,30 @@ export default function SimNewForm({
             상대별 성격·말투·좋아하는/싫어하는 반응을 정합니다. 이게 대화와 친밀도
             채점의 기준이 돼요. 자동 생성 후 자유롭게 고쳐 쓰세요.
           </p>
+
+          {/* 주인공(나) 설정 — 상대가 당신을 '누구'로 대할지 결정한다 */}
+          <div className="rounded-2xl border border-accent/40 bg-accent/5 p-4">
+            <div className="text-sm font-semibold">
+              🙋 주인공(나) 설정{" "}
+              <span className="text-xs font-normal text-zinc-500">
+                — 상대가 당신을 누구로 대할지 (비우면 익명)
+              </span>
+            </div>
+            <input
+              value={protagName}
+              onChange={(e) => setProtagName(e.target.value)}
+              placeholder="내 이름 (예: 하연)"
+              className="mt-3 w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-transparent px-3 py-2 text-sm"
+            />
+            <textarea
+              value={protagPersona}
+              onChange={(e) => setProtagPersona(e.target.value)}
+              rows={3}
+              placeholder="내 성격·설정 (예: 당돌하고 솔직한 신입 사원)"
+              className="mt-2 w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-transparent p-3 text-sm"
+            />
+          </div>
+
           {targets.map((t) => (
             <div
               key={t.name}
@@ -413,6 +446,15 @@ export default function SimNewForm({
                 rows={10}
                 placeholder="자동 생성을 누르거나 직접 입력하세요"
                 className="mt-3 w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-transparent p-3 text-sm"
+              />
+
+              <input
+                value={relationships[t.name] ?? ""}
+                onChange={(e) =>
+                  setRelationships((r) => ({ ...r, [t.name]: e.target.value }))
+                }
+                placeholder={`${t.name}와의 관계·만남의 계기 (예: 오늘 첫 출근한 그의 비서)`}
+                className="mt-2 w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-transparent px-3 py-2 text-sm"
               />
 
               <p className="mt-2 text-xs text-zinc-400">

@@ -213,14 +213,22 @@ export interface SimTarget {
   portraitUrl?: string; // 스냅샷 — 플레이 화면 아바타(기본 얼굴 폴백)
   voiceId?: string; // 스냅샷 — (후속) 대사 TTS 옵션용
   persona: string; // Claude 시스템 프롬프트 — 성격·말투·좋아하는/싫어하는 반응. 수정 가능.
+  relationship?: string; // 주인공(플레이어)과 이 상대의 관계·만남의 계기 — 오프닝·대화 프롬프트에 주입.
   faces?: Record<string, string>; // 표정 얼굴 세트 (neutral/smile/frown/blush/sulk → URL). lib/simFaces.
   cutscenes: SimCutscene[]; // 마일스톤 컷씬 (없어도 플레이 가능)
+}
+
+// 공략하는 주인공(플레이어) 캐릭터 — 게임당 하나. 상대가 '누군지'를 알고 반응하게 한다.
+export interface SimProtagonist {
+  name: string;
+  persona: string; // 한 줄~몇 줄 성격·설정
 }
 
 export interface SimGame {
   id: string;
   title: string;
   sourceProjectId: string; // castMembers 를 가져온 클리셰 프로젝트
+  protagonist?: SimProtagonist; // 주인공(플레이어) 설정 — 없으면 기존처럼 익명 플레이어
   targets: SimTarget[]; // 공략 상대들
   ownerEmail?: string; // 만든 사람(로그인 이메일)
   createdAt: number;

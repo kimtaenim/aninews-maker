@@ -20,7 +20,7 @@ import { getAnthropic, MODELS } from "./anthropic";
 import { anthropicCostUsd, recordCost } from "./cost";
 import { pickSituation, rollNextSituationTurn, SIM_SITUATIONS } from "./simSituations";
 import { applyMemoryAdd, formatMemory, memoryInstruction } from "./simMemory";
-import type { SimGame, SimMemory, SimPlay, SimTarget } from "./types";
+import type { SimGame, SimMemory, SimPlay, SimProtagonist, SimTarget } from "./types";
 
 const HISTORY_WINDOW = 20; // 최근 대화 턴(슬라이딩 윈도우)
 
@@ -35,7 +35,7 @@ const REPAIR_DISLIKE_DROP = 30; // 정확한 사과로 풀리는 싫음의 양
 
 // 페르소나 + 게임 규칙 = 캐시 가능한 안정 프리픽스. 매 턴 바뀌는 상태(좋음·싫음·
 // 삐짐·삐진 이유·상황 지시)는 시스템에 넣지 않고 마지막 user 메시지에 실어 고정.
-function buildSystem(target: SimTarget) {
+function buildSystem(target: SimTarget, protagonist?: SimProtagonist) {
   const rules = [
     "",
     "── 연기 지침 (제일 중요) ──",
@@ -99,10 +99,26 @@ function buildSystem(target: SimTarget) {
       '"upsetAbout":null|"서운한 이유","memoryAdd":null|{"type":"...","text":"...","key":"..."}}',
   ].join("\n");
 
+  // 주인공(플레이어)이 누구인지 — 상대가 '낯선 유저'가 아니라 이 인물로 대하게 한다.
+  const playerBlock = protagonist
+    ? [
+        "",
+        "── 상대(플레이어)가 누구인지 (제일 중요) ──",
+        "지금 너와 대화하는 상대(플레이어)는 다음 인물이다:",
+        `· 이름: ${protagonist.name}`,
+        `· 성격·설정: ${protagonist.persona}`,
+        target.relationship ? `· 너와의 관계·지금 상황: ${target.relationship}` : "",
+        "플레이어를 '낯선 유저'가 아니라 위 인물로 대해라. 이 관계·상황을 전제로,",
+        "그에 맞는 말투·거리감·태도로 반응하고 이야기를 이어가라(관계를 매 턴 되새겨라).",
+      ]
+        .filter(Boolean)
+        .join("\n")
+    : "";
+
   return [
     {
       type: "text" as const,
-      text: `너는 아래 인물을 연기한다.\n\n── 인물 설정 ──\n${target.persona}\n${rules}`,
+      text: `너는 아래 인물을 연기한다.\n\n── 인물 설정 ──\n${target.persona}\n${rules}${playerBlock}`,
       cache_control: { type: "ephemeral" as const },
     },
   ];
@@ -219,13 +235,15 @@ export async function generateOpening(
   game: SimGame,
   target: SimTarget
 ): Promise<{ reply: string; costUsd: number }> {
+  const setup = target.relationship
+    ? `너와 플레이어(${game.protagonist?.name ?? "상대"})는 지금 이런 사이·상황이다: ${target.relationship}. 그 상황에 맞게 `
+    : "아직 서먹한 사이다. ";
   const { raw, costUsd } = await callHaiku({
-    system: buildSystem(target),
+    system: buildSystem(target, game.protagonist),
     messages: [
       {
         role: "user",
-        content:
-          "(게임 시작 — 아직 서먹한 사이다. 위 '첫 태도'대로 플레이어에게 먼저 짧게 말을 걸고, 대화를 이어갈 여지를 남겨라. 이번엔 JSON 이 아니라 대사 한두 문장만 출력한다.)",
+        content: `(게임 시작 — ${setup}위 '첫 태도'대로 플레이어에게 먼저 짧게 말을 걸고, 대화를 이어갈 여지를 남겨라. 이번엔 JSON 이 아니라 대사 한두 문장만 출력한다.)`,
       },
     ],
     gameId: game.id,
@@ -289,7 +307,7 @@ export async function judgeTurn(
   }
 
   const { raw, costUsd } = await callHaiku({
-    system: buildSystem(target),
+    system: buildSystem(target, game.protagonist),
     messages,
     gameId: game.id,
     kind: "sim-turn",

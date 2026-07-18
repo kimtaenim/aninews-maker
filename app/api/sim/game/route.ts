@@ -19,6 +19,7 @@ export async function POST(req: NextRequest) {
   let body: {
     title?: string;
     sourceProjectId?: string;
+    protagonist?: unknown;
     targets?: unknown;
   };
   try {
@@ -75,6 +76,8 @@ export async function POST(req: NextRequest) {
     const member = members.find((m) => m.name === name);
     // 아키타입: 클리셰 인물이면 member 에서, 직접 만든 인물이면 바디에서.
     const archetype = member?.archetype || String(t.archetype ?? "").trim() || undefined;
+    // 주인공(플레이어)과 이 상대의 관계·만남의 계기(선택).
+    const relationship = String(t.relationship ?? "").trim() || undefined;
 
     const cutscenes: SimCutscene[] = [];
     for (const raw of Array.isArray(t.cutscenes) ? t.cutscenes : []) {
@@ -115,9 +118,19 @@ export async function POST(req: NextRequest) {
       ...(member?.portraitUrl ? { portraitUrl: member.portraitUrl } : {}),
       ...(member?.voiceId ? { voiceId: member.voiceId } : {}),
       persona,
+      ...(relationship ? { relationship } : {}),
       ...(Object.keys(faces).length ? { faces } : {}),
       cutscenes,
     });
+  }
+
+  // 주인공(플레이어) 설정 — 이름·성격 둘 다 있어야 유효.
+  let protagonist: { name: string; persona: string } | undefined;
+  if (body.protagonist && typeof body.protagonist === "object") {
+    const p = body.protagonist as Record<string, unknown>;
+    const pName = String(p.name ?? "").trim();
+    const pPersona = String(p.persona ?? "").trim();
+    if (pName && pPersona) protagonist = { name: pName, persona: pPersona };
   }
 
   try {
@@ -126,6 +139,7 @@ export async function POST(req: NextRequest) {
         (body.title ?? "").trim() ||
         `💞 ${targets.map((t) => t.name).join("·")} 공략`,
       sourceProjectId,
+      ...(protagonist ? { protagonist } : {}),
       targets,
       ownerEmail: (await getSessionEmail()) ?? undefined,
     });

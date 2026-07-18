@@ -9,7 +9,7 @@
 
 import { randomUUID } from "crypto";
 import { getRedis } from "./redis";
-import type { SimGame, SimPlay, SimTarget } from "./types";
+import type { SimGame, SimPlay, SimProtagonist, SimTarget } from "./types";
 
 const GAME_KEY = (id: string) => `simgame:${id}`;
 const GAME_INDEX = "simgame:index"; // 최근 게임 목록 (sorted set, score=updatedAt)
@@ -23,6 +23,7 @@ export interface CreateSimGameArgs {
   title: string;
   sourceProjectId: string;
   targets: SimTarget[];
+  protagonist?: SimProtagonist; // 주인공(플레이어) 설정
   ownerEmail?: string;
 }
 
@@ -32,6 +33,7 @@ export async function createSimGame(args: CreateSimGameArgs): Promise<SimGame> {
     id: randomUUID(),
     title: args.title,
     sourceProjectId: args.sourceProjectId,
+    ...(args.protagonist ? { protagonist: args.protagonist } : {}),
     targets: args.targets,
     ownerEmail: args.ownerEmail?.trim() || undefined,
     createdAt: now,
