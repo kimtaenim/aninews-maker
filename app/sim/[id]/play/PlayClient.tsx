@@ -308,9 +308,10 @@ export default function PlayClient({
   }
 
   return (
-    <div className="mt-4">
-      {/* 큰 표정 얼굴 (미연시 스타일) — 상태 따라 표정이 바뀐다. 숫자는 감추고 얼굴·바로만. */}
-      <div className="flex flex-col items-center">
+    // 데스크톱=얼굴 왼쪽·대화 오른쪽 2단, 모바일=얼굴 위·대화 아래로 한 화면에 담는다.
+    <div className="mt-4 flex flex-col gap-4 md:flex-row md:gap-6 md:items-start">
+      {/* ── 왼쪽(모바일=위): 큰 표정 얼굴 + 이름 + 좋음/싫음 바 ── */}
+      <div className="flex shrink-0 flex-col items-center md:w-[300px]">
         {target &&
           (() => {
             const faceTarget = genFaces
@@ -322,10 +323,10 @@ export default function PlayClient({
               <img
                 src={url}
                 alt={target.name}
-                className="aspect-square w-full max-w-[300px] rounded-3xl object-cover object-top shadow-sm ring-1 ring-zinc-200/70 dark:ring-zinc-800 transition-all duration-300"
+                className="aspect-square w-[180px] md:w-[300px] rounded-3xl object-cover object-top shadow-sm ring-1 ring-zinc-200/70 dark:ring-zinc-800 transition-all duration-300"
               />
             ) : (
-              <div className="relative flex aspect-square w-full max-w-[300px] flex-col items-center justify-center gap-2 rounded-3xl bg-zinc-100 dark:bg-zinc-900 text-zinc-300 dark:text-zinc-700">
+              <div className="relative flex aspect-square w-[180px] md:w-[300px] flex-col items-center justify-center gap-2 rounded-3xl bg-zinc-100 dark:bg-zinc-900 text-zinc-300 dark:text-zinc-700">
                 <span className="text-6xl font-semibold">{target.name.slice(0, 1)}</span>
                 {faceGen === "busy" && (
                   <span className="flex items-center gap-1.5 text-xs text-zinc-400">
@@ -363,10 +364,9 @@ export default function PlayClient({
             </button>
           )}
         </div>
-      </div>
 
-      {/* 좋음·싫음 두 바 */}
-      <div className="mx-auto mt-3 w-full max-w-[300px] space-y-1">
+        {/* 좋음·싫음 두 바 */}
+        <div className="mt-3 w-full max-w-[300px] space-y-1">
         <div className="flex items-center gap-2">
           <span className="w-8 shrink-0 text-[10px] text-rose-500">좋음</span>
           <div className="h-2 flex-1 rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
@@ -385,9 +385,12 @@ export default function PlayClient({
             />
           </div>
         </div>
+        </div>
       </div>
 
-      {banner && (
+      {/* ── 오른쪽(모바일=아래): 배너·컷씬·대화·입력 ── */}
+      <div className="flex flex-1 flex-col md:min-w-0">
+        {banner && (
         <div className="mt-3 rounded-xl bg-violet-100 dark:bg-violet-950/40 px-3 py-2 text-center text-xs font-medium text-violet-700 dark:text-violet-300">
           {banner}
         </div>
@@ -418,7 +421,7 @@ export default function PlayClient({
       {/* 대화 */}
       <div
         ref={scrollRef}
-        className="mt-3 h-[38vh] overflow-y-auto rounded-2xl border border-zinc-200 dark:border-zinc-800 p-3 space-y-2"
+        className="mt-3 h-[38vh] md:h-[62vh] overflow-y-auto rounded-2xl border border-zinc-200 dark:border-zinc-800 p-3 space-y-2"
       >
         {phase === "starting" && (
           <div className="flex items-center gap-2 text-sm text-zinc-500">
@@ -533,6 +536,7 @@ export default function PlayClient({
           </span>
         </div>
       )}
+      </div>
     </div>
   );
 }

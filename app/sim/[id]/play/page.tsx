@@ -49,7 +49,7 @@ export default async function SimPlayPage({
   }));
 
   return (
-    <main className="px-4 py-6 md:max-w-2xl md:mx-auto">
+    <main className="px-4 py-6 md:max-w-4xl md:mx-auto">
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-base font-semibold tracking-tight">{game.title}</h1>
         <Link href="/sim" className="text-sm text-zinc-500 hover:underline">
