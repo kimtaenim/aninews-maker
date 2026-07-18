@@ -234,18 +234,18 @@ export default function PlayClient({
   // 이모지를 브라우저 화면 전체에 뿌린다. mag(변화 크기)이 클수록 개수↑·크기↑(Δ1이면 작게).
   // 각자 좌우·상하로 랜덤하게 떠돌다 사라진다.
   function spawnBursts(type: "like" | "dislike", mag: number) {
-    const count = Math.min(22, 2 + mag * 2); // Δ1→4개, Δ3→8, Δ10→22
-    const size = Math.min(3.4, 1.2 + mag * 0.26); // rem: Δ1→1.46, Δ5→2.5, Δ10→3.4
+    const count = Math.min(44, 4 + mag * 4); // 두 배 과장: Δ1→8개, Δ3→16, Δ10→44
+    const size = Math.min(5, 1.4 + mag * 0.5); // rem: Δ1→1.9, Δ5→3.9, Δ10→5
     const items = Array.from({ length: count }, () => ({
       id: burstId.current++,
       type,
-      left: Math.random() * 94, // 0~94vw (화면 전체)
-      top: Math.random() * 88, // 0~88vh
+      left: Math.random() * 96, // 0~96vw (화면 전체)
+      top: Math.random() * 92, // 0~92vh
       size,
-      dx: Math.round((Math.random() * 2 - 1) * 90), // 좌우로 떠돌기
-      dy: Math.round(-40 - Math.random() * 150), // 위로 떠오르며
-      rot: Math.round((Math.random() * 2 - 1) * 40),
-      delay: Math.round(Math.random() * 500),
+      dx: Math.round((Math.random() * 2 - 1) * 150), // 좌우로 크게 떠돌기
+      dy: Math.round(-60 - Math.random() * 220), // 위로 크게 떠오르며
+      rot: Math.round((Math.random() * 2 - 1) * 60),
+      delay: Math.round(Math.random() * 550),
     }));
     setBursts((b) => [...b, ...items]);
     const ids = new Set(items.map((x) => x.id));
