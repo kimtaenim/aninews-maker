@@ -248,49 +248,64 @@ export default function PlayClient({
 
   return (
     <div className="mt-4">
-      {/* 좋음·싫음 두 바 + 표정 얼굴 — 정확한 숫자는 감추고 얼굴·바로만 드러낸다 */}
-      <div className="flex items-center gap-3">
-        {target && <Avatar t={target} size={56} expr={expr} />}
-        <div className="flex-1">
-          <div className="flex items-center gap-1.5 text-xs">
-            <span className="font-medium">{target?.name}</span>
-            <span>{moodFace(like, dislike, sulking)}</span>
-            {sulking && (
-              <span className="rounded-full bg-red-100 dark:bg-red-950/50 px-2 py-0.5 text-[10px] font-medium text-red-600 dark:text-red-400">
-                삐짐
-              </span>
-            )}
-            {!ending && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (target && confirm("이 관계를 지우고 처음부터 다시 시작할까요?")) start(target);
-                }}
-                className="ml-auto shrink-0 text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-              >
-                ↻ 처음부터
-              </button>
-            )}
-          </div>
-          {/* 좋음 */}
-          <div className="mt-1.5 flex items-center gap-2">
-            <span className="w-8 shrink-0 text-[10px] text-rose-500">좋음</span>
-            <div className="h-2 flex-1 rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-pink-400 to-rose-500 transition-all duration-500"
-                style={{ width: `${like}%` }}
+      {/* 큰 표정 얼굴 (미연시 스타일) — 상태 따라 표정이 바뀐다. 숫자는 감추고 얼굴·바로만. */}
+      <div className="flex flex-col items-center">
+        {target &&
+          (() => {
+            const url = pickFaceUrl(target, expr);
+            return url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={url}
+                alt={target.name}
+                className="aspect-square w-full max-w-[300px] rounded-3xl object-cover shadow-sm ring-1 ring-zinc-200/70 dark:ring-zinc-800 transition-all duration-300"
               />
-            </div>
+            ) : (
+              <div className="flex aspect-square w-full max-w-[300px] items-center justify-center rounded-3xl bg-zinc-100 dark:bg-zinc-900 text-6xl font-semibold text-zinc-300 dark:text-zinc-700">
+                {target.name.slice(0, 1)}
+              </div>
+            );
+          })()}
+        <div className="mt-2 flex w-full max-w-[300px] items-center gap-1.5 text-sm">
+          <span className="font-medium">{target?.name}</span>
+          <span className="text-base">{moodFace(like, dislike, sulking)}</span>
+          {sulking && (
+            <span className="rounded-full bg-red-100 dark:bg-red-950/50 px-2 py-0.5 text-[10px] font-medium text-red-600 dark:text-red-400">
+              삐짐
+            </span>
+          )}
+          {!ending && (
+            <button
+              type="button"
+              onClick={() => {
+                if (target && confirm("이 관계를 지우고 처음부터 다시 시작할까요?")) start(target);
+              }}
+              className="ml-auto shrink-0 text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+            >
+              ↻ 처음부터
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* 좋음·싫음 두 바 */}
+      <div className="mx-auto mt-3 w-full max-w-[300px] space-y-1">
+        <div className="flex items-center gap-2">
+          <span className="w-8 shrink-0 text-[10px] text-rose-500">좋음</span>
+          <div className="h-2 flex-1 rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-pink-400 to-rose-500 transition-all duration-500"
+              style={{ width: `${like}%` }}
+            />
           </div>
-          {/* 싫음 */}
-          <div className="mt-1 flex items-center gap-2">
-            <span className="w-8 shrink-0 text-[10px] text-slate-500">싫음</span>
-            <div className="h-2 flex-1 rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-slate-400 to-slate-600 transition-all duration-500"
-                style={{ width: `${dislike}%` }}
-              />
-            </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="w-8 shrink-0 text-[10px] text-slate-500">싫음</span>
+          <div className="h-2 flex-1 rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-slate-400 to-slate-600 transition-all duration-500"
+              style={{ width: `${dislike}%` }}
+            />
           </div>
         </div>
       </div>
@@ -326,7 +341,7 @@ export default function PlayClient({
       {/* 대화 */}
       <div
         ref={scrollRef}
-        className="mt-3 h-[52vh] overflow-y-auto rounded-2xl border border-zinc-200 dark:border-zinc-800 p-3 space-y-2"
+        className="mt-3 h-[38vh] overflow-y-auto rounded-2xl border border-zinc-200 dark:border-zinc-800 p-3 space-y-2"
       >
         {phase === "starting" && (
           <div className="flex items-center gap-2 text-sm text-zinc-500">
@@ -445,10 +460,13 @@ export default function PlayClient({
   );
 }
 
+// 표정 얼굴 URL 고르기: faces[표정] → faces.neutral → 기본 포트레이트 → 없음.
+function pickFaceUrl(t: PlayTarget, expr: string): string {
+  return (t.faces && (t.faces[expr] || t.faces.neutral)) || t.portraitUrl || "";
+}
+
 function Avatar({ t, size, expr = "neutral" }: { t: PlayTarget; size: number; expr?: string }) {
-  // 표정 얼굴 우선: faces[표정] → faces.neutral → 기본 포트레이트 → 첫 글자.
-  const url =
-    (t.faces && (t.faces[expr] || t.faces.neutral)) || t.portraitUrl || "";
+  const url = pickFaceUrl(t, expr);
   if (url) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
