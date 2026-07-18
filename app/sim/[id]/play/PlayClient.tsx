@@ -299,7 +299,7 @@ export default function PlayClient({
       else if (data.justSulked) setBanner("💢 토라졌다… 왜 그러는지 눈치껏 사과해야 해");
       else if (data.crossedMilestone) setBanner("💞 사이가 한 뼘 가까워졌다!");
       else if (nl - like > 0 && nd - dislike > 0)
-        setBanner("💘💔 애증… 설렘과 생채기가 동시에!");
+        setBanner("💘💔 좋으면서도 미운 사람…!!!");
       else if (data.situationLabel) setBanner(`💬 ${data.situationLabel}`);
       if (data.crossedMilestone && data.cutscene?.videoUrl) setCutscene(data.cutscene);
       if (data.status === "won" || data.status === "lost") {
