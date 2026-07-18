@@ -294,10 +294,12 @@ export default function PlayClient({
         ...m,
         { role: "assistant", text: data.reply, sulking: data.sulking },
       ]);
-      // 배너 우선순위: 화해 > 삐짐 > 마일스톤 > 상황 (숫자는 감추고 상태만 알린다)
+      // 배너 우선순위: 화해 > 삐짐 > 마일스톤 > 애증(둘 다 상승) > 상황 (숫자는 감추고 상태만)
       if (data.justSoothed) setBanner("💗 마음이 풀렸다 — 화해!");
       else if (data.justSulked) setBanner("💢 토라졌다… 왜 그러는지 눈치껏 사과해야 해");
       else if (data.crossedMilestone) setBanner("💞 사이가 한 뼘 가까워졌다!");
+      else if (nl - like > 0 && nd - dislike > 0)
+        setBanner("💘💔 애증… 설렘과 생채기가 동시에!");
       else if (data.situationLabel) setBanner(`💬 ${data.situationLabel}`);
       if (data.crossedMilestone && data.cutscene?.videoUrl) setCutscene(data.cutscene);
       if (data.status === "won" || data.status === "lost") {
