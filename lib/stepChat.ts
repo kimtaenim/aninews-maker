@@ -5,99 +5,9 @@
 // 갱신 → 호출부가 저장하고 해당 단계 재생성. 다른 단계도 같은 패턴으로 확장.
 // ============================================================================
 
-import type Anthropic from "@anthropic-ai/sdk";
 import { getAnthropic, MODELS } from "./anthropic";
 import { anthropicCostUsd, recordCost } from "./cost";
 import type { SourceMaterial } from "./source";
-
-// ── 팩트체크 (2단계) — 씬 나레이션의 사실관계를 웹 검색으로 검증한다 ──────────────
-// 소스를 "정답"으로 놓고 대조만 하면 소스가 틀렸을 때 그대로 통과된다 → web_search 도구로
-// 실제 사실을 확인한다. 소스는 초안 근거(그 자체도 검증 대상)로만 넘긴다. 씬을 고치지는
-// 않고(리포트만), 고치기는 대화창에서 runScriptChat 으로 이어간다. 양질 모델(opus).
-// Anthropic 웹 검색 요금: 1,000회당 $10 (= 1회 $0.01).
-const WEB_SEARCH_USD_PER_CALL = 0.01;
-
-export async function runFactCheck(args: {
-  projectId: string;
-  narrations: string[];
-  material?: SourceMaterial;
-}): Promise<{ reply: string; costUsd: number }> {
-  const { projectId, narrations, material } = args;
-  const client = getAnthropic();
-
-  const system =
-    "You are a fact-checker for a short-form Korean news video script. You have a web_search tool — USE IT to " +
-    "verify the script's claims against current, reputable real-world sources. Do NOT rely only on the provided " +
-    "draft source: it is just what the script was drafted from and may itself be outdated, biased, or wrong — " +
-    "treat it as a claim to check, not ground truth. For each scene, search the web to confirm names, numbers, " +
-    "dates, quotes and events against up-to-date sources, and flag anything the script gets wrong, exaggerates, " +
-    "or that cannot be verified. Search in Korean or English as fits the topic. " +
-    "Reply in KOREAN as a concise, scannable report: for each problem cite the scene number (씬 N), quote the " +
-    "issue briefly, state what the web sources actually say (name the outlet/source), and suggest the fix. If a " +
-    "claim checks out, don't list it. If you genuinely can't verify something after searching, say so explicitly " +
-    "(미확인). End with one line telling the user they can ask you to apply any fix in this chat. " +
-    "Do NOT rewrite the whole script here — this is a review, not an edit. Plain text, no JSON, no markdown headers.";
-
-  const userMsg =
-    (material
-      ? `참고용 초안 소스 제목: ${material.title}\n\n참고용 초안 소스 본문(이 자체도 검증 대상 — 정답 아님):\n${material.body}\n\n`
-      : "(초안 소스 없음 — 웹 검색으로만 검증)\n\n") +
-    "검증할 스크립트 씬 나레이션:\n" +
-    narrations.map((n, i) => `${i + 1}. ${n}`).join("\n");
-
-  // 웹 검색 서버 도구. 검색 횟수 상한으로 비용/시간 폭주 방지.
-  const tools = [
-    // 웹 검색료·토큰 절감 위해 4회로 상한. Sonnet 4.6 은 최신(dynamic filtering) 변형 지원.
-    { type: "web_search_20260209", name: "web_search", max_uses: 4 },
-  ] as unknown as Anthropic.Messages.ToolUnion[];
-
-  // 비용 절감: 팩트체크는 Sonnet(웹 검색 대조 작업엔 충분·Opus 대비 저렴). 모델 바꾸면
-  // 웹 검색 변형 지원 여부 확인 필요(Sonnet 4.6/5·Opus 4.6+ 만 web_search_20260209 지원).
-  const model = MODELS.sonnet;
-  // 서버 도구 루프가 10회 반복 상한에 걸리면 stop_reason=pause_turn 으로 끊긴다 → 이어서 재요청.
-  const messages: Anthropic.Messages.MessageParam[] = [{ role: "user", content: userMsg }];
-  let costUsd = 0;
-  let searches = 0;
-  const textParts: string[] = [];
-  for (let turn = 0; turn < 6; turn++) {
-    const r = await client.messages.create({
-      model,
-      max_tokens: 6000,
-      system,
-      messages,
-      tools,
-    });
-    costUsd += anthropicCostUsd({
-      inputTokens: r.usage.input_tokens,
-      outputTokens: r.usage.output_tokens,
-      cacheReadTokens: r.usage.cache_read_input_tokens ?? undefined,
-      cacheWriteTokens: r.usage.cache_creation_input_tokens ?? undefined,
-      model,
-    });
-    searches +=
-      (r.usage as { server_tool_use?: { web_search_requests?: number } }).server_tool_use
-        ?.web_search_requests ?? 0;
-    const t = textOf(r.content);
-    if (t) textParts.push(t);
-    if (r.stop_reason === "pause_turn") {
-      messages.push({ role: "assistant", content: r.content });
-      continue;
-    }
-    break;
-  }
-  costUsd += searches * WEB_SEARCH_USD_PER_CALL;
-
-  await recordCost({
-    projectId,
-    vendor: "anthropic",
-    model,
-    costUsd,
-    meta: { kind: "factcheck", webSearches: searches },
-  }).catch(() => {});
-
-  const reply = textParts.join("\n\n").trim() || "팩트체크 결과를 받지 못했어요 — 다시 시도해 주세요.";
-  return { reply, costUsd };
-}
 
 function parseJson(raw: string): { reply?: unknown; style_bible?: unknown } | null {
   const m = raw.match(/\{[\s\S]*\}/);

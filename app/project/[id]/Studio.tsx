@@ -225,7 +225,7 @@ export default function Studio({
   function actionToStep(action: string): StepKind | null {
     const a = action.startsWith("approve-") ? action.slice(8) : action;
     if (a.startsWith("source")) return "source";
-    if (a.startsWith("script") || a.startsWith("factcheck") || a === "save") return "script";
+    if (a.startsWith("script") || a === "save") return "script";
     if (a.startsWith("keyframe")) return "keyframe";
     if (a.startsWith("scene") || a.startsWith("images")) return "images";
     if (a.startsWith("video")) return "videos";
@@ -839,10 +839,8 @@ export default function Studio({
   // 2단계 스크립트 대화 (씬 나레이션을 대화로 수정)
   const [scriptChat, setScriptChat] = useState(initial.steps.script.chat);
   const [scriptChatInput, setScriptChatInput] = useState("");
-  // 팩트체크 전용 대화(스크립트 다듬기와 별개 로그). 큰 버튼=검증 실행, 입력=수정 요청.
-  const [factChat, setFactChat] = useState(initial.factCheckChat ?? []);
-  const [factChatInput, setFactChatInput] = useState("");
-  const [factCost, setFactCost] = useState<string | null>(null);
+  // 스크립트 전체 복사 — 눌렀을 때 잠깐 "복사됨" 표시.
+  const [copiedScript, setCopiedScript] = useState(false);
   const imagesStatus = project.steps.images.status;
   const imagesApproved = imagesStatus === "approved";
 
@@ -1908,56 +1906,17 @@ export default function Studio({
     }
   }
 
-  // 팩트체크(2단계) — 전 씬 나레이션을 모아 Claude 에 검증 의뢰. 리포트는 factChat 에 쌓인다.
-  // 씬은 안 바뀐다(수정은 아래 대화창에서). 미저장 편집을 먼저 flush 해 최신 기준으로 검증.
-  async function runFactCheckPass() {
-    if (busy !== null) return;
-    setError(null);
-    setBusy("factcheck");
+  // 스크립트 전체 복사 — 1씬~마지막 씬 나레이션을 번호 붙여 클립보드로. 편집 버퍼(scenes)
+  // 기준이라 화면에 보이는(미저장 편집 포함) 그대로 복사된다. 클로드 등에서 검토·다듬기 용.
+  async function copyScript() {
+    const txt = scenes.map((s, i) => `${i + 1}. ${(s.narration ?? "").trim()}`).join("\n\n");
     try {
-      await flushScenes();
-      const data = await call("/api/factcheck", { projectId: project.id });
-      setFactChat(data.chat as typeof factChat);
-      setFactCost((data.cost as string) ?? null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "팩트체크 실패");
-    } finally {
-      setBusy(null);
+      await navigator.clipboard.writeText(txt);
+      setCopiedScript(true);
+      setTimeout(() => setCopiedScript(false), 1500);
+    } catch {
+      setError("복사 실패 — 브라우저 클립보드 권한을 확인하거나 스크립트를 직접 선택해 복사해주세요.");
     }
-  }
-
-  // 팩트체크 대화 — 요청대로 씬 나레이션을 고친다(서버가 새 씬 배열 반환 → 버퍼 동기화).
-  async function sendFactCheckChat() {
-    const msg = factChatInput.trim();
-    if (!msg || busy !== null) return;
-    setError(null);
-    setBusy("factcheck-chat");
-    try {
-      await flushScenes();
-      const data = await call("/api/factcheck", { projectId: project.id, userMessage: msg });
-      applySavedScenes(data.scenes as Scene[]);
-      setFactChat(data.chat as typeof factChat);
-      setFactCost((data.cost as string) ?? null);
-      setFactChatInput("");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "팩트체크 수정 실패");
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  // 팩트체크 대략 비용(원) — opus 토큰 + 웹 검색료. 검색은 씬 수만큼 대략 잡는다(대충).
-  // 실제 검색 횟수·재검색에 따라 달라지므로 범위로 보여준다. 실측은 실행 후.
-  function factCheckEstimateKrw(): string {
-    const chars =
-      project.scenes.reduce((n, s) => n + (s.narration?.length ?? 0), 0) +
-      (material?.body?.length ?? 0);
-    const inTok = chars * 0.7 + 600; // 한국어 대략 토큰 + 시스템(검색 결과 되먹임 포함 대략)
-    const outTok = 1200; // 리포트 분량 대략
-    const tokenUsd = (inTok * 3 + outTok * 15) / 1_000_000; // sonnet $3/$15 per 1M
-    const searches = Math.min(4, Math.max(2, project.scenes.length)); // 씬당 대략 1회, 2~4(상한)
-    const searchUsd = searches * 0.01; // 웹 검색 $10/1000회
-    return `₩${Math.round((tokenUsd + searchUsd) * 1400).toLocaleString("ko-KR")}`;
   }
 
   // 씬 한 장 생성/리롤. 성공하면 project.scenes 갱신 + 비용 라벨 저장.
@@ -2873,100 +2832,35 @@ export default function Studio({
               </div>
             </div>
 
-            {/* 승인 = 다음 단계 잠금 해제. 눈에 띄게 전체 폭으로. */}
-            {!scriptApproved ? (
-              <button
-                type="button"
-                onClick={() => approveScript()}
-                disabled={busy !== null}
-                className="mt-3 w-full rounded-xl bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-semibold py-3 transition-colors"
-              >
-                {busy === "approve-script" ? (
-                  <Busy>승인 중…</Busy>
-                ) : (
-                  "✓ 스크립트 승인하고 키프레임 단계로 →"
-                )}
-              </button>
-            ) : (
-              <p className="mt-3 text-xs text-accent font-medium">
-                ✓ 스크립트 승인됨 — 아래 키프레임 단계로 진행하세요.
-              </p>
-            )}
-
-            {/* 팩트체크 — 전 씬 나레이션을 모아 AI(opus)에 사실관계 검증 의뢰. 지적사항이
-                아래 대화에 뜨고, 대화로 고치면 위 씬들이 바뀐다(스크립트 다듬기와 별개 로그). */}
-            <div className="mt-5 rounded-xl border border-emerald-300 dark:border-emerald-900/60 bg-emerald-50/40 dark:bg-emerald-950/20 p-3">
-              <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
-                🔍 팩트체크
-              </p>
-              <p className="mt-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">
-                전체 씬의 나레이션을 <span className="font-medium">웹 검색으로 실제 사실과 대조</span>해
-                왜곡·과장·틀린 숫자·오류를 씬 번호별로 짚어줍니다(소스도 검증 대상 — 정답으로 두지 않아요).
-                지적 내용은 아래 대화에 뜨고, “3번 씬 수치 고쳐줘”처럼 요청하면 씬이 바로 수정됩니다.
-              </p>
-              <button
-                type="button"
-                onClick={runFactCheckPass}
-                disabled={busy !== null}
-                className="mt-3 w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-semibold py-3 transition-colors"
-              >
-                {busy === "factcheck" ? (
-                  <Busy>검증 중…</Busy>
-                ) : factChat.length > 0 ? (
-                  "🔍 팩트체크 다시 실행"
-                ) : (
-                  "🔍 스크립트 팩트체크 실행"
-                )}
-              </button>
-              <p className="mt-1.5 text-[11px] text-zinc-400">
-                대략 <span className="font-medium text-zinc-500 dark:text-zinc-300">{factCheckEstimateKrw()}</span>{" "}
-                예상 (웹 검색료 포함 — 검색 횟수에 따라 달라짐){factCost ? ` · 방금 실행: ${factCost}` : ""}
-              </p>
-
-              {factChat.length > 0 && (
-                <ul className="mt-3 grid gap-1.5 max-h-72 overflow-y-auto">
-                  {factChat.map((t, i) => (
-                    <li key={i} className={t.role === "user" ? "text-right" : ""}>
-                      <span
-                        className={
-                          "inline-block whitespace-pre-wrap text-left rounded-lg px-2.5 py-1.5 text-xs " +
-                          (t.role === "user"
-                            ? "bg-emerald-600 text-white"
-                            : "bg-white dark:bg-zinc-900 border border-emerald-200 dark:border-emerald-900/50 text-zinc-700 dark:text-zinc-200")
-                        }
-                      >
-                        {t.text}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              <div className="mt-2 flex gap-2">
-                <input
-                  value={factChatInput}
-                  onChange={(e) => setFactChatInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      sendFactCheckChat();
-                    }
-                  }}
-                  placeholder={
-                    factChat.length > 0 ? "고칠 내용 요청… (예: 2번 씬 날짜 바로잡아줘)" : "먼저 위 버튼으로 팩트체크를 실행하세요"
-                  }
-                  disabled={busy !== null}
-                  className="flex-1 rounded-lg border border-emerald-200 dark:border-emerald-900/50 bg-white dark:bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-emerald-500 disabled:opacity-50"
-                />
+            {/* 승인(다음 단계) + 스크립트 전체 복사. 복사는 1씬~마지막씬 나레이션을 클립보드로
+                (클로드 등에서 직접 검토·다듬기 용). */}
+            <div className="mt-3 flex items-stretch gap-2">
+              {!scriptApproved ? (
                 <button
                   type="button"
-                  onClick={sendFactCheckChat}
-                  disabled={busy !== null || !factChatInput.trim()}
-                  className="shrink-0 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-sm font-medium px-4"
+                  onClick={() => approveScript()}
+                  disabled={busy !== null}
+                  className="flex-1 rounded-xl bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-semibold py-3 transition-colors"
                 >
-                  {busy === "factcheck-chat" ? <Busy>…</Busy> : "보내기"}
+                  {busy === "approve-script" ? (
+                    <Busy>승인 중…</Busy>
+                  ) : (
+                    "✓ 스크립트 승인하고 키프레임 단계로 →"
+                  )}
                 </button>
-              </div>
+              ) : (
+                <p className="flex-1 self-center text-xs text-accent font-medium">
+                  ✓ 스크립트 승인됨 — 아래 키프레임 단계로 진행하세요.
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={copyScript}
+                title="1씬부터 마지막 씬까지 스크립트를 클립보드에 복사 — 클로드 등에 붙여넣어 검토·다듬기"
+                className="shrink-0 rounded-xl border border-zinc-300 dark:border-zinc-700 px-4 text-sm font-medium hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+              >
+                {copiedScript ? "✓ 복사됨" : "📋 스크립트 복사"}
+              </button>
             </div>
           </>
         )}
