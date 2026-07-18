@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Spinner from "@/components/Spinner";
 
 // 시뮬 제조기 위저드 — 3단계.
@@ -106,6 +106,20 @@ export default function SimNewForm({
       setPersonaBusy((b) => ({ ...b, [name]: false }));
     }
   }
+
+  // 2단계 진입 시 페르소나 자동 생성 — 테스터가 빈 칸을 마주하지 않게, 초안을 먼저
+  // 만들어 보여주고 고치게 한다. 이미 있거나 한 번 시도한 상대는 건너뛴다.
+  const autoTried = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (step !== 2) return;
+    for (const t of targets) {
+      if (autoTried.current.has(t.name)) continue;
+      if ((personas[t.name] ?? "").trim() || personaBusy[t.name]) continue;
+      autoTried.current.add(t.name);
+      void generatePersona(t.name, t.archetype);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
 
   async function create() {
     if (busy) return;
