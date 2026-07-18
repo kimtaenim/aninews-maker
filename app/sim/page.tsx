@@ -6,6 +6,9 @@ import DeleteGameButton from "./DeleteGameButton";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic"; // 항상 최신 목록(Redis)
 
+// 테스터용 가이드(Claude 아티팩트). 링크 유지 — 갱신해도 같은 URL.
+const GUIDE_URL = "https://claude.ai/code/artifact/d4ad9689-7bd5-4c3f-8177-4482015ba7ef";
+
 // 🎮 시뮬 제조기 — 만든 게임 목록. 게임 = 클리셰 인물들과 대화하며 친밀도를
 // 올려 고백을 받아내는 미니 연애 시뮬. 제조는 /sim/new.
 export default async function SimHomePage() {
@@ -21,9 +24,19 @@ export default async function SimHomePage() {
     <main className="px-4 py-8 md:max-w-2xl md:mx-auto">
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-lg font-semibold tracking-tight">🎮 시뮬 제조기</h1>
-        <Link href="/" className="text-sm text-zinc-500 hover:underline">
-          ← 홈
-        </Link>
+        <div className="flex items-center gap-3">
+          <a
+            href={GUIDE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-full border border-zinc-200 dark:border-zinc-800 px-3 py-1 text-sm font-medium hover:bg-zinc-100 dark:hover:bg-zinc-900"
+          >
+            📖 가이드
+          </a>
+          <Link href="/" className="text-sm text-zinc-500 hover:underline">
+            ← 홈
+          </Link>
+        </div>
       </div>
       <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
         클리셰 영상의 인물을 연애 상대로 데려와 대화형 미니 게임을 만듭니다.
