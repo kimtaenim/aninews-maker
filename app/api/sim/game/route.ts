@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSimGame } from "@/lib/simStore";
+import { createSimGame, getCachedFaces, faceCacheSig } from "@/lib/simStore";
 import { getProject, getProjectsBulk } from "@/lib/projectStore";
 import { getSessionEmail } from "@/lib/auth";
 import type { CastMember, SimCutscene, SimTarget } from "@/lib/types";
@@ -101,9 +101,10 @@ export async function POST(req: NextRequest) {
     }
     cutscenes.sort((a, b) => a.at - b.at);
 
-    // 표정 얼굴 세트(제조기에서 생성). {neutral,smile,...} → URL 만 통과.
+    // 표정 얼굴 세트. {neutral,smile,...} → URL 만 통과. 캐릭터 캐시(name+archetype)를
+    // 먼저 깔고 클라가 보낸 값으로 덮어써 '같은 인물 = 재생성 없이 얼굴 재사용'.
+    const faces: Record<string, string> = { ...(await getCachedFaces(faceCacheSig(name, archetype))) };
     const rawFaces = t.faces && typeof t.faces === "object" ? (t.faces as Record<string, unknown>) : {};
-    const faces: Record<string, string> = {};
     for (const [k, v] of Object.entries(rawFaces)) {
       if (typeof v === "string" && v.startsWith("http")) faces[k] = v;
     }

@@ -137,21 +137,24 @@ export default function PlayClient({
       });
 
     // 1) 중립 먼저 — 이게 뜨면 큰 얼굴이 바로 보인다(먹통 해소).
-    let neutral: Record<string, string>;
+    //    캐릭터 캐시가 있으면 서버가 표정까지 함께 실어 보낸다(재사용 — 생성 없음).
+    let first: Record<string, string>;
     try {
-      neutral = await post();
+      first = await post();
     } catch (e) {
       setFaceErr(e instanceof Error ? e.message : String(e));
       setFaceGen("fail");
       return;
     }
-    setGenFaces((prev) => ({ ...(prev ?? {}), ...neutral }));
+    setGenFaces((prev) => ({ ...(prev ?? {}), ...first }));
     setFaceGen("done"); // 얼굴 나옴 — 표정은 백그라운드로 계속 채운다
 
-    // 2) 표정 4장 병렬 — 각자 끝나는 대로 genFaces 에 머지(스트리밍).
+    // 2) 아직 없는 표정만 병렬 요청 — 각자 끝나는 대로 genFaces 에 머지(스트리밍).
+    const missing = EXPR_IDS.filter((e) => !first[e]);
+    if (missing.length === 0) return; // 전부 캐시에서 재사용 — 추가 생성 없음
     const errs: string[] = [];
     await Promise.all(
-      EXPR_IDS.map((expr) =>
+      missing.map((expr) =>
         post(expr)
           .then((faces) => setGenFaces((prev) => ({ ...(prev ?? {}), ...faces })))
           .catch((e) => errs.push(`${expr}: ${e instanceof Error ? e.message : String(e)}`))

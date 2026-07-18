@@ -55,15 +55,9 @@ export async function listSimGameIds(limit = 50): Promise<string[]> {
   return getRedis().zrange<string[]>(GAME_INDEX, 0, limit - 1, { rev: true });
 }
 
-// 표정 얼굴을 상대에 '부분 머지'한다. 표정 4장을 병렬 요청으로 채우므로(스트리밍),
-// 짧은 락으로 read-merge-write 를 직렬화해 서로 덮어쓰는 경쟁을 막는다.
-export async function mergeTargetFaces(
-  gameId: string,
-  targetName: string,
-  patch: Record<string, string>
-): Promise<void> {
+// 병렬 write(표정 4장 스트리밍)가 서로 덮어쓰지 않게 짧은 Redis 락으로 임계구역을 감싼다.
+async function withLock<T>(lockKey: string, fn: () => Promise<T>): Promise<T> {
   const redis = getRedis();
-  const lockKey = `simgame:faces-lock:${gameId}`;
   let locked = false;
   for (let i = 0; i < 50; i++) {
     const ok = await redis.set(lockKey, "1", { nx: true, px: 5000 });
@@ -74,6 +68,19 @@ export async function mergeTargetFaces(
     await new Promise((r) => setTimeout(r, 100)); // 최대 ~5s 대기
   }
   try {
+    return await fn();
+  } finally {
+    if (locked) await redis.del(lockKey);
+  }
+}
+
+// 표정 얼굴을 상대에 '부분 머지'한다. 표정 4장을 병렬 요청으로 채우므로 락으로 직렬화.
+export async function mergeTargetFaces(
+  gameId: string,
+  targetName: string,
+  patch: Record<string, string>
+): Promise<void> {
+  await withLock(`simgame:faces-lock:${gameId}`, async () => {
     const fresh = await getSimGame(gameId);
     if (!fresh) return;
     fresh.targets = fresh.targets.map((t) =>
@@ -81,9 +88,34 @@ export async function mergeTargetFaces(
     );
     fresh.updatedAt = Date.now();
     await saveSimGame(fresh);
-  } finally {
-    if (locked) await redis.del(lockKey);
-  }
+  });
+}
+
+// ── 표정 얼굴 캐릭터 캐시 ────────────────────────────────────────────────────
+// 얼굴은 name+archetype 만으로 결정된다(생성 시 persona/설명 안 씀). 그 시그니처로
+// Blob URL 세트를 캐시해 '게임 만들 때마다 재생성'을 막는다 — 같은 캐릭터면 재사용.
+// (Blob 자산은 게임 삭제 때도 안 지우므로 캐시 URL 은 계속 유효하다.)
+const FACE_CACHE_KEY = (sig: string) => `simface:cache:${sig}`;
+
+export function faceCacheSig(name: string, archetype?: string): string {
+  return `${(name ?? "").trim()}::${(archetype ?? "").trim()}`.toLowerCase();
+}
+
+export async function getCachedFaces(sig: string): Promise<Record<string, string>> {
+  if (!sig || sig === "::") return {};
+  return (await getRedis().get<Record<string, string>>(FACE_CACHE_KEY(sig))) ?? {};
+}
+
+export async function mergeCachedFaces(
+  sig: string,
+  patch: Record<string, string>
+): Promise<void> {
+  if (!sig || sig === "::") return;
+  await withLock(`simface:cache-lock:${sig}`, async () => {
+    const redis = getRedis();
+    const cur = (await redis.get<Record<string, string>>(FACE_CACHE_KEY(sig))) ?? {};
+    await redis.set(FACE_CACHE_KEY(sig), { ...cur, ...patch });
+  });
 }
 
 // mget 배치 로드 — 없는 키(삭제 흔적)는 건너뛴다.
