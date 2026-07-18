@@ -89,7 +89,7 @@ export default function PlayClient({
   const [sulking, setSulking] = useState(false);
   const [expr, setExpr] = useState("neutral"); // 현재 표정 얼굴 id
   const exprHold = useRef(0);
-  // 호감(❤️)·비호감(💀) 호들갑 — 매 턴 이모지가 화면 전체에 뾰롱뾰롱 뿌려진다.
+  // 호감(❤️)·비호감(💔) 호들갑 — 매 턴 이모지가 화면 전체에 뾰롱뾰롱 뿌려진다.
   const [bursts, setBursts] = useState<
     {
       id: number;
@@ -427,7 +427,7 @@ export default function PlayClient({
           )}
         </div>
 
-        {/* 호감❤️·비호감💀 두 바 — 변화가 잘 보이게 크게 */}
+        {/* 호감❤️·비호감💔 두 바 — 변화가 잘 보이게 크게 */}
         <div className="mt-3 w-full max-w-[300px] space-y-2">
           <div className="flex items-center gap-2">
             <span className="w-6 shrink-0 text-center text-lg">❤️</span>
