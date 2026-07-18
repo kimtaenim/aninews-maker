@@ -23,7 +23,10 @@ export const FACE_EXPRESSIONS = [
 
 export type FaceId = (typeof FACE_EXPRESSIONS)[number]["id"];
 
-const FACE_SIZE = "1024x1024"; // 정사각·빠름(세로 1008x1792는 edit이 34초로 훨씬 느림)
+// 게임 얼굴은 화면에서 max 300px로만 뜨니 모델이 허용하는 최소 정사각으로 뽑는다(더 작고 쌈).
+// gpt-image-2 실측(2026-07): 300/304/512/768 → 400 "minimum pixel budget"(÷16 필수 + ~800px 미만 거부),
+// 896x896이 통과하는 최소 티어(gen ~18s). ※ edit(표정)은 32s로 사이즈에 거의 무관 — 크기는 60s의 원인 아님.
+const FACE_SIZE = "896x896";
 const SHEET =
   "front-facing bust portrait (head and shoulders), single character only, plain neutral background, even soft lighting, no text.";
 
