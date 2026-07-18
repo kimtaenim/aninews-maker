@@ -32,16 +32,25 @@ export default async function SimWatchDetailPage({
         ? { emoji: "💔", text: "여기까지" }
         : { emoji: "💬", text: "진행 중" };
 
+  const tgt = game?.targets.find((t) => t.name === play.targetName);
+  const faceUrl = tgt?.faces?.neutral || tgt?.portraitUrl || "";
+
   return (
     <main className="px-4 py-6 md:max-w-2xl md:mx-auto">
       <div className="flex items-center justify-between gap-2">
-        <h1 className="text-base font-semibold tracking-tight">
-          {play.targetName}
-          <span className="ml-2 text-xs font-normal text-zinc-500">
-            {game?.title ?? "(삭제된 게임)"}
-          </span>
-        </h1>
-        <Link href="/sim/watch" className="text-sm text-zinc-500 hover:underline">
+        <div className="flex items-center gap-2 min-w-0">
+          {faceUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={faceUrl} alt={play.targetName} className="h-9 w-9 shrink-0 rounded-full object-cover" />
+          )}
+          <h1 className="truncate text-base font-semibold tracking-tight">
+            {play.targetName}
+            <span className="ml-2 text-xs font-normal text-zinc-500">
+              {game?.title ?? "(삭제된 게임)"}
+            </span>
+          </h1>
+        </div>
+        <Link href="/sim/watch" className="shrink-0 text-sm text-zinc-500 hover:underline">
           ← 구경
         </Link>
       </div>

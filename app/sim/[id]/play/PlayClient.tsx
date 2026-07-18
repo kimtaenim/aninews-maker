@@ -8,7 +8,26 @@ export interface PlayTarget {
   name: string;
   archetype: string;
   portraitUrl: string;
+  faces?: Record<string, string>; // 표정 얼굴 세트 (neutral/smile/frown/blush/sulk → URL)
   cutsceneCount: number;
+}
+
+// 상태 변화로 이번 턴 표정을 정한다(숫자는 계속 숨긴다 — 표정으로만 드러냄).
+// 몇 턴 안에 싫음이 확 오르면 찌푸림, 좋음이 오르면 미소/발그레.
+function nextExpr(args: {
+  like: number;
+  dislike: number;
+  dLike: number;
+  dDislike: number;
+  sulking: boolean;
+  hold: number; // 남은 유지 턴
+}): { expr: string; hold: number } {
+  const { like, dislike, dLike, dDislike, sulking, hold } = args;
+  if (sulking) return { expr: "sulk", hold: 0 };
+  if (dDislike >= 4) return { expr: "frown", hold: 2 };
+  if (dLike >= 3) return { expr: like >= 50 && dislike < 20 ? "blush" : "smile", hold: 2 };
+  if (hold > 0) return { expr: "__keep", hold: hold - 1 }; // 직전 표정 유지
+  return { expr: like >= 55 && dislike < 20 ? "blush" : "neutral", hold: 0 };
 }
 
 // 이어할 수 있는 기존 세션(관계) — 상대별로 진행 중인 플레이가 있으면 서버가 넘긴다.
@@ -64,6 +83,8 @@ export default function PlayClient({
   const [like, setLike] = useState(20);
   const [dislike, setDislike] = useState(0);
   const [sulking, setSulking] = useState(false);
+  const [expr, setExpr] = useState("neutral"); // 현재 표정 얼굴 id
+  const exprHold = useRef(0);
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -92,6 +113,8 @@ export default function PlayClient({
     setLike(r.like);
     setDislike(r.dislike);
     setSulking(r.sulking);
+    exprHold.current = 0;
+    setExpr(r.sulking ? "sulk" : r.like >= 55 && r.dislike < 20 ? "blush" : "neutral");
     setCostUsd(0);
     setTurnCount(r.turns.filter((x) => x.role === "user").length);
     setMsgs(r.turns.map((x) => ({ role: x.role, text: x.text, sulking: x.sulking })));
@@ -120,6 +143,8 @@ export default function PlayClient({
       setLike(data.like ?? 20);
       setDislike(data.dislike ?? 0);
       setSulking(false);
+      exprHold.current = 0;
+      setExpr("neutral");
       setCostUsd(data.costUsd ?? 0);
       setTurnCount(0);
       setMsgs([{ role: "assistant", text: data.opening }]);
@@ -146,8 +171,21 @@ export default function PlayClient({
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || `전송 실패 (${res.status})`);
-      setLike(data.like ?? like);
-      setDislike(data.dislike ?? dislike);
+      const nl = data.like ?? like;
+      const nd = data.dislike ?? dislike;
+      // 표정 갱신(변화량 기준). __keep 이면 직전 표정 유지.
+      const e = nextExpr({
+        like: nl,
+        dislike: nd,
+        dLike: nl - like,
+        dDislike: nd - dislike,
+        sulking: !!data.sulking,
+        hold: exprHold.current,
+      });
+      exprHold.current = e.hold;
+      if (e.expr !== "__keep") setExpr(e.expr);
+      setLike(nl);
+      setDislike(nd);
       setSulking(!!data.sulking);
       setCostUsd((c) => c + (data.costUsd ?? 0));
       setTurnCount((n) => n + 1);
@@ -210,9 +248,9 @@ export default function PlayClient({
 
   return (
     <div className="mt-4">
-      {/* 좋음·싫음 두 바 + 표정 — 정확한 숫자는 감춘다(바 채워지는 정도만) */}
+      {/* 좋음·싫음 두 바 + 표정 얼굴 — 정확한 숫자는 감추고 얼굴·바로만 드러낸다 */}
       <div className="flex items-center gap-3">
-        {target && <Avatar t={target} size={40} />}
+        {target && <Avatar t={target} size={56} expr={expr} />}
         <div className="flex-1">
           <div className="flex items-center gap-1.5 text-xs">
             <span className="font-medium">{target?.name}</span>
@@ -407,15 +445,18 @@ export default function PlayClient({
   );
 }
 
-function Avatar({ t, size }: { t: PlayTarget; size: number }) {
-  if (t.portraitUrl) {
+function Avatar({ t, size, expr = "neutral" }: { t: PlayTarget; size: number; expr?: string }) {
+  // 표정 얼굴 우선: faces[표정] → faces.neutral → 기본 포트레이트 → 첫 글자.
+  const url =
+    (t.faces && (t.faces[expr] || t.faces.neutral)) || t.portraitUrl || "";
+  if (url) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={t.portraitUrl}
+        src={url}
         alt={t.name}
         style={{ width: size, height: size }}
-        className="rounded-full object-cover"
+        className="rounded-full object-cover transition-all duration-300"
       />
     );
   }

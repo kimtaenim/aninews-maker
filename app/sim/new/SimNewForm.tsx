@@ -56,6 +56,9 @@ export default function SimNewForm({
   ]);
   const [personas, setPersonas] = useState<Record<string, string>>({});
   const [personaBusy, setPersonaBusy] = useState<Record<string, boolean>>({});
+  // 표정 얼굴 세트 — faces[상대이름] = { neutral, smile, frown, blush, sulk } URL
+  const [faces, setFaces] = useState<Record<string, Record<string, string>>>({});
+  const [facesBusy, setFacesBusy] = useState<Record<string, boolean>>({});
   // cutscenes[상대이름][마일스톤] = 컷씬 프로젝트 id ("" = 없음)
   const [cutscenes, setCutscenes] = useState<Record<string, Record<number, string>>>({});
   const [title, setTitle] = useState("");
@@ -121,6 +124,29 @@ export default function SimNewForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
+  async function generateFaces(name: string, archetype?: string) {
+    setFacesBusy((b) => ({ ...b, [name]: true }));
+    setError("");
+    try {
+      const res = await fetch("/api/sim/faces", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          draftId: `${sourceId || "direct"}-${name}`.replace(/[^\w-]/g, "").slice(0, 60),
+          name,
+          archetype,
+        }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || `얼굴 생성 실패 (${res.status})`);
+      setFaces((f) => ({ ...f, [name]: data.faces }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "표정 얼굴 생성 실패");
+    } finally {
+      setFacesBusy((b) => ({ ...b, [name]: false }));
+    }
+  }
+
   async function create() {
     if (busy) return;
     setBusy(true);
@@ -136,6 +162,7 @@ export default function SimNewForm({
             name: t.name,
             archetype: t.archetype, // 직접 만든 인물의 아키타입(클리셰면 서버가 원본 사용)
             persona: (personas[t.name] ?? "").trim(),
+            ...(faces[t.name] ? { faces: faces[t.name] } : {}),
             cutscenes: MILESTONES.filter((at) => cutscenes[t.name]?.[at])
               .map((at) => ({ at, projectId: cutscenes[t.name][at] })),
           })),
@@ -414,6 +441,41 @@ export default function SimNewForm({
                 placeholder="자동 생성을 누르거나 직접 입력하세요"
                 className="mt-3 w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-transparent p-3 text-sm"
               />
+
+              {/* 표정 얼굴 — 상태(좋음·싫음·삐짐)에 따라 플레이·구경에서 바뀐다. 선택. */}
+              <div className="mt-3 flex items-center gap-3">
+                <button
+                  type="button"
+                  disabled={!!facesBusy[t.name]}
+                  onClick={() => generateFaces(t.name, t.archetype)}
+                  className="rounded-lg border border-zinc-200 dark:border-zinc-800 px-3 py-1.5 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-900 disabled:opacity-50"
+                >
+                  {facesBusy[t.name] ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      <Spinner /> 표정 얼굴 만드는 중… (~40초)
+                    </span>
+                  ) : faces[t.name] ? (
+                    "표정 다시 만들기"
+                  ) : (
+                    "🙂 표정 얼굴 만들기 (5장·선택)"
+                  )}
+                </button>
+                {faces[t.name] && (
+                  <div className="flex gap-1">
+                    {["neutral", "smile", "frown", "blush", "sulk"]
+                      .filter((k) => faces[t.name][k])
+                      .map((k) => (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          key={k}
+                          src={faces[t.name][k]}
+                          alt={k}
+                          className="h-9 w-9 rounded-lg object-cover"
+                        />
+                      ))}
+                  </div>
+                )}
+              </div>
             </div>
           ))}
           <div className="flex gap-2">

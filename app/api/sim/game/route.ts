@@ -101,12 +101,20 @@ export async function POST(req: NextRequest) {
     }
     cutscenes.sort((a, b) => a.at - b.at);
 
+    // 표정 얼굴 세트(제조기에서 생성). {neutral,smile,...} → URL 만 통과.
+    const rawFaces = t.faces && typeof t.faces === "object" ? (t.faces as Record<string, unknown>) : {};
+    const faces: Record<string, string> = {};
+    for (const [k, v] of Object.entries(rawFaces)) {
+      if (typeof v === "string" && v.startsWith("http")) faces[k] = v;
+    }
+
     targets.push({
       name,
       ...(archetype ? { archetype } : {}),
       ...(member?.portraitUrl ? { portraitUrl: member.portraitUrl } : {}),
       ...(member?.voiceId ? { voiceId: member.voiceId } : {}),
       persona,
+      ...(Object.keys(faces).length ? { faces } : {}),
       cutscenes,
     });
   }

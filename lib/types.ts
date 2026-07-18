@@ -210,9 +210,10 @@ export interface SimCutscene {
 export interface SimTarget {
   name: string; // CastMember.name (화자 키와 동일 문자열)
   archetype?: string; // 스냅샷 — 페르소나 재생성용
-  portraitUrl?: string; // 스냅샷 — 플레이 화면 아바타
+  portraitUrl?: string; // 스냅샷 — 플레이 화면 아바타(기본 얼굴 폴백)
   voiceId?: string; // 스냅샷 — (후속) 대사 TTS 옵션용
   persona: string; // Claude 시스템 프롬프트 — 성격·말투·좋아하는/싫어하는 반응. 수정 가능.
+  faces?: Record<string, string>; // 표정 얼굴 세트 (neutral/smile/frown/blush/sulk → URL). lib/simFaces.
   cutscenes: SimCutscene[]; // 마일스톤 컷씬 (없어도 플레이 가능)
 }
 

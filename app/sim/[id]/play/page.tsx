@@ -30,6 +30,7 @@ export default async function SimPlayPage({
     name: t.name,
     archetype: t.archetype ?? "",
     portraitUrl: t.portraitUrl ?? "",
+    ...(t.faces ? { faces: t.faces } : {}),
     cutsceneCount: t.cutscenes.length,
   }));
 
