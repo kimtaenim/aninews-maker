@@ -89,6 +89,11 @@ export default function PlayClient({
   const [sulking, setSulking] = useState(false);
   const [expr, setExpr] = useState("neutral"); // 현재 표정 얼굴 id
   const exprHold = useRef(0);
+  // 호감(❤️)·비호감(💀) 변화 호들갑 — 오른 만큼 이모지가 얼굴 위로 뾰롱뾰롱 떠오른다.
+  const [bursts, setBursts] = useState<
+    { id: number; type: "like" | "dislike"; left: number; delay: number }[]
+  >([]);
+  const burstId = useRef(0);
   // 얼굴 자동 생성(백필) — 얼굴 없는 인물은 처음 플레이할 때 백그라운드로 만든다.
   const [genFaces, setGenFaces] = useState<Record<string, string> | null>(null);
   const [faceGen, setFaceGen] = useState<"idle" | "busy" | "done" | "fail">("idle");
@@ -216,6 +221,20 @@ export default function PlayClient({
     }
   }
 
+  // 호감/비호감이 오른 만큼 이모지를 뿌린다(오름폭 클수록 더 많이 = 더 호들갑).
+  function spawnBursts(type: "like" | "dislike", amount: number) {
+    const count = Math.max(3, Math.min(9, Math.round(amount / 2) + 3));
+    const items = Array.from({ length: count }, (_, i) => ({
+      id: burstId.current++,
+      type,
+      left: 12 + Math.random() * 76, // 12~88%
+      delay: i * 80,
+    }));
+    setBursts((b) => [...b, ...items]);
+    const ids = new Set(items.map((x) => x.id));
+    setTimeout(() => setBursts((b) => b.filter((x) => !ids.has(x.id))), 1500 + count * 80);
+  }
+
   async function send() {
     const text = input.trim();
     if (!text || sending || ending) return;
@@ -234,6 +253,9 @@ export default function PlayClient({
       if (!data.ok) throw new Error(data.error || `전송 실패 (${res.status})`);
       const nl = data.like ?? like;
       const nd = data.dislike ?? dislike;
+      // 변화 호들갑: 오른 축의 이모지를 뿌린다(둘 다 오르면 하트+해골 동시에).
+      if (nl - like > 0) spawnBursts("like", nl - like);
+      if (nd - dislike > 0) spawnBursts("dislike", nd - dislike);
       // 표정 갱신(변화량 기준). __keep 이면 직전 표정 유지.
       const e = nextExpr({
         like: nl,
@@ -310,8 +332,20 @@ export default function PlayClient({
   return (
     // 데스크톱=얼굴 왼쪽·대화 오른쪽 2단, 모바일=얼굴 위·대화 아래로 한 화면에 담는다.
     <div className="mt-4 flex flex-col gap-4 md:flex-row md:gap-6 md:items-start">
-      {/* ── 왼쪽(모바일=위): 큰 표정 얼굴 + 이름 + 좋음/싫음 바 ── */}
-      <div className="flex shrink-0 flex-col items-center md:w-[300px]">
+      {/* ── 왼쪽(모바일=위): 큰 표정 얼굴 + 이름 + 호감/비호감 바 ── */}
+      <div className="relative flex shrink-0 flex-col items-center md:w-[300px]">
+        {/* 호감❤️/비호감💀 호들갑 오버레이 — 얼굴 위로 이모지가 뾰롱뾰롱 떠오른다 */}
+        <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden">
+          {bursts.map((b) => (
+            <span
+              key={b.id}
+              className="sim-burst"
+              style={{ left: `${b.left}%`, animationDelay: `${b.delay}ms` }}
+            >
+              {b.type === "like" ? "❤️" : "💀"}
+            </span>
+          ))}
+        </div>
         {target &&
           (() => {
             const faceTarget = genFaces
@@ -365,26 +399,26 @@ export default function PlayClient({
           )}
         </div>
 
-        {/* 좋음·싫음 두 바 */}
-        <div className="mt-3 w-full max-w-[300px] space-y-1">
-        <div className="flex items-center gap-2">
-          <span className="w-8 shrink-0 text-[10px] text-rose-500">좋음</span>
-          <div className="h-2 flex-1 rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-pink-400 to-rose-500 transition-all duration-500"
-              style={{ width: `${like}%` }}
-            />
+        {/* 호감❤️·비호감💀 두 바 — 변화가 잘 보이게 크게 */}
+        <div className="mt-3 w-full max-w-[300px] space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="w-6 shrink-0 text-center text-lg">❤️</span>
+            <div className="h-4 flex-1 rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden ring-1 ring-rose-200/60 dark:ring-rose-900/40">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-pink-400 to-rose-500 transition-all duration-700 ease-out"
+                style={{ width: `${like}%` }}
+              />
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="w-8 shrink-0 text-[10px] text-slate-500">싫음</span>
-          <div className="h-2 flex-1 rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-slate-400 to-slate-600 transition-all duration-500"
-              style={{ width: `${dislike}%` }}
-            />
+          <div className="flex items-center gap-2">
+            <span className="w-6 shrink-0 text-center text-lg">💀</span>
+            <div className="h-4 flex-1 rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden ring-1 ring-slate-300/60 dark:ring-slate-700/40">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-slate-500 to-slate-800 transition-all duration-700 ease-out"
+                style={{ width: `${dislike}%` }}
+              />
+            </div>
           </div>
-        </div>
         </div>
       </div>
 
