@@ -15,6 +15,7 @@ const GAME_KEY = (id: string) => `simgame:${id}`;
 const GAME_INDEX = "simgame:index"; // 최근 게임 목록 (sorted set, score=updatedAt)
 const PLAY_KEY = (id: string) => `simplay:${id}`;
 const PLAY_INDEX = (gameId: string) => `simplay:index:${gameId}`;
+const PLAY_INDEX_ALL = "simplay:index:all"; // 전체 최근 플레이 — '구경하기'용 (sorted set, score=updatedAt)
 
 // ── 게임 정의 ────────────────────────────────────────────────────────────────
 
@@ -72,7 +73,10 @@ export async function deleteSimGame(id: string): Promise<void> {
   const redis = getRedis();
   try {
     const playIds = await redis.zrange<string[]>(PLAY_INDEX(id), 0, -1);
-    if (playIds.length) await redis.del(...playIds.map(PLAY_KEY));
+    if (playIds.length) {
+      await redis.del(...playIds.map(PLAY_KEY));
+      await redis.zrem(PLAY_INDEX_ALL, ...playIds); // 전체 구경 인덱스에서도 제거
+    }
     await redis.del(PLAY_INDEX(id));
   } catch {
     /* 플레이 정리는 베스트에포트 — 게임 삭제는 막지 않는다 */
@@ -122,4 +126,23 @@ export async function saveSimPlay(play: SimPlay): Promise<void> {
     score: play.updatedAt,
     member: play.id,
   });
+  await redis.zadd(PLAY_INDEX_ALL, { score: play.updatedAt, member: play.id });
+}
+
+// '구경하기' — 전체 최근 플레이 id(최신순).
+export async function listRecentPlayIds(limit = 40): Promise<string[]> {
+  return getRedis().zrange<string[]>(PLAY_INDEX_ALL, 0, limit - 1, { rev: true });
+}
+
+// 여러 플레이 일괄 로드 — 없는 키(삭제 흔적)는 건너뛴다.
+export async function getSimPlaysBulk(ids: string[]): Promise<SimPlay[]> {
+  if (ids.length === 0) return [];
+  const redis = getRedis();
+  const out: SimPlay[] = [];
+  for (let i = 0; i < ids.length; i += 20) {
+    const chunk = ids.slice(i, i + 20);
+    const rows = await redis.mget<(SimPlay | null)[]>(...chunk.map(PLAY_KEY));
+    for (const p of rows) if (p) out.push(p);
+  }
+  return out;
 }

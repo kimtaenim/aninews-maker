@@ -24,28 +24,36 @@ export default async function SimHomePage() {
     <main className="px-4 py-8 md:max-w-2xl md:mx-auto">
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-lg font-semibold tracking-tight">🎮 시뮬 제조기</h1>
-        <div className="flex items-center gap-3">
-          <a
-            href={GUIDE_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="rounded-full border border-zinc-200 dark:border-zinc-800 px-3 py-1 text-sm font-medium hover:bg-zinc-100 dark:hover:bg-zinc-900"
-          >
-            📖 가이드
-          </a>
-          <Link href="/" className="text-sm text-zinc-500 hover:underline">
-            ← 홈
-          </Link>
-        </div>
+        <Link href="/" className="text-sm text-zinc-500 hover:underline">
+          ← 홈
+        </Link>
       </div>
       <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
         클리셰 영상의 인물을 연애 상대로 데려와 대화형 미니 게임을 만듭니다.
         친밀도를 올리면 만들어둔 심쿵 장면이 컷씬으로 재생돼요.
       </p>
 
+      {/* 시뮬 제조기 아래 보조 버튼들 — 가이드·구경하기 */}
+      <div className="mt-4 flex flex-wrap gap-2">
+        <a
+          href={GUIDE_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="rounded-full border border-zinc-200 dark:border-zinc-800 px-3.5 py-1.5 text-sm font-medium hover:bg-zinc-100 dark:hover:bg-zinc-900"
+        >
+          📖 가이드
+        </a>
+        <Link
+          href="/sim/watch"
+          className="rounded-full border border-zinc-200 dark:border-zinc-800 px-3.5 py-1.5 text-sm font-medium hover:bg-zinc-100 dark:hover:bg-zinc-900"
+        >
+          👀 구경하기
+        </Link>
+      </div>
+
       <Link
         href="/sim/new"
-        className="mt-5 block rounded-2xl bg-accent hover:bg-accent-strong text-white font-semibold px-5 py-4 text-center transition-colors"
+        className="mt-4 block rounded-2xl bg-accent hover:bg-accent-strong text-white font-semibold px-5 py-4 text-center transition-colors"
       >
         + 새 게임 만들기
       </Link>
