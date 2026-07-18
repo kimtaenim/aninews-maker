@@ -56,6 +56,10 @@ export default async function SimHomePage() {
           🎭 AI 자동극장
         </Link>
       </div>
+      <p className="mt-1.5 text-[11px] text-amber-500">
+        ⚠️ 주의: AI 자동극장(관전 모드)은 인물끼리 대화를 주고받는 모드라 토큰 비용이 많이
+        올라갈 수 있습니다.
+      </p>
 
       <Link
         href="/sim/new"
