@@ -56,7 +56,13 @@ export default async function SimPlayPage({
           ← 목록
         </Link>
       </div>
-      <PlayClient gameId={game.id} targets={targets} resumes={resumes} isAdmin={isAdmin} />
+      <PlayClient
+        gameId={game.id}
+        targets={targets}
+        resumes={resumes}
+        isAdmin={isAdmin}
+        protagonist={game.protagonist}
+      />
     </main>
   );
 }

@@ -70,11 +70,13 @@ export default function PlayClient({
   targets,
   resumes = [],
   isAdmin = false,
+  protagonist,
 }: {
   gameId: string;
   targets: PlayTarget[];
   resumes?: ResumeData[];
   isAdmin?: boolean;
+  protagonist?: { name: string; persona: string };
 }) {
   const resumeFor = (name: string) => resumes.find((r) => r.name === name);
   const [phase, setPhase] = useState<"pick" | "starting" | "playing">(
@@ -104,6 +106,9 @@ export default function PlayClient({
     }[]
   >([]);
   const burstId = useRef(0);
+  // 주인공(플레이어) 얼굴 — 입력창 옆 작은 썸네일. name+성격으로 생성/캐시.
+  const [protagFace, setProtagFace] = useState("");
+  const protagTried = useRef(false);
   // 얼굴 자동 생성(백필) — 얼굴 없는 인물은 처음 플레이할 때 백그라운드로 만든다.
   const [genFaces, setGenFaces] = useState<Record<string, string> | null>(null);
   const [faceGen, setFaceGen] = useState<"idle" | "busy" | "done" | "fail">("idle");
@@ -127,6 +132,26 @@ export default function PlayClient({
     const r = resumeFor(targets[0].name);
     if (r) hydrateResume(targets[0], r);
     else void start(targets[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 주인공 썸네일 — 배경에서 중립 얼굴 한 장만 생성/재사용.
+  useEffect(() => {
+    if (protagTried.current || !protagonist?.name) return;
+    protagTried.current = true;
+    void (async () => {
+      try {
+        const res = await fetch("/api/sim/faces/char", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: protagonist.name, description: protagonist.persona }),
+        });
+        const data = await res.json();
+        if (data.ok && data.faces?.neutral) setProtagFace(data.faces.neutral);
+      } catch {
+        /* 썸네일 실패해도 플레이는 계속 */
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -566,7 +591,24 @@ export default function PlayClient({
           </div>
         </div>
       ) : (
-        <div className="mt-3 flex gap-2">
+        <div className="mt-3 flex items-center gap-2">
+          {protagonist?.name &&
+            (protagFace ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={protagFace}
+                alt={protagonist.name}
+                title={protagonist.name}
+                className="h-9 w-9 shrink-0 rounded-full object-cover object-top ring-1 ring-zinc-200 dark:ring-zinc-800"
+              />
+            ) : (
+              <span
+                title={protagonist.name}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-200 dark:bg-zinc-800 text-xs"
+              >
+                {protagonist.name.slice(0, 1)}
+              </span>
+            ))}
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}

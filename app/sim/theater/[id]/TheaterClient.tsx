@@ -26,9 +26,7 @@ interface Delta {
   dislikeDelta: number;
 }
 
-function faceOf(c?: Cast): string {
-  return (c && ((c.faces && c.faces.neutral) || c.portraitUrl)) || "";
-}
+const EXPR_IDS = ["smile", "frown", "blush", "sulk"] as const;
 
 export default function TheaterClient({
   theaterId,
@@ -56,6 +54,57 @@ export default function TheaterClient({
   const [error, setError] = useState("");
   const [costUsd, setCostUsd] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // 출연진 표정 얼굴 — name+archetype 캐시로 생성/재사용. 감정 변화에 따라 표정 교체.
+  const [castFaces, setCastFaces] = useState<Record<string, Record<string, string>>>(() => {
+    const init: Record<string, Record<string, string>> = {};
+    for (const c of cast) if (c.faces) init[c.name] = { ...c.faces };
+    return init;
+  });
+  const [castExpr, setCastExpr] = useState<Record<string, string>>({});
+  const faceTried = useRef(false);
+
+  function pickCastFace(c: Cast): string {
+    const set = castFaces[c.name];
+    const e = castExpr[c.name] || "neutral";
+    return (set && (set[e] || set.neutral)) || c.portraitUrl || "";
+  }
+
+  // 마운트 시 출연진 얼굴 확보(중립 먼저, 표정은 병렬 스트리밍). 캐시 히트면 즉시.
+  useEffect(() => {
+    if (faceTried.current) return;
+    faceTried.current = true;
+    const postChar = async (c: Cast, expr?: string) => {
+      const res = await fetch("/api/sim/faces/char", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: c.name, archetype: c.archetype, ...(expr ? { expr } : {}) }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "얼굴 생성 실패");
+      return data.faces as Record<string, string>;
+    };
+    (async () => {
+      for (const c of cast) {
+        if (castFaces[c.name]?.neutral) continue;
+        try {
+          const neu = await postChar(c);
+          setCastFaces((f) => ({ ...f, [c.name]: { ...(f[c.name] || {}), ...neu } }));
+          const missing = EXPR_IDS.filter((e) => !neu[e]);
+          await Promise.all(
+            missing.map((e) =>
+              postChar(c, e)
+                .then((r) => setCastFaces((f) => ({ ...f, [c.name]: { ...(f[c.name] || {}), ...r } })))
+                .catch(() => {})
+            )
+          );
+        } catch {
+          /* 이 인물 얼굴 실패해도 관전은 계속 */
+        }
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 화면 전체 호들갑 버스트(플레이 화면과 동일 방식).
   const [bursts, setBursts] = useState<
@@ -103,10 +152,17 @@ export default function TheaterClient({
       setNextSpeaker(data.nextSpeaker ?? "");
       if (useInjection) setInjection("");
       setCostUsd((c) => c + (data.costUsd ?? 0));
+      const nextExpr: Record<string, string> = { ...castExpr };
+      // 말한 인물(화자)은 방금 말했으니 중립으로.
+      if (data.speaker) nextExpr[data.speaker] = "neutral";
       for (const d of (data.deltas ?? []) as Delta[]) {
         if (d.likeDelta > 0) spawnBursts("like", d.likeDelta);
         if (d.dislikeDelta > 0) spawnBursts("dislike", d.dislikeDelta);
+        // d.from(청자)이 화자에게 느낀 변화 → 청자 표정 교체.
+        if (d.dislikeDelta > 0 && d.dislikeDelta >= d.likeDelta) nextExpr[d.from] = "frown";
+        else if (d.likeDelta > 0) nextExpr[d.from] = d.likeDelta >= 3 ? "blush" : "smile";
       }
+      setCastExpr(nextExpr);
     } catch (e) {
       setError(e instanceof Error ? e.message : "진행 실패");
     } finally {
@@ -142,7 +198,7 @@ export default function TheaterClient({
       {/* 출연진 */}
       <div className="flex flex-wrap items-center justify-center gap-4">
         {cast.map((c) => {
-          const url = faceOf(c);
+          const url = pickCastFace(c);
           const speaking = nextSpeaker === c.name;
           return (
             <div key={c.name} className="flex flex-col items-center">
