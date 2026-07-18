@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { faces, costUsd } = await generateExpressionFaces({
+    const { faces, costUsd, errors } = await generateExpressionFaces({
       blobPrefix: `simgame/${gameId}`,
       projectId: gameId,
       name: target.name,
@@ -44,7 +44,12 @@ export async function POST(req: NextRequest) {
     fresh.targets = fresh.targets.map((t) => (t.name === targetName ? { ...t, faces } : t));
     fresh.updatedAt = Date.now();
     await saveSimGame(fresh);
-    return NextResponse.json({ ok: true, faces, cost: formatKrw(costUsd) });
+    return NextResponse.json({
+      ok: true,
+      faces,
+      cost: formatKrw(costUsd),
+      faceErrors: errors, // 표정 일부 실패 시 원인(디버그)
+    });
   } catch (e) {
     return NextResponse.json(
       { ok: false, error: e instanceof Error ? e.message : "얼굴 생성 실패" },

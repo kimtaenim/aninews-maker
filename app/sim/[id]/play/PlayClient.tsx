@@ -88,6 +88,7 @@ export default function PlayClient({
   // 얼굴 자동 생성(백필) — 얼굴 없는 인물은 처음 플레이할 때 백그라운드로 만든다.
   const [genFaces, setGenFaces] = useState<Record<string, string> | null>(null);
   const [faceGen, setFaceGen] = useState<"idle" | "busy" | "done" | "fail">("idle");
+  const [faceErr, setFaceErr] = useState(""); // 실제 실패/부분실패 원인(디버그 노출)
   const faceGenTried = useRef<Set<string>>(new Set());
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
@@ -116,6 +117,7 @@ export default function PlayClient({
     if (faceGenTried.current.has(t.name)) return;
     faceGenTried.current.add(t.name);
     setFaceGen("busy");
+    setFaceErr("");
     try {
       const res = await fetch("/api/sim/faces/backfill", {
         method: "POST",
@@ -123,10 +125,15 @@ export default function PlayClient({
         body: JSON.stringify({ gameId, targetName: t.name }),
       });
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "얼굴 생성 실패");
+      if (!data.ok) throw new Error(data.error || `실패 (HTTP ${res.status})`);
       setGenFaces(data.faces);
+      // 표정 일부가 실패했으면 그 원인을 화면에 노출(디버그).
+      if (Array.isArray(data.faceErrors) && data.faceErrors.length) {
+        setFaceErr("표정 일부 실패: " + data.faceErrors.join(" | "));
+      }
       setFaceGen("done");
-    } catch {
+    } catch (e) {
+      setFaceErr(e instanceof Error ? e.message : String(e));
       setFaceGen("fail");
     }
   }
@@ -290,7 +297,7 @@ export default function PlayClient({
               <img
                 src={url}
                 alt={target.name}
-                className="aspect-square w-full max-w-[300px] rounded-3xl object-cover shadow-sm ring-1 ring-zinc-200/70 dark:ring-zinc-800 transition-all duration-300"
+                className="aspect-square w-full max-w-[300px] rounded-3xl object-cover object-top shadow-sm ring-1 ring-zinc-200/70 dark:ring-zinc-800 transition-all duration-300"
               />
             ) : (
               <div className="relative flex aspect-square w-full max-w-[300px] flex-col items-center justify-center gap-2 rounded-3xl bg-zinc-100 dark:bg-zinc-900 text-zinc-300 dark:text-zinc-700">
@@ -301,11 +308,16 @@ export default function PlayClient({
                   </span>
                 )}
                 {faceGen === "fail" && (
-                  <span className="text-xs text-zinc-400">얼굴 생성 실패</span>
+                  <span className="max-w-[260px] px-2 text-center text-[11px] text-red-400">
+                    {faceErr || "얼굴 생성 실패"}
+                  </span>
                 )}
               </div>
             );
           })()}
+        {faceErr && faceGen !== "fail" && (
+          <p className="mt-1 max-w-[300px] text-center text-[11px] text-amber-500">{faceErr}</p>
+        )}
         <div className="mt-2 flex w-full max-w-[300px] items-center gap-1.5 text-sm">
           <span className="font-medium">{target?.name}</span>
           <span className="text-base">{moodFace(like, dislike, sulking)}</span>

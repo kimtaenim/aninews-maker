@@ -23,7 +23,7 @@ export const FACE_EXPRESSIONS = [
 
 export type FaceId = (typeof FACE_EXPRESSIONS)[number]["id"];
 
-const FACE_SIZE = "1024x1024"; // 얼굴 아바타는 정사각이 낫다
+const FACE_SIZE = "1024x1024"; // 정사각·빠름(세로 1008x1792는 edit이 34초로 훨씬 느림)
 const SHEET =
   "front-facing bust portrait (head and shoulders), single character only, plain neutral background, even soft lighting, no text.";
 
@@ -34,7 +34,7 @@ export async function generateExpressionFaces(args: {
   name?: string;
   archetype?: string;
   description?: string; // 외모 설명(있으면 일관성↑)
-}): Promise<{ faces: Record<FaceId, string>; costUsd: number }> {
+}): Promise<{ faces: Record<FaceId, string>; costUsd: number; errors: string[] }> {
   const { blobPrefix, projectId, name, archetype, description } = args;
   const client = getOpenAI();
   const bible = getStyleProfile("webtoon-romance").imageBible;
@@ -58,7 +58,8 @@ export async function generateExpressionFaces(args: {
 
   const faces: Record<string, string> = { neutral: neutral.url };
 
-  // 2) 중립을 레퍼런스로 표정 4장을 '병렬'로 edit(느려서 타임아웃 나던 걸 방지).
+  // 2) 중립을 레퍼런스로 표정 4장을 '병렬'로 edit. 실패 원인을 삼키지 말고 모은다.
+  const errors: string[] = [];
   const edits = await Promise.all(
     FACE_EXPRESSIONS.slice(1).map(async (expr) => {
       try {
@@ -74,15 +75,19 @@ export async function generateExpressionFaces(args: {
           n: 1,
         });
         const b64 = edit.data?.[0]?.b64_json;
-        if (!b64) return null;
+        if (!b64) {
+          errors.push(`${expr.id}: 응답에 이미지 없음`);
+          return null;
+        }
         const up = await uploadAsset(
           `${blobPrefix}/face-${expr.id}-${ts}.png`,
           Buffer.from(b64, "base64"),
           "image/png"
         );
         return [expr.id, up.url] as const;
-      } catch {
-        return null; // 한 장 실패해도 나머지는 쓴다
+      } catch (e) {
+        errors.push(`${expr.id}: ${e instanceof Error ? e.message : String(e)}`);
+        return null;
       }
     })
   );
@@ -97,5 +102,5 @@ export async function generateExpressionFaces(args: {
     meta: { kind: "sim-faces", target: name },
   });
 
-  return { faces: faces as Record<FaceId, string>, costUsd };
+  return { faces: faces as Record<FaceId, string>, costUsd, errors };
 }
