@@ -4,6 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Spinner from "@/components/Spinner";
 
+// 병렬로 채울 표정 id — 서버 lib/simFaces.ts 의 FACE_EXPRESSIONS(중립 제외)와 동기.
+// (simFaces 는 openai/blob 를 import 하는 서버 전용 모듈이라 클라에서 직접 import하지 않는다.)
+const EXPR_IDS = ["smile", "frown", "blush", "sulk"] as const;
+
 export interface PlayTarget {
   name: string;
   archetype: string;
@@ -112,30 +116,48 @@ export default function PlayClient({
   }, []);
 
   // 얼굴이 없는 인물이면 백그라운드로 표정 얼굴을 자동 생성해 게임에 저장한다.
+  // 5장을 한 요청에 몰면 48~60s로 먹통이라, 중립을 먼저 빨리 띄우고(≈18s) 표정 4장은
+  // 병렬 요청으로 쪼개 '완성되는 대로 하나씩' 화면에 꽂는다(스트리밍).
   async function ensureFaces(t: PlayTarget) {
     if (pickFaceUrl(t, "neutral")) return; // 이미 얼굴/포트레이트 있음
     if (faceGenTried.current.has(t.name)) return;
     faceGenTried.current.add(t.name);
     setFaceGen("busy");
     setFaceErr("");
-    try {
-      const res = await fetch("/api/sim/faces/backfill", {
+
+    const post = (expr?: string) =>
+      fetch("/api/sim/faces/backfill", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ gameId, targetName: t.name }),
+        body: JSON.stringify({ gameId, targetName: t.name, ...(expr ? { expr } : {}) }),
+      }).then(async (res) => {
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || `실패 (HTTP ${res.status})`);
+        return data.faces as Record<string, string>;
       });
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || `실패 (HTTP ${res.status})`);
-      setGenFaces(data.faces);
-      // 표정 일부가 실패했으면 그 원인을 화면에 노출(디버그).
-      if (Array.isArray(data.faceErrors) && data.faceErrors.length) {
-        setFaceErr("표정 일부 실패: " + data.faceErrors.join(" | "));
-      }
-      setFaceGen("done");
+
+    // 1) 중립 먼저 — 이게 뜨면 큰 얼굴이 바로 보인다(먹통 해소).
+    let neutral: Record<string, string>;
+    try {
+      neutral = await post();
     } catch (e) {
       setFaceErr(e instanceof Error ? e.message : String(e));
       setFaceGen("fail");
+      return;
     }
+    setGenFaces((prev) => ({ ...(prev ?? {}), ...neutral }));
+    setFaceGen("done"); // 얼굴 나옴 — 표정은 백그라운드로 계속 채운다
+
+    // 2) 표정 4장 병렬 — 각자 끝나는 대로 genFaces 에 머지(스트리밍).
+    const errs: string[] = [];
+    await Promise.all(
+      EXPR_IDS.map((expr) =>
+        post(expr)
+          .then((faces) => setGenFaces((prev) => ({ ...(prev ?? {}), ...faces })))
+          .catch((e) => errs.push(`${expr}: ${e instanceof Error ? e.message : String(e)}`))
+      )
+    );
+    if (errs.length) setFaceErr("표정 일부 실패: " + errs.join(" | "));
   }
 
   // 기존 세션(관계)을 화면에 복원해 이어서 플레이.

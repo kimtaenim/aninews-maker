@@ -55,6 +55,37 @@ export async function listSimGameIds(limit = 50): Promise<string[]> {
   return getRedis().zrange<string[]>(GAME_INDEX, 0, limit - 1, { rev: true });
 }
 
+// 표정 얼굴을 상대에 '부분 머지'한다. 표정 4장을 병렬 요청으로 채우므로(스트리밍),
+// 짧은 락으로 read-merge-write 를 직렬화해 서로 덮어쓰는 경쟁을 막는다.
+export async function mergeTargetFaces(
+  gameId: string,
+  targetName: string,
+  patch: Record<string, string>
+): Promise<void> {
+  const redis = getRedis();
+  const lockKey = `simgame:faces-lock:${gameId}`;
+  let locked = false;
+  for (let i = 0; i < 50; i++) {
+    const ok = await redis.set(lockKey, "1", { nx: true, px: 5000 });
+    if (ok === "OK") {
+      locked = true;
+      break;
+    }
+    await new Promise((r) => setTimeout(r, 100)); // 최대 ~5s 대기
+  }
+  try {
+    const fresh = await getSimGame(gameId);
+    if (!fresh) return;
+    fresh.targets = fresh.targets.map((t) =>
+      t.name === targetName ? { ...t, faces: { ...(t.faces ?? {}), ...patch } } : t
+    );
+    fresh.updatedAt = Date.now();
+    await saveSimGame(fresh);
+  } finally {
+    if (locked) await redis.del(lockKey);
+  }
+}
+
 // mget 배치 로드 — 없는 키(삭제 흔적)는 건너뛴다.
 export async function getSimGamesBulk(ids: string[]): Promise<SimGame[]> {
   if (ids.length === 0) return [];

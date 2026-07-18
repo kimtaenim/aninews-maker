@@ -1,15 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSimGame, saveSimGame } from "@/lib/simStore";
-import { generateExpressionFaces } from "@/lib/simFaces";
+import { getSimGame, mergeTargetFaces } from "@/lib/simStore";
+import {
+  generateNeutralFace,
+  generateExpressionFace,
+  EXPRESSION_IDS,
+  type FaceId,
+} from "@/lib/simFaces";
 import { formatKrw } from "@/lib/cost";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
+export const maxDuration = 120;
 
-// 이미 만든 게임의 상대에게 표정 얼굴을 채워넣는다(얼굴 없이 만들어진 게임 복구용).
-// body: { gameId: string, targetName: string }
+// 게임 상대에게 표정 얼굴을 채워넣는다. 한 요청에 5장을 몰면 48~60s로 브라우저가 먹통이라,
+// 조각으로 쪼갠다(클라이언트가 병렬 호출 → 스트리밍):
+//   - expr 없음/neutral → 중립 1장 생성·저장(≈18s). 이게 있어야 표정 edit이 가능.
+//   - expr=smile|frown|blush|sulk → 저장된 중립을 레퍼런스로 그 표정 1장만 생성·저장(≈32s).
+// body: { gameId: string, targetName: string, expr?: FaceId }
 export async function POST(req: NextRequest) {
-  let body: { gameId?: string; targetName?: string };
+  let body: { gameId?: string; targetName?: string; expr?: string };
   try {
     body = await req.json();
   } catch {
@@ -17,6 +25,7 @@ export async function POST(req: NextRequest) {
   }
   const gameId = (body.gameId ?? "").trim();
   const targetName = (body.targetName ?? "").trim();
+  const expr = (body.expr ?? "").trim();
   if (!gameId || !targetName) {
     return NextResponse.json({ ok: false, error: "gameId·targetName 필요" }, { status: 400 });
   }
@@ -28,27 +37,48 @@ export async function POST(req: NextRequest) {
   if (!target) {
     return NextResponse.json({ ok: false, error: "상대를 찾을 수 없어요" }, { status: 400 });
   }
+  const blobPrefix = `simgame/${gameId}`;
 
   try {
-    const { faces, costUsd, errors } = await generateExpressionFaces({
-      blobPrefix: `simgame/${gameId}`,
-      projectId: gameId,
-      name: target.name,
-      archetype: target.archetype,
-    });
-    // 긴 생성 뒤 fresh 재읽기 → 해당 상대 faces 만 머지(통째 저장 회피).
-    const fresh = await getSimGame(gameId);
-    if (!fresh) {
-      return NextResponse.json({ ok: false, error: "게임이 사라졌어요" }, { status: 404 });
+    // ── 중립 모드 ──
+    if (!expr || expr === "neutral") {
+      const neutral = await generateNeutralFace({
+        blobPrefix,
+        projectId: gameId,
+        name: target.name,
+        archetype: target.archetype,
+      });
+      await mergeTargetFaces(gameId, targetName, { neutral: neutral.url });
+      return NextResponse.json({
+        ok: true,
+        faces: { neutral: neutral.url },
+        cost: formatKrw(neutral.costUsd),
+      });
     }
-    fresh.targets = fresh.targets.map((t) => (t.name === targetName ? { ...t, faces } : t));
-    fresh.updatedAt = Date.now();
-    await saveSimGame(fresh);
+
+    // ── 표정 1장 모드 ──
+    if (!(EXPRESSION_IDS as string[]).includes(expr)) {
+      return NextResponse.json({ ok: false, error: `알 수 없는 표정: ${expr}` }, { status: 400 });
+    }
+    const neutralUrl = target.faces?.neutral;
+    if (!neutralUrl) {
+      return NextResponse.json(
+        { ok: false, error: "먼저 중립 얼굴을 만들어야 해요" },
+        { status: 409 }
+      );
+    }
+    const one = await generateExpressionFace({
+      blobPrefix,
+      exprId: expr as Exclude<FaceId, "neutral">,
+      neutralUrl,
+      projectId: gameId,
+      targetName,
+    });
+    await mergeTargetFaces(gameId, targetName, { [expr]: one.url });
     return NextResponse.json({
       ok: true,
-      faces,
-      cost: formatKrw(costUsd),
-      faceErrors: errors, // 표정 일부 실패 시 원인(디버그)
+      faces: { [expr]: one.url },
+      cost: formatKrw(one.costUsd),
     });
   } catch (e) {
     return NextResponse.json(
