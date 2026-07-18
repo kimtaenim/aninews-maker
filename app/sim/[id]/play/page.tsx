@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { getSimGame } from "@/lib/simStore";
+import { getSimGame, getResumablePlays } from "@/lib/simStore";
 import { getSessionEmail, ADMIN_EMAIL } from "@/lib/auth";
-import PlayClient, { type PlayTarget } from "./PlayClient";
+import PlayClient, { type PlayTarget, type ResumeData } from "./PlayClient";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,8 +33,19 @@ export default async function SimPlayPage({
     cutsceneCount: t.cutscenes.length,
   }));
 
+  const email = (await getSessionEmail()) ?? undefined;
   // 개발자 비용 푸터는 관리자에게만 — 테스터에겐 안 보이게.
-  const isAdmin = (await getSessionEmail()) === ADMIN_EMAIL;
+  const isAdmin = email === ADMIN_EMAIL;
+
+  // 이어할 세션(관계) — 진행 중인 플레이가 있으면 이어받는다.
+  const resumes: ResumeData[] = (await getResumablePlays(game.id, email)).map((p) => ({
+    name: p.targetName,
+    playId: p.id,
+    like: p.like,
+    dislike: p.dislike,
+    sulking: p.sulking,
+    turns: p.turns.map((t) => ({ role: t.role, text: t.text, sulking: t.sulking })),
+  }));
 
   return (
     <main className="px-4 py-6 md:max-w-2xl md:mx-auto">
@@ -44,7 +55,7 @@ export default async function SimPlayPage({
           ← 목록
         </Link>
       </div>
-      <PlayClient gameId={game.id} targets={targets} isAdmin={isAdmin} />
+      <PlayClient gameId={game.id} targets={targets} resumes={resumes} isAdmin={isAdmin} />
     </main>
   );
 }

@@ -11,6 +11,16 @@ export interface PlayTarget {
   cutsceneCount: number;
 }
 
+// 이어할 수 있는 기존 세션(관계) — 상대별로 진행 중인 플레이가 있으면 서버가 넘긴다.
+export interface ResumeData {
+  name: string; // 상대 이름
+  playId: string;
+  like: number;
+  dislike: number;
+  sulking: boolean;
+  turns: { role: "user" | "assistant"; text: string; sulking?: boolean }[];
+}
+
 interface ChatMsg {
   role: "user" | "assistant";
   text: string;
@@ -35,12 +45,15 @@ interface Cutscene {
 export default function PlayClient({
   gameId,
   targets,
+  resumes = [],
   isAdmin = false,
 }: {
   gameId: string;
   targets: PlayTarget[];
+  resumes?: ResumeData[];
   isAdmin?: boolean;
 }) {
+  const resumeFor = (name: string) => resumes.find((r) => r.name === name);
   const [phase, setPhase] = useState<"pick" | "starting" | "playing">(
     targets.length === 1 ? "starting" : "pick"
   );
@@ -63,11 +76,29 @@ export default function PlayClient({
   const [turnCount, setTurnCount] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // 상대 하나면 자동 시작.
+  // 상대 하나면 자동 진입 — 이어할 세션이 있으면 이어받고, 없으면 새로 시작.
   useEffect(() => {
-    if (phase === "starting" && target) void start(target);
+    if (targets.length !== 1) return;
+    const r = resumeFor(targets[0].name);
+    if (r) hydrateResume(targets[0], r);
+    else void start(targets[0]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 기존 세션(관계)을 화면에 복원해 이어서 플레이.
+  function hydrateResume(t: PlayTarget, r: ResumeData) {
+    setTarget(t);
+    setPlayId(r.playId);
+    setLike(r.like);
+    setDislike(r.dislike);
+    setSulking(r.sulking);
+    setCostUsd(0);
+    setTurnCount(r.turns.filter((x) => x.role === "user").length);
+    setMsgs(r.turns.map((x) => ({ role: x.role, text: x.text, sulking: x.sulking })));
+    setEnding(null);
+    setError("");
+    setPhase("playing");
+  }
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -146,22 +177,31 @@ export default function PlayClient({
       <div className="mt-6">
         <p className="text-sm text-zinc-600 dark:text-zinc-400">누구와 대화할까요?</p>
         <div className="mt-3 grid gap-2">
-          {targets.map((t) => (
-            <button
-              key={t.name}
-              type="button"
-              onClick={() => start(t)}
-              className="flex items-center gap-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 p-3 text-left hover:bg-zinc-100 dark:hover:bg-zinc-900"
-            >
-              <Avatar t={t} size={40} />
-              <span className="text-sm">
-                <span className="font-medium">{t.name}</span>
-                {t.archetype && (
-                  <span className="ml-2 text-xs text-zinc-500">{t.archetype}</span>
+          {targets.map((t) => {
+            const r = resumeFor(t.name);
+            const turns = r ? r.turns.filter((x) => x.role === "user").length : 0;
+            return (
+              <button
+                key={t.name}
+                type="button"
+                onClick={() => (r ? hydrateResume(t, r) : start(t))}
+                className="flex items-center gap-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 p-3 text-left hover:bg-zinc-100 dark:hover:bg-zinc-900"
+              >
+                <Avatar t={t} size={40} />
+                <span className="flex-1 text-sm">
+                  <span className="font-medium">{t.name}</span>
+                  {t.archetype && (
+                    <span className="ml-2 text-xs text-zinc-500">{t.archetype}</span>
+                  )}
+                </span>
+                {r && (
+                  <span className="shrink-0 rounded-full bg-rose-100 dark:bg-rose-950/50 px-2.5 py-0.5 text-xs font-medium text-rose-600 dark:text-rose-400">
+                    이어하기 · {turns}턴
+                  </span>
                 )}
-              </span>
-            </button>
-          ))}
+              </button>
+            );
+          })}
         </div>
         {error && <p className="mt-3 text-sm text-red-500">{error}</p>}
       </div>
@@ -181,6 +221,17 @@ export default function PlayClient({
               <span className="rounded-full bg-red-100 dark:bg-red-950/50 px-2 py-0.5 text-[10px] font-medium text-red-600 dark:text-red-400">
                 삐짐
               </span>
+            )}
+            {!ending && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (target && confirm("이 관계를 지우고 처음부터 다시 시작할까요?")) start(target);
+                }}
+                className="ml-auto shrink-0 text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+              >
+                ↻ 처음부터
+              </button>
             )}
           </div>
           {/* 좋음 */}

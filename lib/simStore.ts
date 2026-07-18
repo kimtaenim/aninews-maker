@@ -134,6 +134,26 @@ export async function listRecentPlayIds(limit = 40): Promise<string[]> {
   return getRedis().zrange<string[]>(PLAY_INDEX_ALL, 0, limit - 1, { rev: true });
 }
 
+// 이어할 수 있는 세션 — 이 게임에서 이 플레이어가 '진행 중(playing)'인 플레이를
+// 상대별로 가장 최근 것 하나씩. 관계를 이어서 키우기 위함.
+export async function getResumablePlays(
+  gameId: string,
+  ownerEmail: string | undefined
+): Promise<SimPlay[]> {
+  if (!ownerEmail) return [];
+  const ids = await getRedis().zrange<string[]>(PLAY_INDEX(gameId), 0, -1, {
+    rev: true, // 최신순
+  });
+  const plays = await getSimPlaysBulk(ids);
+  const byTarget = new Map<string, SimPlay>();
+  for (const p of plays) {
+    if (p.status !== "playing") continue;
+    if ((p.ownerEmail ?? "") !== ownerEmail) continue;
+    if (!byTarget.has(p.targetName)) byTarget.set(p.targetName, p); // 최신순이라 첫 번째가 최근
+  }
+  return [...byTarget.values()];
+}
+
 // 여러 플레이 일괄 로드 — 없는 키(삭제 흔적)는 건너뛴다.
 export async function getSimPlaysBulk(ids: string[]): Promise<SimPlay[]> {
   if (ids.length === 0) return [];

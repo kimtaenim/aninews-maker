@@ -4,18 +4,26 @@ import {
   getSimPlaysBulk,
   listRecentPlayIds,
 } from "@/lib/simStore";
+import { getSessionEmail } from "@/lib/auth";
 import type { SimGame, SimPlay } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic"; // 항상 최신(Redis)
 
-// 👀 구경하기 — 다른 사람들의 플레이 결과와 대화를 구경. 내부 테스트용 공유 뷰.
-export default async function SimWatchPage() {
+// 👀 구경하기 / 📔 내 기록 — 플레이 결과와 대화를 본다. ?mine=1 이면 내 것만.
+export default async function SimWatchPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ mine?: string }>;
+}) {
+  const mine = (await searchParams).mine === "1";
+  const email = (await getSessionEmail()) ?? undefined;
   let plays: SimPlay[] = [];
   let games = new Map<string, SimGame>();
   let loadError = false;
   try {
-    plays = await getSimPlaysBulk(await listRecentPlayIds(40));
+    plays = await getSimPlaysBulk(await listRecentPlayIds(mine ? 200 : 40));
+    if (mine) plays = plays.filter((p) => (p.ownerEmail ?? "") === (email ?? ""));
     const gameIds = [...new Set(plays.map((p) => p.gameId))];
     const gs = await getSimGamesBulk(gameIds);
     games = new Map(gs.map((g) => [g.id, g]));
@@ -33,9 +41,34 @@ export default async function SimWatchPage() {
   return (
     <main className="px-4 py-8 md:max-w-2xl md:mx-auto">
       <div className="flex items-center justify-between gap-2">
-        <h1 className="text-lg font-semibold tracking-tight">👀 구경하기</h1>
+        <h1 className="text-lg font-semibold tracking-tight">
+          {mine ? "📔 내 기록" : "👀 구경하기"}
+        </h1>
         <Link href="/sim" className="text-sm text-zinc-500 hover:underline">
           ← 시뮬 제조기
+        </Link>
+      </div>
+      {/* 전체 ↔ 내 것만 토글 */}
+      <div className="mt-3 flex gap-2">
+        <Link
+          href="/sim/watch"
+          className={`rounded-full px-3 py-1 text-sm font-medium ${
+            !mine
+              ? "bg-accent text-white"
+              : "border border-zinc-200 dark:border-zinc-800 text-zinc-500"
+          }`}
+        >
+          전체
+        </Link>
+        <Link
+          href="/sim/watch?mine=1"
+          className={`rounded-full px-3 py-1 text-sm font-medium ${
+            mine
+              ? "bg-accent text-white"
+              : "border border-zinc-200 dark:border-zinc-800 text-zinc-500"
+          }`}
+        >
+          내 기록
         </Link>
       </div>
       <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
