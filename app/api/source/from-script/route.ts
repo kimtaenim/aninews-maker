@@ -4,6 +4,7 @@ import { createProject, saveProject } from "@/lib/projectStore";
 import { getSessionEmail } from "@/lib/auth";
 import { getStyleProfile, DEFAULT_STYLE_PROFILE_ID } from "@/lib/styleProfiles";
 import { estimateDuration } from "@/lib/scenes";
+import { appendNewsOutro } from "@/lib/outro";
 import type { Scene } from "@/lib/types";
 import videoModels from "@/config/video-models.json";
 
@@ -72,7 +73,8 @@ export async function POST(req: NextRequest) {
       durationSec: estimateDuration(narration),
       status: "generated",
     }));
-    project.scenes = scenes;
+    // 마무리 구독 씬 자동 추가(이미 마지막 씬이 구독/좋아요 유도면 중복으로 안 붙임).
+    project.scenes = appendNewsOutro(scenes);
     // 소스는 승인(사용자 스크립트라 검수 불필요), 스크립트는 generated(2단계에서 확인·승인).
     const now = Date.now();
     project.steps.source.status = "approved";

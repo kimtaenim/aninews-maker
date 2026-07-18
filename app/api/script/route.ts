@@ -2,34 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { getProject, saveProject } from "@/lib/projectStore";
 import { generateScript, generateClicheScript } from "@/lib/script";
 import { canStart } from "@/lib/stepMachine";
-import { estimateDuration } from "@/lib/scenes";
-import type { Scene } from "@/lib/types";
+import { appendNewsOutro } from "@/lib/outro";
 import type { SourceMaterial } from "@/lib/source";
 
 export const runtime = "nodejs";
 // [cliche] 줄별 대사+프롬프트+모션+분위기 씬까지 생성해 Claude 호출이 60초를 넘길 수 있다
 // (60이던 시절 Vercel FUNCTION_INVOCATION_TIMEOUT → 클라이언트 "not valid JSON" 에러).
 export const maxDuration = 300;
-
-// ── 뉴스 고정 마무리 씬(구독 유도) ───────────────────────────────────────────
-// 뉴스 스크립트 생성 때마다 마지막에 붙는다(재생성 포함). 등장인물들이 손 흔들며
-// 인사하는 컷 + 이 자막. 목소리·속도는 다른 씬과 동일하게 프로젝트 기본을 그대로 쓴다
-// (예전엔 1.4배용 Typecast 목소리를 강제로 물렸으나, 그 씬만 목소리가 튀고 기본
-// 목소리로 리롤해도 안 바뀌는 문제 → voiceId·ttsSpeed 오버라이드 제거. 본문과 통일).
-const OUTRO_NARRATION = "아침 저녁으로 경제 교양 정보를 받아보실 수 있어요. 구독 눌러주세요!";
-
-function newsOutroScene(index: number): Scene {
-  return {
-    index,
-    narration: OUTRO_NARRATION,
-    imagePrompt:
-      "영상 속 등장인물들이 함께 카메라를 향해 환하게 웃으며 손을 흔들어 인사하는 밝은 마무리 장면",
-    motion:
-      "Characters smile warmly and wave goodbye at the camera, gentle push-in, soft bright lighting",
-    durationSec: estimateDuration(OUTRO_NARRATION),
-    status: "generated",
-  };
-}
 
 // 2. script — 소스에서 씬 배열 생성. body: { projectId, userPrompt? }
 // 흐름: 프로젝트 로드 → source 승인 확인 → Claude → scenes[] 저장 →
@@ -86,11 +65,8 @@ export async function POST(req: NextRequest) {
             // 명시 userPrompt 우선, 없으면 소스 단계에서 저장한 프로젝트 의도 사용.
             userPrompt: body.userPrompt ?? project.userPrompt,
           });
-    // 뉴스 모드: 구독 유도 마무리 씬을 항상 마지막에 추가.
-    if (project.mode !== "cliche") {
-      scenes.push(newsOutroScene(scenes.length));
-    }
-    project.scenes = scenes;
+    // 뉴스 모드: 구독 유도 마무리 씬 추가(이미 마지막 씬이 구독/좋아요 유도면 중복으로 안 붙임).
+    project.scenes = project.mode !== "cliche" ? appendNewsOutro(scenes) : scenes;
     project.steps.script.status = "generated";
     project.steps.script.updatedAt = Date.now();
     project.updatedAt = Date.now();
