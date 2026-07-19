@@ -234,6 +234,12 @@ export default function TheaterClient({
         </p>
       )}
 
+      {/* 비용 경고 — 관전 내내 계속 노출 */}
+      <p className="mx-auto mt-2 max-w-[600px] rounded-xl bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-center text-[11px] text-amber-600 dark:text-amber-400">
+        ⚠️ 주의: AI 자동극장(관전 모드)은 인물끼리 대화를 주고받는 모드라 토큰 비용이 많이
+        올라갈 수 있습니다.
+      </p>
+
       {/* 대사 로그 */}
       <div
         ref={scrollRef}

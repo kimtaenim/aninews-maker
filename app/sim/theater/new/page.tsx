@@ -41,6 +41,10 @@ export default async function TheaterNewPage() {
         인물 2~3명과 상황을 정하면, AI끼리 알아서 대화(연애·다툼)합니다. 당신은 ‘다음’으로
         한 턴씩 넘기며 지켜보고, 중간에 상황을 던져 흐름을 틀 수 있어요.
       </p>
+      <p className="mt-2 rounded-xl bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
+        ⚠️ 주의: AI 자동극장(관전 모드)은 인물끼리 대화를 주고받는 모드라 토큰 비용이 많이
+        올라갈 수 있습니다.
+      </p>
       <TheaterNewForm pool={pool} />
     </main>
   );
