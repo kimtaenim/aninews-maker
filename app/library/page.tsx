@@ -13,6 +13,11 @@ import { getLang } from "@/lib/languages";
 import { ADMIN_EMAIL } from "@/lib/auth";
 import driveConfig from "@/config/drive.json";
 
+// 롱폼 여부 — 세그먼트 id들을 참조하는 가로 프로젝트.
+function isLongform(p: Project): boolean {
+  return p.format === "long" && Array.isArray(p.sourceProjectIds) && p.sourceProjectIds.length > 0;
+}
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic"; // 항상 최신 목록(Redis)
 
@@ -47,6 +52,54 @@ function matchesQuery(p: Project, terms: string[]): boolean {
     p.scenes.map((s) => s.narration).join(" ")
   ).toLowerCase();
   return terms.every((t) => hay.includes(t));
+}
+
+// 프로젝트 카드 한 장(<li>). 평면 목록과 롱폼 폴더 안에서 공용. 가로(롱폼/세그먼트)면 16:9.
+function ProjectCard({ p }: { p: Project }) {
+  const aspect = p.format === "long" ? "aspect-[16/9]" : "aspect-[9/16]";
+  return (
+    <li className="relative">
+      <DeleteButton projectId={p.id} title={p.title} />
+      <Link
+        href={`/project/${p.id}`}
+        className="block rounded-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden hover:border-accent transition-colors"
+      >
+        <div className={`${aspect} bg-zinc-50 dark:bg-zinc-900 flex items-center justify-center overflow-hidden`}>
+          {p.keyframeUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={p.keyframeUrl} alt={p.title} className="h-full w-full object-cover" />
+          ) : (
+            <span className="text-[11px] text-zinc-400">미생성</span>
+          )}
+        </div>
+        <div className="p-2">
+          <p className="text-xs font-medium line-clamp-2 leading-snug">{p.title}</p>
+          <p className="mt-1 text-[10px] font-medium">
+            {p.lang && (
+              <span className="mr-1 rounded bg-accent/10 px-1 py-0.5 text-accent">
+                {getLang(p.lang)?.label ?? p.lang}
+              </span>
+            )}
+            {p.format === "long" && (
+              <span className="mr-1 rounded bg-accent/10 px-1 py-0.5 text-accent">가로</span>
+            )}
+            <span className="text-accent">{progressLabel(p)}</span>
+          </p>
+          <p className="mt-0.5 text-[10px] text-zinc-400 truncate">
+            🧑 {p.ownerEmail ?? ADMIN_EMAIL}
+          </p>
+        </div>
+      </Link>
+      {p.finalVideoUrl && (
+        <DriveUploadButton
+          projectId={p.id}
+          driveLink={p.driveLink}
+          fileName={p.driveFileName}
+          uploaded={!!p.driveLink && p.driveUploadedUrl === p.finalVideoUrl}
+        />
+      )}
+    </li>
+  );
 }
 
 export default async function LibraryPage({
@@ -89,6 +142,18 @@ export default async function LibraryPage({
   const shown = projects
     .filter((p) => matchesQuery(p, terms))
     .sort((a, b) => Number(isUploaded(a)) - Number(isUploaded(b)));
+
+  // 롱폼 폴더 — longformId 가 있는 세그먼트를 롱폼별로 모으고 평면 목록에선 뺀다.
+  // longformId 를 가진 "새" 항목만 폴더로 묶임(기존 항목은 필드가 없어 그대로 평면).
+  const segByLongform = new Map<string, Project[]>();
+  for (const p of shown) {
+    if (p.longformId) {
+      const arr = segByLongform.get(p.longformId) ?? [];
+      arr.push(p);
+      segByLongform.set(p.longformId, arr);
+    }
+  }
+  const topLevel = shown.filter((p) => !p.longformId);
 
   return (
     <main className="px-4 py-8 md:max-w-2xl md:mx-auto">
@@ -163,52 +228,31 @@ export default async function LibraryPage({
         </p>
       ) : (
         <ul className="mt-6 grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {shown.map((p) => (
-            <li key={p.id} className="relative">
-              <DeleteButton projectId={p.id} title={p.title} />
-              <Link
-                href={`/project/${p.id}`}
-                className="block rounded-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden hover:border-accent transition-colors"
-              >
-                <div className="aspect-[9/16] bg-zinc-50 dark:bg-zinc-900 flex items-center justify-center overflow-hidden">
-                  {p.keyframeUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={p.keyframeUrl}
-                      alt={p.title}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <span className="text-[11px] text-zinc-400">미생성</span>
-                  )}
-                </div>
-                <div className="p-2">
-                  <p className="text-xs font-medium line-clamp-2 leading-snug">
-                    {p.title}
-                  </p>
-                  <p className="mt-1 text-[10px] font-medium">
-                    {p.lang && (
-                      <span className="mr-1 rounded bg-accent/10 px-1 py-0.5 text-accent">
-                        {getLang(p.lang)?.label ?? p.lang}
+          {topLevel.map((p) => {
+            const segs = isLongform(p) ? segByLongform.get(p.id) ?? [] : [];
+            // 롱폼 + 그 세그먼트가 있으면 접이식 폴더로(롱폼 이름). 없으면 평면 카드.
+            if (segs.length > 0) {
+              return (
+                <li key={p.id} className="col-span-2 sm:col-span-3">
+                  <details className="rounded-2xl border border-accent/40 bg-accent/5 p-2">
+                    <summary className="cursor-pointer select-none flex items-center gap-2 px-1 py-1 text-sm font-medium">
+                      <span aria-hidden>📁</span>
+                      <span className="line-clamp-1 flex-1">{p.title}</span>
+                      <span className="shrink-0 text-[11px] text-zinc-500">
+                        세그먼트 {segs.length} · 롱폼
                       </span>
-                    )}
-                    <span className="text-accent">{progressLabel(p)}</span>
-                  </p>
-                  <p className="mt-0.5 text-[10px] text-zinc-400 truncate">
-                    🧑 {p.ownerEmail ?? ADMIN_EMAIL}
-                  </p>
-                </div>
-              </Link>
-              {p.finalVideoUrl && (
-                <DriveUploadButton
-                  projectId={p.id}
-                  driveLink={p.driveLink}
-                  fileName={p.driveFileName}
-                  uploaded={!!p.driveLink && p.driveUploadedUrl === p.finalVideoUrl}
-                />
-              )}
-            </li>
-          ))}
+                    </summary>
+                    <ul className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {[p, ...segs].map((c) => (
+                        <ProjectCard key={c.id} p={c} />
+                      ))}
+                    </ul>
+                  </details>
+                </li>
+              );
+            }
+            return <ProjectCard key={p.id} p={p} />;
+          })}
         </ul>
       )}
 
