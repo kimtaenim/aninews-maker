@@ -36,7 +36,7 @@ export default function ScenePreview({
   onReRecord?: () => void; // 음성 다시 녹음 — 6단계 그 씬으로 이동
   format?: "short" | "long"; // 롱폼(가로 16:9)이면 프레임을 가로로. 없으면 세로 9:16.
 }) {
-  const st = resolveSubtitleStyle(sub);
+  const st = resolveSubtitleStyle(sub, format);
   const recipe = resolveCaptionRecipe(sub, captionStyle);
   const FONT_CSS: Record<string, string> = {
     serif: "var(--font-noto-serif-kr), 'Noto Serif KR', serif",

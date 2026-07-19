@@ -37,7 +37,7 @@ async function tick() {
 
 // 배포 검증용 버전 표식 — Render 로그 + Redis(worker:build)에 남긴다.
 // Redis 에 쓰면 대시보드 없이 원격에서 "새 코드가 떴는지" 확인 가능.
-const BUILD = "longform-v1 (가로 16:9 해상도 + 롱폼 세그먼트 concat + 아이캐치)";
+const BUILD = "longform-v2 (자막 크기 프레임높이 비례 — 가로 자막 축소)";
 console.log(`[worker] BUILD = ${BUILD}`);
 console.log("[worker] 시작 — jobq:compose 폴링 중…");
 try {

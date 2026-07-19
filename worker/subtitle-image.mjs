@@ -130,8 +130,13 @@ try {
   );
 } catch {}
 
-// 1080폭 기준 자막 크기 (작게 56 / 보통 68 / 크게 84).
-const fontPx = (size) => (size === "small" ? 56 : size === "large" ? 84 : 68);
+// 자막 크기 = 프레임 "높이" 비례. 세로(H=1920) 기준 작게 56 / 보통 68 / 크게 84 를 유지하고,
+// 가로 롱폼(H=1080)에선 자동으로 절반쯤(×1080/1920)으로 줄어든다. (절대 px 를 그대로 가로에
+// 얹으면 높이 대비 1.8배로 커지던 버그 수정 — 자막은 프레임 높이에 비례해야 일관됨.)
+const fontPx = (size, H = 1920) => {
+  const base = size === "small" ? 56 : size === "large" ? 84 : 68;
+  return Math.round((base * H) / 1920);
+};
 const fontStr = (sub) =>
   `${sub.weight === "bold" ? 700 : 500} ${fontPx(sub.size)}px "${familyFor(sub)}"${LATIN_FALLBACK}`;
 
@@ -328,7 +333,7 @@ export async function renderCaptionPng(text, sub, opts = {}) {
   }
   // 씬별 자막 스타일 프리셋 — 폰트·박스·색·모서리·외곽선을 결정(위치·크기·정렬은 sub).
   const recipe = resolveCaptionRecipe(sub, opts.preset);
-  const size = opts.sizePx ?? fontPx(sub.size);
+  const size = opts.sizePx ?? fontPx(sub.size, H);
   const fam = familyOf(recipe.font);
   const baseFont = `${recipe.weight} ${size}px "${fam}"${LATIN_FALLBACK}`;
   const emSize = Math.round(size * 1.3); // 강조어는 1.3배 크게

@@ -24,13 +24,20 @@ export interface SubtitleStyle {
   emColor: string;
 }
 
-// 워커(subtitle-image.mjs)와 동일 비율: fontPx 56/68/84 @ W=1080.
-function fontCqwFor(size: SubtitleSettings["size"]): number {
-  const px = size === "small" ? 56 : size === "large" ? 84 : 68;
-  return (px / 1080) * 100; // %단위(cqw)
+// 워커(subtitle-image.mjs)와 동일: 폰트 px = base(56/68/84) × (H/1920) — 프레임 높이 비례.
+// cqw(컨테이너폭 %) = px / W × 100. 세로(1080×1920)는 6.3cqw(medium) 그대로, 가로(1920×1080)는
+// 약 2cqw 로 작아진다(절대 px 를 가로에 얹어 1.8배 커지던 것 교정 — 워커와 동일 알고리즘 유지).
+function fontCqwFor(size: SubtitleSettings["size"], format?: "short" | "long"): number {
+  const base = size === "small" ? 56 : size === "large" ? 84 : 68;
+  const [W, H] = format === "long" ? [1920, 1080] : [1080, 1920];
+  const px = (base * H) / 1920;
+  return (px / W) * 100; // %단위(cqw)
 }
 
-export function resolveSubtitleStyle(s: SubtitleSettings): SubtitleStyle {
+export function resolveSubtitleStyle(
+  s: SubtitleSettings,
+  format?: "short" | "long"
+): SubtitleStyle {
   return {
     fontFamily:
       s.font === "serif"
@@ -39,7 +46,7 @@ export function resolveSubtitleStyle(s: SubtitleSettings): SubtitleStyle {
     weightClass: s.weight === "bold" ? "font-bold" : "font-medium",
     boxClass: s.box === "light" ? "bg-white/85 text-zinc-900" : "bg-black/60 text-white",
     alignClass: s.align === "left" ? "text-left" : "text-center",
-    fontCqw: fontCqwFor(s.size),
+    fontCqw: fontCqwFor(s.size, format),
     emColor: s.box === "light" ? "#b45309" : "#ffd24a",
     containerPos:
       s.position === "top"
