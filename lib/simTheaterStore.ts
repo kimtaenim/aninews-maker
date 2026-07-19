@@ -16,7 +16,8 @@ export function initFeelings(cast: TheaterCast[]): TheaterFeeling[] {
   for (const a of cast) {
     for (const b of cast) {
       if (a.name === b.name) continue;
-      out.push({ from: a.name, to: b.name, like: 15, dislike: 20 });
+      // 관전은 관계가 자라는 걸 보는 재미 — 적대적으로 시작하지 않게 살짝 중립~호의.
+      out.push({ from: a.name, to: b.name, like: 20, dislike: 10 });
     }
   }
   return out;
