@@ -50,7 +50,7 @@ export default async function SimHomePage() {
           👀 구경하기
         </Link>
         <Link
-          href="/sim/theater/new"
+          href="/sim/theater"
           className="rounded-full border border-zinc-200 dark:border-zinc-800 px-3.5 py-1.5 text-sm font-medium hover:bg-zinc-100 dark:hover:bg-zinc-900"
         >
           🎭 AI 자동극장
