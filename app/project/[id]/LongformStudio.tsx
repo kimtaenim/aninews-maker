@@ -117,6 +117,36 @@ export default function LongformStudio({
         순서대로 이어붙이고 사이에 구독 아이캐치를 넣습니다.
       </p>
 
+      {/* 아이캐치 — 맨 위에 눈에 띄게. 세그먼트 사이마다 들어갈 마스코트 카드. */}
+      <div className="mt-4 rounded-xl border border-accent/40 bg-accent/5 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold">구독 아이캐치</h2>
+          <button
+            onClick={genEyecatch}
+            disabled={genBusy}
+            className="shrink-0 text-xs rounded-lg bg-accent hover:bg-accent-strong text-white px-3 py-1.5 disabled:opacity-40"
+          >
+            {genBusy ? "생성 중…" : eyecatchUrl ? "다시 생성" : "아이캐치 생성"}
+          </button>
+        </div>
+        <p className="mt-1 text-[11px] text-zinc-500">
+          송곳니 안경 미소녀 마스코트 + 구독 버튼(16:9). 세그먼트 사이마다 1초씩 들어갑니다. 롱폼당 1장.
+        </p>
+        {genErr && <p className="mt-2 text-[11px] text-red-600">{genErr}</p>}
+        {eyecatchUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={eyecatchUrl}
+            alt="아이캐치"
+            className="mt-2 w-full max-w-xs aspect-[16/9] object-cover rounded-lg border border-zinc-200 dark:border-zinc-800"
+          />
+        ) : (
+          <p className="mt-2 text-[11px] text-amber-600 dark:text-amber-400">
+            아직 없음 — 합성 전에 눌러서 만들어 두세요.
+          </p>
+        )}
+      </div>
+
       {/* 세그먼트 현황 */}
       <div className="mt-5 flex items-center justify-between">
         <h2 className="text-sm font-semibold">세그먼트 ({readyCount}/{segments.length} 완성)</h2>
@@ -153,36 +183,6 @@ export default function LongformStudio({
           </li>
         ))}
       </ol>
-
-      {/* 아이캐치 */}
-      <div className="mt-5 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold">구독 아이캐치</h2>
-          <button
-            onClick={genEyecatch}
-            disabled={genBusy}
-            className="shrink-0 text-xs rounded-lg border border-accent px-3 py-1.5 text-accent hover:bg-accent/10 disabled:opacity-40"
-          >
-            {genBusy ? "생성 중…" : eyecatchUrl ? "다시 생성" : "아이캐치 생성"}
-          </button>
-        </div>
-        <p className="mt-1 text-[11px] text-zinc-500">
-          송곳니 안경 미소녀 마스코트 + 구독 버튼(16:9). 세그먼트 사이마다 1초씩 들어갑니다. 롱폼당 1장.
-        </p>
-        {genErr && <p className="mt-2 text-[11px] text-red-600">{genErr}</p>}
-        {eyecatchUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={eyecatchUrl}
-            alt="아이캐치"
-            className="mt-2 w-full aspect-[16/9] object-cover rounded-lg border border-zinc-200 dark:border-zinc-800"
-          />
-        ) : (
-          <p className="mt-2 text-[11px] text-amber-600 dark:text-amber-400">
-            미생성 — 지금 합성하면 세그먼트만 이어붙습니다.
-          </p>
-        )}
-      </div>
 
       {/* 합성 */}
       <div className="mt-5 rounded-xl bg-zinc-50 dark:bg-zinc-900 p-3">
