@@ -206,6 +206,13 @@ export default function Studio({
   const [project, setProject] = useState<Project>(initial);
   // 롱폼(가로 16:9) 프로젝트면 이미지·미리보기 종횡비를 가로로. 없으면 세로 9:16(기존).
   const longAspect = project.format === "long" ? "aspect-[16/9]" : "aspect-[9/16]";
+  // 자막 위치 — 롱폼(가로)은 ⅓·중앙·⅔ 3종만 노출(상단/¾/하단은 세로 전용). 세로는 6종 그대로.
+  const subPositions =
+    project.format === "long"
+      ? SUBTITLE_POSITIONS.filter(
+          ([v]) => v === "one-third" || v === "center" || v === "two-thirds"
+        )
+      : SUBTITLE_POSITIONS;
   const [busy, _setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [errorStep, setErrorStep] = useState<StepKind | null>(null);
@@ -754,7 +761,7 @@ export default function Studio({
             ["font", "폰트", [["sans", "산세리프"], ["serif", "세리프"]]],
             ["weight", "굵기", [["regular", "보통"], ["bold", "볼드"]]],
             ["size", "크기", [["small", "작게"], ["medium", "보통"], ["large", "크게"]]],
-            ["position", "위치", SUBTITLE_POSITIONS],
+            ["position", "위치", subPositions],
             ["align", "정렬", [["center", "가운데"], ["left", "왼쪽"]]],
             ["box", "색(배경)", [["dark", "검은 박스·흰 글씨"], ["light", "흰 박스·검은 글씨"]]],
           ] as const
@@ -2912,7 +2919,7 @@ export default function Studio({
               disabled={busy !== null}
               className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1 text-xs outline-none focus:border-accent disabled:opacity-50"
             >
-              {SUBTITLE_POSITIONS.map(([v, l]) => (
+              {subPositions.map(([v, l]) => (
                 <option key={v} value={v}>
                   {l}
                 </option>
