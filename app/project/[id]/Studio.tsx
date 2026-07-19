@@ -75,6 +75,7 @@ function toEdit(s: Scene): EditScene {
 // 자막 위치 = 이미지에서 비워둘 지점(자막 자리). 자막 패널과 4단계 픽커가 함께 쓴다.
 const SUBTITLE_POSITIONS = [
   ["top", "상단"],
+  ["one-quarter", "¼"],
   ["one-third", "⅓"],
   ["center", "중앙"],
   ["two-thirds", "⅔"],
@@ -89,6 +90,7 @@ function subtitleContentHint(pos?: string): string {
     case "center":
       return "자막이 중앙 → 인물·주요 물체가 화면 상단과 하단에 생성돼요(가운데는 비움).";
     case "top":
+    case "one-quarter":
     case "one-third":
       return "자막이 위쪽 → 인물·주요 물체가 화면 중앙보다 아래에 생성돼요.";
     case "two-thirds":
@@ -210,7 +212,12 @@ export default function Studio({
   const subPositions =
     project.format === "long"
       ? SUBTITLE_POSITIONS.filter(
-          ([v]) => v === "one-third" || v === "center" || v === "two-thirds"
+          ([v]) =>
+            v === "one-quarter" ||
+            v === "one-third" ||
+            v === "center" ||
+            v === "two-thirds" ||
+            v === "three-quarters"
         )
       : SUBTITLE_POSITIONS;
   const [busy, _setBusy] = useState<string | null>(null);

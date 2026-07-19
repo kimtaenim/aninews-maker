@@ -377,6 +377,8 @@ export async function renderCaptionPng(text, sub, opts = {}) {
   const boxY =
     sub.position === "top"
       ? Math.round(H * 0.09)
+      : sub.position === "one-quarter"
+        ? Math.round(H * 0.25 - boxH / 2)
       : sub.position === "one-third"
         ? Math.round(H / 3 - boxH / 2)
       : sub.position === "center"
@@ -451,7 +453,9 @@ export async function renderWatermarkPng(wm, opts = {}) {
   const text = (wm?.text ?? "").trim();
   if (!text) return canvas.encode("png");
 
-  const size = Math.round(W * 0.033); // ≈36px @1080
+  // 워터마크 크기 = 짧은 변 기준(세로·가로 둘 다 1080 → 약 36px). 가로에서 폭(1920) 비례로
+  // 커지던 것 교정("세로때 크기"). 위치 여백은 그대로 W 비례(가장자리 인셋).
+  const size = Math.round(Math.min(W, H) * 0.033); // ≈36px (세로 크기)
   ctx.font = `600 ${size}px "${SANS_FAMILY}"${LATIN_FALLBACK}`;
   ctx.textBaseline = "top";
   const tw = ctx.measureText(text).width;
@@ -481,7 +485,7 @@ export async function renderCreditPng(name, wm, opts = {}) {
   if (!nm) return canvas.encode("png");
   const text = `제작 : ${nm}`;
 
-  const wmSize = Math.round(W * 0.033); // 워터마크 기준 크기
+  const wmSize = Math.round(Math.min(W, H) * 0.033); // 워터마크 기준 크기(짧은 변=세로 크기)
   const size = Math.round(wmSize * 1.5); // 1.5배
   ctx.font = `600 ${size}px "${SANS_FAMILY}"${LATIN_FALLBACK}`;
   ctx.textBaseline = "top";

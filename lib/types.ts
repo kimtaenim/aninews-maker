@@ -131,7 +131,7 @@ export interface SubtitleSettings {
   font: "sans" | "serif";
   weight: "regular" | "bold";
   size: "small" | "medium" | "large";
-  position: "top" | "one-third" | "center" | "two-thirds" | "three-quarters" | "bottom";
+  position: "top" | "one-quarter" | "one-third" | "center" | "two-thirds" | "three-quarters" | "bottom";
   align: "center" | "left";
   box: "dark" | "light"; // dark=검은 박스+흰 글씨, light=흰 박스+검은 글씨
   lang: "ko" | "en" | "both"; // 자막 언어 (영어는 번역 생성 필요)

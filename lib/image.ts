@@ -25,6 +25,7 @@ const NO_TEXT =
 function edgeSafe(position?: string): string {
   const rules: Record<string, { clear: string; place: string }> = {
     top: { clear: "top", place: "below the center, in the lower half of the frame" },
+    "one-quarter": { clear: "upper quarter", place: "below the center, in the lower half of the frame" },
     "one-third": { clear: "upper third", place: "below the center, in the lower half of the frame" },
     center: {
       clear: "central/middle",

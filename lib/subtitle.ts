@@ -51,6 +51,8 @@ export function resolveSubtitleStyle(
     containerPos:
       s.position === "top"
         ? { top: "9%" }
+        : s.position === "one-quarter"
+          ? { top: "25%", transform: "translateY(-50%)" }
         : s.position === "one-third"
           ? { top: "33.3%", transform: "translateY(-50%)" }
           : s.position === "center"
