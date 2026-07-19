@@ -11,6 +11,7 @@ import { getOpenAI, IMAGE_MODEL, IMAGE_SIZE, type ImageQuality } from "./openai"
 import { uploadAsset } from "./blob";
 import { openaiImageCostUsd, recordCost } from "./cost";
 import { getStyleProfile } from "./styleProfiles";
+import eyecatchConfig from "../config/eyecatch.json";
 
 const REF_FETCH_TIMEOUT_MS = 30_000;
 
@@ -402,6 +403,55 @@ export async function generatePortrait(args: {
     model: IMAGE_MODEL,
     costUsd,
     meta: { kind: "cast-portrait", name: name ?? "", upload: !!faceImageUrl, quality },
+  });
+  return { url, costUsd };
+}
+
+// [롱폼] 아이캐치(송곳니 안경 미소녀 마스코트 + 구독 버튼) 1장 생성 — config/eyecatch.json 의
+// description(캐릭터 정체성) + eyecatchPrompt(구독 버튼 장면)로 16:9 생성. referenceImageUrl 이
+// 등록돼 있으면 img2img 로 더 단단히 고정. 롱폼당 1장 만들어 세그먼트 사이마다 재사용한다.
+export async function generateEyecatch(args: {
+  projectId: string;
+  imageSize?: string; // 기본 16:9 (1792x1008). lib/format.ts 와 동일 값.
+  quality?: ImageQuality;
+}): Promise<{ url: string; costUsd: number }> {
+  const { projectId, imageSize = "1792x1008", quality = "medium" } = args;
+  const client = getOpenAI();
+  const cfg = eyecatchConfig as {
+    description?: string;
+    eyecatchPrompt?: string;
+    referenceImageUrl?: string;
+  };
+  // 아이캐치는 구독 버튼(글자 포함)을 '원하는' 화면이라 NO_TEXT 대신 버튼 텍스트를 허용한다.
+  const prompt =
+    `${cfg.description ?? ""}\n\n${cfg.eyecatchPrompt ?? ""}\n\n` +
+    "A bold, clean red SUBSCRIBE button (with a short label) is the focal call-to-action and should be " +
+    "crisp and legible. Keep any other on-image text minimal.";
+  const ref = cfg.referenceImageUrl?.trim();
+  const result = ref
+    ? await client.images.edit({
+        model: IMAGE_MODEL,
+        image: await fetchRefFile(ref, "아이캐치 참조"),
+        prompt,
+        size: imageSize,
+        quality,
+        n: 1,
+      })
+    : await client.images.generate({ model: IMAGE_MODEL, prompt, size: imageSize, quality, n: 1 });
+  const b64 = result.data?.[0]?.b64_json;
+  if (!b64) throw new Error("아이캐치 생성 실패 — 응답에 이미지가 없어요");
+  const { url } = await uploadAsset(
+    `project/${projectId}/eyecatch-${Date.now()}.png`,
+    Buffer.from(b64, "base64"),
+    "image/png"
+  );
+  const costUsd = openaiImageCostUsd(IMAGE_MODEL, quality, 1);
+  await recordCost({
+    projectId,
+    vendor: "openai",
+    model: IMAGE_MODEL,
+    costUsd,
+    meta: { kind: "eyecatch", quality },
   });
   return { url, costUsd };
 }
