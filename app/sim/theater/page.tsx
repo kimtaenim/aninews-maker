@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { listSimTheaterIds, getSimTheatersBulk } from "@/lib/simTheaterStore";
 import type { SimTheater } from "@/lib/types";
+import DeleteTheaterButton from "./DeleteTheaterButton";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,8 +46,12 @@ export default async function TheaterListPage() {
 
       <ul className="mt-6 grid gap-3">
         {theaters.map((t) => (
-          <li key={t.id} className="rounded-2xl border border-zinc-200 dark:border-zinc-800 p-4">
-            <div className="font-medium">{t.title}</div>
+          <li
+            key={t.id}
+            className="relative rounded-2xl border border-zinc-200 dark:border-zinc-800 p-4"
+          >
+            <DeleteTheaterButton theaterId={t.id} title={t.title} />
+            <div className="pr-8 font-medium">{t.title}</div>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               {t.cast.map((c) => (
                 <span
