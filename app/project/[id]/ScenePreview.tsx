@@ -22,6 +22,7 @@ export default function ScenePreview({
   onCaptionStyle,
   onSaveLines,
   onReRecord,
+  format,
 }: {
   index: number;
   videoUrl?: string;
@@ -33,6 +34,7 @@ export default function ScenePreview({
   onCaptionStyle?: (id: string) => void;
   onSaveLines?: (text: string) => void; // 자막 줄바꿈(행) 편집 저장 — 결과는 다시 싱크됨
   onReRecord?: () => void; // 음성 다시 녹음 — 6단계 그 씬으로 이동
+  format?: "short" | "long"; // 롱폼(가로 16:9)이면 프레임을 가로로. 없으면 세로 9:16.
 }) {
   const st = resolveSubtitleStyle(sub);
   const recipe = resolveCaptionRecipe(sub, captionStyle);
@@ -128,7 +130,7 @@ export default function ScenePreview({
     <li className="grid gap-1.5">
       {/* 프레임을 컨테이너로 — 자막을 cqw(컨테이너폭 %)로 그려 1080폭 합성과 같은 비율. */}
       <div
-        className="relative aspect-[9/16] overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800 bg-black"
+        className={`relative ${format === "long" ? "aspect-[16/9]" : "aspect-[9/16]"} overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800 bg-black`}
         style={{ containerType: "inline-size" }}
       >
         {videoUrl ? (

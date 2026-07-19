@@ -204,6 +204,8 @@ export default function Studio({
   };
 }) {
   const [project, setProject] = useState<Project>(initial);
+  // 롱폼(가로 16:9) 프로젝트면 이미지·미리보기 종횡비를 가로로. 없으면 세로 9:16(기존).
+  const longAspect = project.format === "long" ? "aspect-[16/9]" : "aspect-[9/16]";
   const [busy, _setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [errorStep, setErrorStep] = useState<StepKind | null>(null);
@@ -3108,7 +3110,7 @@ export default function Studio({
             {[0, 1, 2].map((i) => (
               <div
                 key={i}
-                className="flex aspect-[9/16] items-center justify-center rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700 text-zinc-400"
+                className={`flex ${longAspect} items-center justify-center rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700 text-zinc-400`}
               >
                 <Spinner className="size-5" />
               </div>
@@ -3142,7 +3144,7 @@ export default function Studio({
                     <img
                       src={u}
                       alt="키프레임 후보"
-                      className="w-full aspect-[9/16] object-cover"
+                      className={`w-full ${longAspect} object-cover`}
                     />
                     {selected && (
                       <span className="absolute top-1 right-1 rounded bg-accent text-white text-[10px] font-bold px-1.5 py-0.5">
@@ -3177,7 +3179,7 @@ export default function Studio({
             <img
               src={project.keyframeUrl}
               alt="선택된 씬0 키프레임"
-              className="w-48 aspect-[9/16] object-cover rounded-xl border-2 border-accent"
+              className={`w-48 ${longAspect} object-cover rounded-xl border-2 border-accent`}
             />
             <button
               type="button"
@@ -3310,7 +3312,7 @@ export default function Studio({
                   src={project.keyframeUrl}
                   alt="씬0 키프레임"
                   onClick={() => setZoomUrl(project.keyframeUrl!)}
-                  className="w-12 aspect-[9/16] object-cover rounded-lg border border-zinc-200 dark:border-zinc-800 cursor-zoom-in"
+                  className={`w-12 ${longAspect} object-cover rounded-lg border border-zinc-200 dark:border-zinc-800 cursor-zoom-in`}
                 />
                 <p className="text-[11px] text-zinc-500">
                   씬0 키프레임 — 모든 씬이 이 스타일·인물·팔레트를 레퍼런스로 따릅니다.
@@ -3336,7 +3338,7 @@ export default function Studio({
                     key={i}
                     className={`grid grid-cols-[80px_1fr] gap-3 rounded-xl border border-zinc-200 dark:border-zinc-800 p-2.5${skipped ? " opacity-50" : ""}`}
                   >
-                    <div className="flex aspect-[9/16] items-center justify-center overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900">
+                    <div className={`flex ${longAspect} items-center justify-center overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900`}>
                       {sceneBusy ? (
                         <Spinner className="size-5" />
                       ) : sc.imageUrl ? (
@@ -3728,7 +3730,7 @@ export default function Studio({
                   (sc.status === "generating" && !sc.videoUrl); // 병렬(전체/선택) 생성 중
                 return (
                   <li key={i} className="grid gap-1.5">
-                    <div className="relative flex aspect-[9/16] items-center justify-center overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900">
+                    <div className={`relative flex ${longAspect} items-center justify-center overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900`}>
                       {sc.videoUrl ? (
                         // 전부 autoPlay 하면 크롬이 무거워져서, 보이는 "한 줄"만 재생한다.
                         <SceneVideoThumb
@@ -4508,6 +4510,7 @@ export default function Studio({
                   onCaptionStyle={(id) => setCaptionStyle(i, id)}
                   onSaveLines={sc.mood ? undefined : (text) => saveSubtitleLines(i, text)}
                   onReRecord={sc.mood ? undefined : () => goToVoiceScene(i)}
+                  format={project.format}
                 />
               ) : null
             )}
