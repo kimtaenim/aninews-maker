@@ -14,8 +14,9 @@ import { segmentCaptions } from "./captions.mjs";
 import { stripMarks } from "./emphasis.mjs";
 import { renderCaptionPng, renderWatermarkPng, renderCreditPng } from "./subtitle-image.mjs";
 
-const W = 1080;
-const H = 1920;
+// 합성 캔버스 해상도는 프로젝트 포맷에 따라 결정(composeProject 안에서). 세로 숏폼
+// 1080x1920, 가로 롱폼 1920x1080. 두 해상도는 픽셀 수가 같아 인코딩 부하도 동일.
+// (lib/format.ts 가 앱 쪽 단일 원천 — 워커는 .mjs 라 같은 값을 여기 인라인으로 둔다.)
 // 30fps — v6 에서 검증된 값. 24fps 로 바꿨더니 -loop 자막 오버레이 체인이 데드락(매달림)나서
 // 복구. (인코딩 속도는 워커 인스턴스 상향으로 해결 — FPS 로 억지로 줄이지 않는다.)
 const FPS = 30;
@@ -71,6 +72,86 @@ async function download(url, dest) {
   }
 }
 
+// [롱폼] 세그먼트(16:9로 재합성된 숏폼) 완성본들을 순서대로 이어붙이고, 각 세그먼트 뒤에
+// 1초 아이캐치(송곳니 안경 미소녀 + 구독 버튼)를 끼운다. 구독 마무리씬은 이 반복 아이캐치가
+// 대체한다. 세그먼트·아이캐치 모두 워커가 같은 파라미터(libx264/yuv420p/30fps/aac128k, 동일 W·H)로
+// 구웠으므로 재인코딩 없이 -c copy 로 붙는다(씬 합성과 동일 방식 — 이미 검증된 패턴).
+//   dir/log/W/H 는 호출자(composeProject)에서 받아 공유(같은 try/finally·진행로그).
+async function runLongformConcat(project, lang, dir, log, W, H) {
+  const segIds = project.sourceProjectIds ?? [];
+  if (segIds.length === 0) throw new Error("롱폼에 세그먼트(sourceProjectIds)가 없어요");
+
+  // 1) 아이캐치 1초 클립 — 있으면. 세그먼트와 동일 인코딩 파라미터로 구워야 -c copy 가 된다.
+  //    무음 오디오(anullsrc)를 실어 세그먼트(오디오 있음)와 스트림 구성을 맞춘다.
+  let eyecatchClip = null;
+  if (project.eyecatchUrl) {
+    const ePng = join(dir, "eyecatch-src");
+    await download(project.eyecatchUrl, ePng);
+    eyecatchClip = join(dir, "eyecatch.mp4");
+    await run("ffmpeg", [
+      "-y",
+      "-loop", "1", "-framerate", String(FPS), "-i", ePng,
+      "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
+      "-filter_complex",
+      `[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},fps=${FPS}[v]`,
+      "-map", "[v]", "-map", "1:a", "-t", "1", "-r", String(FPS),
+      "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-crf", "23",
+      "-c:a", "aac", "-b:a", "128k",
+      eyecatchClip,
+    ]);
+    await log("아이캐치 1초 클립 준비");
+  } else {
+    await log("아이캐치 없음 — 세그먼트만 이어붙임");
+  }
+
+  // 2) 각 세그먼트 완성본 다운로드
+  const segFiles = [];
+  for (let i = 0; i < segIds.length; i++) {
+    const sp = await getProject(segIds[i]);
+    const url = sp?.finalVideoUrl;
+    if (!url) throw new Error(`세그먼트 ${i + 1}(${segIds[i]}) 완성본(finalVideoUrl)이 없어요`);
+    const f = join(dir, `seg${i}.mp4`);
+    await log(`세그먼트 ${i + 1}/${segIds.length} 다운로드…`);
+    await download(url, f);
+    segFiles.push(f);
+  }
+
+  // 3) concat 순서 — 각 세그먼트 뒤에 아이캐치(마지막 뒤에도 → 구독 마무리 대체).
+  const order = [];
+  for (const f of segFiles) {
+    order.push(f);
+    if (eyecatchClip) order.push(eyecatchClip);
+  }
+  const listPath = join(dir, "list.txt");
+  await writeFile(listPath, order.map((f) => `file '${f}'`).join("\n"), "utf8");
+  const finalPath = join(dir, "final.mp4");
+  await log("이어붙이기(무손실 copy)…");
+  await run("ffmpeg", [
+    "-y", "-f", "concat", "-safe", "0", "-i", listPath,
+    "-c", "copy", "-movflags", "+faststart",
+    finalPath,
+  ]);
+
+  // 4) 업로드 + 저장 — 저장 직전 fresh 재읽기 후 finalVideoUrl 만 머지(통째 저장 금지 규약).
+  await log("Blob 업로드…");
+  const { url } = await put(
+    `project/${project.id}/final-${lang}-${Date.now()}.mp4`,
+    createReadStream(finalPath),
+    { access: "public", contentType: "video/mp4", addRandomSuffix: false }
+  );
+  const p2 = await getProject(project.id);
+  if (p2) {
+    p2.finalVideoUrl = url;
+    p2.steps.compose.status = "generated";
+    p2.steps.compose.error = undefined;
+    p2.steps.compose.updatedAt = Date.now();
+    p2.updatedAt = Date.now();
+    await saveProject(p2);
+  }
+  await log("롱폼 합성 완료");
+  return url;
+}
+
 // opts.clean=true → "영상만" 합성: 보이스·자막·효과음·워터마크·크레딧 전부 제외.
 // 단, 씬 길이는 음성 길이 기준 그대로(외부 편집기에서 풀버전과 타이밍이 맞게).
 // 결과는 finalVideoUrl 이 아닌 cleanVideoUrl 에 저장(정식 합성본을 안 덮음).
@@ -87,9 +168,24 @@ export async function composeProject(projectId, lang, opts = {}) {
   await log("composeProject 진입 — getProject 호출…");
   const project = await getProject(projectId);
   if (!project) throw new Error("프로젝트를 찾을 수 없어요");
-  const scenes = (project.scenes ?? []).filter((s) => s.videoUrl && !s.skipped);
-  await log(`프로젝트 로드됨 — 비디오 있는 씬 ${scenes.length}개`);
-  if (scenes.length === 0) throw new Error("비디오가 있는 씬이 없어요");
+  // 포맷별 합성 해상도 — long=가로 16:9, 그 외=세로 9:16(기존 기본). 자막·워터마크·
+  // 크레딧 렌더러는 모두 { W, H } 를 받으므로 이 두 값만 바꾸면 전부 따라온다.
+  const isLong = project.format === "long";
+  const W = isLong ? 1920 : 1080;
+  const H = isLong ? 1080 : 1920;
+  // 롱폼(세그먼트 이어붙이기) 여부 — sourceProjectIds 로 판별. 롱폼은 자기 씬이 없고
+  // 세그먼트(재합성된 숏폼) 완성본 + 아이캐치를 concat 한다(아래 runLongformConcat).
+  const isLongform =
+    project.format === "long" &&
+    Array.isArray(project.sourceProjectIds) &&
+    project.sourceProjectIds.length > 0;
+  const scenes = isLongform ? [] : (project.scenes ?? []).filter((s) => s.videoUrl && !s.skipped);
+  if (isLongform) {
+    await log(`롱폼 합성 — 세그먼트 ${project.sourceProjectIds.length}개 + 아이캐치`);
+  } else {
+    await log(`프로젝트 로드됨 — 비디오 있는 씬 ${scenes.length}개`);
+    if (scenes.length === 0) throw new Error("비디오가 있는 씬이 없어요");
+  }
 
   const sub = project.subtitle ?? {
     font: "sans", weight: "regular", size: "small",
@@ -100,6 +196,11 @@ export async function composeProject(projectId, lang, opts = {}) {
   );
   const dir = await mkdtemp(join(tmpdir(), "compose-"));
   try {
+    // 롱폼: 세그먼트 완성본 + 아이캐치를 이어붙이는 경량 경로(씬 재인코딩 없음).
+    if (isLongform) {
+      const url = await runLongformConcat(project, lang, dir, log, W, H);
+      return url;
+    }
     if (clean) await log("클린 합성 모드 — 보이스·자막·효과음·워터마크 제외(영상만)");
     // 워터마크는 모든 씬에 동일하게 들어가므로 한 번만 렌더(전체프레임 투명 PNG).
     let wmPath = null;

@@ -160,6 +160,18 @@ export interface Project {
   // 콘텐츠 모드. "news"(기본)=뉴스 숏폼, "cliche"=연애 클리셰(ani-cliché 탭).
   // cliche 는 같은 파이프라인을 쓰되 스크립트(대사)·스타일·카메라·목소리를 로맨스로 프리셋.
   mode?: "news" | "cliche";
+  // 영상 포맷. "short"(기본·없으면 이걸로)=세로 9:16, "long"=가로 16:9(롱폼).
+  // 이미지 크기·워커 해상도·fal 비율·UI 종횡비의 단일 원천(lib/format.ts).
+  format?: "short" | "long";
+  // [롱폼] 이 롱폼을 이어붙인 소재 숏폼(세그먼트)들의 프로젝트 id — 순서대로. 출처·재씨딩용.
+  // 각 세그먼트는 16:9로 재합성된(구독 마무리씬 제외) 프로젝트이며, 그 finalVideoUrl 을 이어붙인다.
+  sourceProjectIds?: string[];
+  // [롱폼] 세그먼트 사이/뒤에 1초씩 끼우는 아이캐치(송곳니 안경 미소녀 + 구독 버튼) 이미지.
+  // 롱폼당 1장 생성해 매 경계에 재사용. 구독 마무리씬을 대체(반복 노출로 구독 유도).
+  eyecatchUrl?: string;
+  // [롱폼-세그먼트] 이 프로젝트가 어떤 롱폼의 세그먼트인지(역참조). 라이브러리에서 롱폼
+  // 이름 폴더로 묶는 키. 이 필드가 있는 "새" 항목만 폴더로 렌더(기존 항목은 평면 유지).
+  longformId?: string;
   cast?: string[]; // [cliche] 등장 인물 이름들(화자 = 이 이름 또는 "내레이션"). 목소리·씬 화자에 사용.
   castMembers?: CastMember[]; // [cliche] 캐스팅 단계 산출물(얼굴·목소리 포함). cast/castVoices 의 원천.
   styleProfileId: string; // config/style-profiles.json 의 id

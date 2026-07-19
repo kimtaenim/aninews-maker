@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProject, saveProject } from "@/lib/projectStore";
+import { formatDims } from "@/lib/format";
 import {
   submitVideo,
   pollVideoJob,
@@ -105,6 +106,7 @@ export async function POST(req: NextRequest) {
     const { jobId } = await submitVideo(modelId, {
       imageUrl: scene.imageUrl,
       prompt,
+      aspect: formatDims(project.format).videoAspect, // 가로 롱폼이면 16:9(Seedance 강제 9:16 방어)
     });
     // 제출(네트워크 수 초) 동안 다른 저장(효과음·자막 등)이 있었을 수 있으니
     // 최신 재읽기 후 이 씬의 비디오 필드만 머지(낡은 스냅샷 통째 저장 금지).

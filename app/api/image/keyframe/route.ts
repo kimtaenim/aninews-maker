@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProject, saveProject } from "@/lib/projectStore";
 import { generateKeyframes } from "@/lib/image";
+import { formatDims } from "@/lib/format";
 import { canStart } from "@/lib/stepMachine";
 import { formatKrw } from "@/lib/cost";
 import type { ImageQuality } from "@/lib/openai";
@@ -49,6 +50,7 @@ export async function POST(req: NextRequest) {
     // 후보 3장 생성. 빠름·저렴(low) 고정. 선택은 /select 에서.
     const { urls, costUsd } = await generateKeyframes({
       projectId,
+      imageSize: formatDims(project.format).imageSize, // 가로 롱폼이면 16:9로
       styleBible: project.styleBible,
       scenePrompt: scene0.imagePrompt,
       narration: scene0.narration,

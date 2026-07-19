@@ -107,6 +107,12 @@ export default async function LibraryPage({
             </a>
           )}
           <Link
+            href="/longform/new"
+            className="text-xs font-medium rounded-lg border border-accent px-3 py-1.5 text-accent hover:bg-accent/10"
+          >
+            🎞 롱폼 묶기
+          </Link>
+          <Link
             href="/new"
             className="text-xs font-medium rounded-lg bg-accent hover:bg-accent-strong text-white px-3 py-1.5"
           >

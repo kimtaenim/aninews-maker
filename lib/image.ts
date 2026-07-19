@@ -89,6 +89,7 @@ export async function generateKeyframes(args: {
   referenceImageUrl?: string; // 있으면 이 이미지를 레퍼런스로 img2img(인물/구도 살림)
   portraitUrls?: string[]; // [cliche] 캐스팅 포트레이트들 — 등장인물 외모 고정용 참조
   subtitlePosition?: string; // 비워둘 지점(자막 위치) — 그 띠만 배경/소품만 두게 한다
+  imageSize?: string; // 생성 크기(가로x세로). 비면 세로 9:16 기본. 롱폼은 formatDims 로 16:9 전달.
 }): Promise<{ urls: string[]; costUsd: number }> {
   const {
     projectId,
@@ -100,6 +101,7 @@ export async function generateKeyframes(args: {
     referenceImageUrl,
     portraitUrls = [],
     subtitlePosition,
+    imageSize = IMAGE_SIZE,
   } = args;
   const client = getOpenAI();
 
@@ -125,11 +127,11 @@ export async function generateKeyframes(args: {
           model: IMAGE_MODEL,
           image: await Promise.all(refUrls.map((u, i) => fetchRefFile(u, `참조${i}`))),
           prompt,
-          size: IMAGE_SIZE,
+          size: imageSize,
           quality,
           n,
         })
-      : client.images.generate({ model: IMAGE_MODEL, prompt, size: IMAGE_SIZE, quality, n });
+      : client.images.generate({ model: IMAGE_MODEL, prompt, size: imageSize, quality, n });
 
   const first = await genN(count);
   const b64s: string[] = (first.data ?? [])
@@ -180,8 +182,17 @@ export async function convertToRealistic(args: {
   label: string; // Blob 경로용 라벨(예: "keyframe", "scene-3")
   quality?: ImageQuality;
   subtitlePosition?: string; // 비워둘 지점(자막 위치)
+  imageSize?: string; // 생성 크기(가로x세로). 비면 세로 9:16 기본. 롱폼은 formatDims 로 16:9 전달.
 }): Promise<{ url: string; costUsd: number }> {
-  const { projectId, imageUrl, narration, label, quality = "medium", subtitlePosition } = args;
+  const {
+    projectId,
+    imageUrl,
+    narration,
+    label,
+    quality = "medium",
+    subtitlePosition,
+    imageSize = IMAGE_SIZE,
+  } = args;
   const client = getOpenAI();
   const realisticBible = getStyleProfile("realistic").imageBible;
   const refFile = await fetchRefFile(imageUrl, "원본");
@@ -197,7 +208,7 @@ export async function convertToRealistic(args: {
     model: IMAGE_MODEL,
     image: refFile,
     prompt,
-    size: IMAGE_SIZE,
+    size: imageSize,
     quality,
     n: 1,
   });
@@ -235,6 +246,7 @@ export async function generateScene(args: {
   portraitUrls?: string[]; // [cliche] 캐스팅 포트레이트들 — 등장인물 외모 고정용 참조
   paletteHint?: string; // 비면 키프레임 팔레트 그대로, 있으면 색감/조명만 그쪽으로 변주
   subtitlePosition?: string; // 비워둘 지점(자막 위치) — 그 띠만 배경/소품만 두게 한다
+  imageSize?: string; // 생성 크기(가로x세로). 비면 세로 9:16 기본. 롱폼은 formatDims 로 16:9 전달.
 }): Promise<{ url: string; costUsd: number }> {
   const {
     projectId,
@@ -248,6 +260,7 @@ export async function generateScene(args: {
     portraitUrls = [],
     paletteHint,
     subtitlePosition,
+    imageSize = IMAGE_SIZE,
   } = args;
   const client = getOpenAI();
 
@@ -284,7 +297,7 @@ export async function generateScene(args: {
     model: IMAGE_MODEL,
     image: refFiles,
     prompt,
-    size: IMAGE_SIZE,
+    size: imageSize,
     quality,
     n: 1,
   });

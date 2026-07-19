@@ -21,6 +21,8 @@ export const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
 // 배수여야 한다(1080 은 16 으로 안 나눠져 400 에러). 1008x1792 는 둘 다 16 배수면서
 // 비율이 정확히 9:16 (1008/1792 = 0.5625). generate·edit 둘 다 OK 확인됨.
 // (gpt-image-1 로 폴백하면 미지원 → 그땐 1024x1536 으로 내려야 함.)
+// [롱폼] 가로 16:9 는 1792x1008(둘 다 16 배수, 1792/1008≈1.778). format 별 크기는
+// lib/format.ts 가 단일 원천 — 여기 IMAGE_SIZE 는 기존 호출부 무회귀용 기본(세로).
 export const IMAGE_SIZE = "1008x1792" as const;
 
 export type ImageQuality = "low" | "medium" | "high";

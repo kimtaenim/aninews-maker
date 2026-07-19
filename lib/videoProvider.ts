@@ -42,7 +42,7 @@ const SEP = "::";
 
 export async function submitVideo(
   modelId: string,
-  opts: { imageUrl: string; prompt?: string; duration?: number }
+  opts: { imageUrl: string; prompt?: string; duration?: number; aspect?: string }
 ): Promise<{ jobId: string }> {
   const model = getVideoModel(modelId);
   if (model.provider === "grok") {
@@ -50,10 +50,17 @@ export async function submitVideo(
     return { jobId: `grok${SEP}${requestId}` };
   }
   // fal — falGenerate 가 "<endpoint>::<requestId>" 를 돌려줌. 모델 필수 파라미터 전달.
+  // 가로(롱폼)면 aspect_ratio 를 쓰는 모델만 덮어쓴다: Seedance 는 defaultParams 로 "9:16"
+  // 을 강제하므로 "16:9"로 교체. 나머지(MiniMax·Kling·Grok)는 입력 이미지 비율(이미 16:9)을
+  // 따르므로 손대지 않는다(불필요한 파라미터 추가로 인한 거부 방지).
+  const params: Record<string, unknown> = { ...model.defaultParams };
+  if (opts.aspect && "aspect_ratio" in params) params.aspect_ratio = opts.aspect;
   const { jobId } = await falGenerate({
-    ...opts,
+    imageUrl: opts.imageUrl,
+    prompt: opts.prompt,
+    duration: opts.duration,
     endpoint: model.endpoint,
-    params: model.defaultParams,
+    params,
   });
   return { jobId: `fal${SEP}${jobId}` };
 }

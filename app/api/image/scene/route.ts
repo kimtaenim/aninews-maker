@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProject, saveProject } from "@/lib/projectStore";
 import { generateScene } from "@/lib/image";
+import { formatDims } from "@/lib/format";
 import { canStart } from "@/lib/stepMachine";
 import { formatKrw } from "@/lib/cost";
 import type { ImageQuality } from "@/lib/openai";
@@ -84,6 +85,7 @@ export async function POST(req: NextRequest) {
   try {
     const { url, costUsd } = await generateScene({
       projectId,
+      imageSize: formatDims(project.format).imageSize, // 가로 롱폼이면 16:9로
       styleBible: project.styleBible,
       scenePrompt: scene.imagePrompt,
       narration: scene.narration,

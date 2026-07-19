@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProject, saveProject } from "@/lib/projectStore";
 import { convertToRealistic } from "@/lib/image";
+import { formatDims } from "@/lib/format";
 import { formatKrw } from "@/lib/cost";
 import type { ImageQuality } from "@/lib/openai";
 
@@ -48,6 +49,7 @@ export async function POST(req: NextRequest) {
   try {
     const { url, costUsd } = await convertToRealistic({
       projectId,
+      imageSize: formatDims(project.format).imageSize, // 가로 롱폼이면 16:9로
       imageUrl: srcUrl,
       narration: scene?.narration,
       label: isKeyframe ? "keyframe" : `scene-${sceneIndex}`,
