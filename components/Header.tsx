@@ -24,6 +24,12 @@ export default async function Header() {
             라이브러리
           </Link>
           <Link
+            href="/longform"
+            className="text-xs font-medium text-accent hover:opacity-80"
+          >
+            🎞 롱폼
+          </Link>
+          <Link
             href="/cliche/new"
             className="text-xs font-medium text-pink-600 dark:text-pink-400 hover:text-pink-700 dark:hover:text-pink-300"
           >

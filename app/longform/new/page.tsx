@@ -25,10 +25,10 @@ export default async function LongformNewPage() {
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-lg font-semibold tracking-tight">롱폼 묶기</h1>
         <Link
-          href="/library"
+          href="/longform"
           className="text-xs font-medium rounded-lg border border-zinc-200 dark:border-zinc-800 px-3 py-1.5 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-900"
         >
-          ← 라이브러리
+          ← 롱폼
         </Link>
       </div>
       <p className="mt-2 text-xs text-zinc-500">

@@ -1,6 +1,4 @@
 import Link from "next/link";
-import DeleteButton from "./DeleteButton";
-import DriveUploadButton from "./DriveUploadButton";
 import DailySeqControl from "./DailySeqControl";
 import {
   countProjects,
@@ -8,98 +6,24 @@ import {
   listAllProjectIds,
   getProjectsBulk,
 } from "@/lib/projectStore";
-import { STEP_ORDER, type Project } from "@/lib/types";
-import { getLang } from "@/lib/languages";
-import { ADMIN_EMAIL } from "@/lib/auth";
+import type { Project } from "@/lib/types";
+import ProjectCard from "@/components/ProjectCard";
 import driveConfig from "@/config/drive.json";
-
-// 롱폼 여부 — 세그먼트 id들을 참조하는 가로 프로젝트.
-function isLongform(p: Project): boolean {
-  return p.format === "long" && Array.isArray(p.sourceProjectIds) && p.sourceProjectIds.length > 0;
-}
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic"; // 항상 최신 목록(Redis)
 
-// 가장 멀리 진행된(승인된) 단계 라벨
-const STEP_LABELS: Record<string, string> = {
-  source: "소스",
-  script: "스크립트",
-  keyframe: "키프레임",
-  images: "이미지",
-  videos: "영상",
-  voiceover: "음성",
-  compose: "합성",
-  subtitle: "자막",
-};
-
-function progressLabel(p: Project): string {
-  if (p.finalVideoUrl) return "완성";
-  let furthest = "";
-  for (const s of STEP_ORDER) {
-    if (p.steps[s]?.status === "approved") furthest = s;
-  }
-  return furthest ? `${STEP_LABELS[furthest]} 승인` : "진행 중";
+// 롱폼(세그먼트 참조 가로 프로젝트) 여부 — 일반 라이브러리에서 제외(롱폼 탭에서 관리).
+function isLongform(p: Project): boolean {
+  return p.format === "long" && Array.isArray(p.sourceProjectIds) && p.sourceProjectIds.length > 0;
 }
 
 // 제목 + 씬 나레이션(=스크립트)을 합친 검색 대상. 키워드(공백 분리)가 모두
 // 들어있는 프로젝트만 매칭(단순 부분일치, 대소문자 무시).
 function matchesQuery(p: Project, terms: string[]): boolean {
   if (terms.length === 0) return true;
-  const hay = (
-    p.title +
-    " " +
-    p.scenes.map((s) => s.narration).join(" ")
-  ).toLowerCase();
+  const hay = (p.title + " " + p.scenes.map((s) => s.narration).join(" ")).toLowerCase();
   return terms.every((t) => hay.includes(t));
-}
-
-// 프로젝트 카드 한 장(<li>). 평면 목록과 롱폼 폴더 안에서 공용. 가로(롱폼/세그먼트)면 16:9.
-function ProjectCard({ p }: { p: Project }) {
-  const aspect = p.format === "long" ? "aspect-[16/9]" : "aspect-[9/16]";
-  return (
-    <li className="relative">
-      <DeleteButton projectId={p.id} title={p.title} />
-      <Link
-        href={`/project/${p.id}`}
-        className="block rounded-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden hover:border-accent transition-colors"
-      >
-        <div className={`${aspect} bg-zinc-50 dark:bg-zinc-900 flex items-center justify-center overflow-hidden`}>
-          {p.keyframeUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={p.keyframeUrl} alt={p.title} className="h-full w-full object-cover" />
-          ) : (
-            <span className="text-[11px] text-zinc-400">미생성</span>
-          )}
-        </div>
-        <div className="p-2">
-          <p className="text-xs font-medium line-clamp-2 leading-snug">{p.title}</p>
-          <p className="mt-1 text-[10px] font-medium">
-            {p.lang && (
-              <span className="mr-1 rounded bg-accent/10 px-1 py-0.5 text-accent">
-                {getLang(p.lang)?.label ?? p.lang}
-              </span>
-            )}
-            {p.format === "long" && (
-              <span className="mr-1 rounded bg-accent/10 px-1 py-0.5 text-accent">가로</span>
-            )}
-            <span className="text-accent">{progressLabel(p)}</span>
-          </p>
-          <p className="mt-0.5 text-[10px] text-zinc-400 truncate">
-            🧑 {p.ownerEmail ?? ADMIN_EMAIL}
-          </p>
-        </div>
-      </Link>
-      {p.finalVideoUrl && (
-        <DriveUploadButton
-          projectId={p.id}
-          driveLink={p.driveLink}
-          fileName={p.driveFileName}
-          uploaded={!!p.driveLink && p.driveUploadedUrl === p.finalVideoUrl}
-        />
-      )}
-    </li>
-  );
 }
 
 export default async function LibraryPage({
@@ -135,25 +59,13 @@ export default async function LibraryPage({
   const pageHref = (p: number, n = size) =>
     `/library?${[p > 1 ? `page=${p}` : "", n !== 60 ? `n=${n}` : ""].filter(Boolean).join("&")}`.replace(/\?$/, "");
 
-  // 드라이브 업로드 완료(재합성 안 됨)는 뒤로, 아직 안 올린 것·재업로드 필요한 것은
-  // 앞으로. 그룹 안에서는 기존 순서(최신순) 유지(Array.sort 는 안정 정렬).
-  const isUploaded = (p: Project) =>
-    !!p.driveLink && p.driveUploadedUrl === p.finalVideoUrl;
+  // 드라이브 업로드 완료(재합성 안 됨)는 뒤로, 아직 안 올린 것·재업로드 필요한 것은 앞으로.
+  const isUploaded = (p: Project) => !!p.driveLink && p.driveUploadedUrl === p.finalVideoUrl;
+  // 롱폼·세그먼트는 일반 라이브러리에서 제외(롱폼 탭에서 폴더로 관리).
   const shown = projects
     .filter((p) => matchesQuery(p, terms))
+    .filter((p) => !isLongform(p) && !p.longformId)
     .sort((a, b) => Number(isUploaded(a)) - Number(isUploaded(b)));
-
-  // 롱폼 폴더 — longformId 가 있는 세그먼트를 롱폼별로 모으고 평면 목록에선 뺀다.
-  // longformId 를 가진 "새" 항목만 폴더로 묶임(기존 항목은 필드가 없어 그대로 평면).
-  const segByLongform = new Map<string, Project[]>();
-  for (const p of shown) {
-    if (p.longformId) {
-      const arr = segByLongform.get(p.longformId) ?? [];
-      arr.push(p);
-      segByLongform.set(p.longformId, arr);
-    }
-  }
-  const topLevel = shown.filter((p) => !p.longformId);
 
   return (
     <main className="px-4 py-8 md:max-w-2xl md:mx-auto">
@@ -171,12 +83,6 @@ export default async function LibraryPage({
               📁 드라이브 폴더
             </a>
           )}
-          <Link
-            href="/longform/new"
-            className="text-xs font-medium rounded-lg border border-accent px-3 py-1.5 text-accent hover:bg-accent/10"
-          >
-            🎞 롱폼 묶기
-          </Link>
           <Link
             href="/new"
             className="text-xs font-medium rounded-lg bg-accent hover:bg-accent-strong text-white px-3 py-1.5"
@@ -217,9 +123,7 @@ export default async function LibraryPage({
       )}
 
       {loadError ? (
-        <p className="mt-6 text-sm text-red-600">
-          목록을 못 불러왔어요 (Redis 설정 확인).
-        </p>
+        <p className="mt-6 text-sm text-red-600">목록을 못 불러왔어요 (Redis 설정 확인).</p>
       ) : shown.length === 0 ? (
         <p className="mt-6 text-sm text-zinc-500">
           {q
@@ -228,31 +132,9 @@ export default async function LibraryPage({
         </p>
       ) : (
         <ul className="mt-6 grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {topLevel.map((p) => {
-            const segs = isLongform(p) ? segByLongform.get(p.id) ?? [] : [];
-            // 롱폼 + 그 세그먼트가 있으면 접이식 폴더로(롱폼 이름). 없으면 평면 카드.
-            if (segs.length > 0) {
-              return (
-                <li key={p.id} className="col-span-2 sm:col-span-3">
-                  <details className="rounded-2xl border border-accent/40 bg-accent/5 p-2">
-                    <summary className="cursor-pointer select-none flex items-center gap-2 px-1 py-1 text-sm font-medium">
-                      <span aria-hidden>📁</span>
-                      <span className="line-clamp-1 flex-1">{p.title}</span>
-                      <span className="shrink-0 text-[11px] text-zinc-500">
-                        세그먼트 {segs.length} · 롱폼
-                      </span>
-                    </summary>
-                    <ul className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-3">
-                      {[p, ...segs].map((c) => (
-                        <ProjectCard key={c.id} p={c} />
-                      ))}
-                    </ul>
-                  </details>
-                </li>
-              );
-            }
-            return <ProjectCard key={p.id} p={p} />;
-          })}
+          {shown.map((p) => (
+            <ProjectCard key={p.id} p={p} />
+          ))}
         </ul>
       )}
 
