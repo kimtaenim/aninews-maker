@@ -17,10 +17,11 @@ export interface HostSceneDraft {
 }
 
 export interface HostScriptResult {
-  // 진행자는 오프닝엔 안 나온다. 세그먼트가 끝날 때마다 나와 다음으로 이어준다(= 세그먼트 수 - 1개).
-  // 첫 connector 씬 = 두 마스코트 확정샷(키프레임 레퍼런스). 각 씬 3~4초 한 문장.
-  connectors: HostSceneDraft[];
-  closing: HostSceneDraft[]; // 마지막 세그먼트 뒤 1씬 — 진행자가 구독·좋아요.
+  // 진행자가 [오프닝(전체 여는 훅)] → [세그·연결 반복] → [마지막 구독·좋아요]. 각 씬 3~4초 한 문장.
+  // 첫 opening 씬 = 두 마스코트 확정샷(키프레임 레퍼런스).
+  opening: HostSceneDraft[]; // 1~2씬. 열린 고리를 여는 훅.
+  connectors: HostSceneDraft[]; // 세그먼트마다 뒤(= 세그먼트 수 - 1).
+  closing: HostSceneDraft[]; // 마지막 세그먼트 뒤 1씬 — 구독·좋아요.
   costUsd: number;
 }
 
@@ -46,8 +47,8 @@ export async function generateHostScript(args: {
     mascot +
     "\n밝고 친근한 한국어 구어체. 각 씬은 나레이션(한국어)과 image(영어 비주얼 프롬프트)를 갖는다. " +
     "image 는 두 마스코트가 화면에 나와 진행/리액션하는 장면을 묘사한다(밝은 팝 배경). " +
-    "진행자는 오프닝엔 안 나오고, 각 세그먼트가 끝난 뒤에만 나와 다음 세그먼트로 이어준다. " +
-    "connectors 의 첫 씬 image 는 두 마스코트를 또렷이 잡는 전신 확정샷으로 써라(이게 진행자 레퍼런스가 된다). " +
+    "진행자가 전체를 여는 오프닝을 하고, 각 세그먼트가 끝난 뒤 나와 다음으로 이어주며, 마지막엔 구독·좋아요를 한다. " +
+    "opening 의 첫 씬 image 는 두 마스코트를 또렷이 잡는 전신 확정샷으로 써라(이게 진행자 레퍼런스가 된다). " +
     "각 나레이션은 3~4초 안에 끝나는 짧은 한 문장.";
 
   const userMsg = [
@@ -56,15 +57,16 @@ export async function generateHostScript(args: {
     segList,
     "",
     openingLoop?.question?.trim()
-      ? `이 롱폼 오프닝이 연 열린 고리: "${openingLoop.question}" (닫는 위치: ${openingLoop.closesAt || "마지막"}). connectors 는 이 고리를 유지하는 브리지로(단순 '다음은 X' 금지), closing 은 이 고리를 명시적으로 닫도록 써라${openingLoop.closingLineHint ? ` (닫는 힌트: ${openingLoop.closingLineHint})` : ""}.`
+      ? `이 롱폼의 열린 고리: "${openingLoop.question}" (닫는 위치: ${openingLoop.closesAt || "마지막"}). opening 은 이 고리를 여는 훅으로, connectors 는 이 고리를 유지하는 브리지로(단순 '다음은 X' 금지), closing 은 이 고리를 명시적으로 닫도록 써라${openingLoop.closingLineHint ? ` (닫는 힌트: ${openingLoop.closingLineHint})` : ""}.`
       : "",
-    "진행자는 오프닝엔 안 나온다. 각 세그먼트가 끝날 때마다 나와 다음으로 이어주고, 마지막 세그먼트 뒤엔 구독·좋아요를 한다.",
+    "순서: 진행자 오프닝 → [세그먼트 → 진행자 연결] 반복 → 마지막 세그먼트 뒤 구독·좋아요.",
     "만들 것(각 씬 = {narration, image}. 각 나레이션은 3~4초 안에 끝나는 짧은 한 문장):",
-    `- connectors: 정확히 ${gaps}씬. i번째는 세그먼트 i가 끝난 뒤 나와 세그먼트 i+1로 자연스럽게 이어주는 한 문장. 첫 connector image=두 마스코트 확정샷.`,
+    "- opening: 1~2씬. 전체를 여는 열린 고리 훅(답이 궁금해지는 질문 하나). 목차/차례 나열 금지. 첫 opening image=두 마스코트 확정샷.",
+    `- connectors: 정확히 ${gaps}씬. i번째는 세그먼트 i가 끝난 뒤 나와 세그먼트 i+1로 자연스럽게 이어주는 한 문장.`,
     "- closing: 정확히 1씬. 마지막 세그먼트 뒤, 진행자가 구독·좋아요를 유도하는 한 문장.",
     "",
     "반드시 이 JSON 만 출력(코드펜스·다른 말 없이):",
-    '{"connectors":[{"narration":"...","image":"..."}],"closing":[{"narration":"...","image":"..."}]}',
+    '{"opening":[{"narration":"...","image":"..."}],"connectors":[{"narration":"...","image":"..."}],"closing":[{"narration":"...","image":"..."}]}',
   ].join("\n");
 
   const r = await client.messages.create({
@@ -90,7 +92,7 @@ export async function generateHostScript(args: {
 
   const match = raw.match(/\{[\s\S]*\}/);
   if (!match) throw new Error("진행자 대본 파싱 실패 — Claude 응답에서 JSON 을 못 찾았어요");
-  let parsed: { connectors?: unknown; closing?: unknown };
+  let parsed: { opening?: unknown; connectors?: unknown; closing?: unknown };
   try {
     parsed = JSON.parse(match[0]);
   } catch {
@@ -106,6 +108,7 @@ export async function generateHostScript(args: {
       })
       .filter((d) => d.narration.length > 0);
 
+  const opening = toDrafts(parsed.opening);
   let connectors = toDrafts(parsed.connectors);
   let closing = toDrafts(parsed.closing);
   if (connectors.length > gaps) connectors = connectors.slice(0, gaps);
@@ -121,8 +124,8 @@ export async function generateHostScript(args: {
     closing = closing.slice(0, 1);
   }
 
-  if (connectors.length === 0 && closing.length === 0) {
+  if (opening.length === 0 && connectors.length === 0 && closing.length === 0) {
     throw new Error("진행자 대본이 비어 있어요 — 다시 시도해 주세요");
   }
-  return { connectors, closing, costUsd };
+  return { opening, connectors, closing, costUsd };
 }

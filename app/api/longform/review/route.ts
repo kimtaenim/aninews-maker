@@ -64,24 +64,26 @@ export async function POST(req: NextRequest) {
       fresh.updatedAt = now;
       await saveProject(fresh);
     }
-    // 3) 연결·마무리 → 진행자 프로젝트 씬(hostSlot) 나레이션.
-    if ((a.connectors?.length || a.closing?.length) && longform.hostProjectId) {
+    // 3) 오프닝·연결·마무리 → 진행자 프로젝트 씬(hostSlot) 나레이션. (오프닝도 진행자가 하므로 여기 반영)
+    if ((a.opening?.length || a.connectors?.length || a.closing?.length) && longform.hostProjectId) {
       const host = await getProject(longform.hostProjectId);
       if (host) {
         const scenes = [...(host.scenes ?? [])];
+        const applyBySlot = (lines: string[], slot: "opening" | "closing") => {
+          const idxs = scenes.map((s, i) => (s.hostSlot === slot ? i : -1)).filter((i) => i >= 0);
+          lines.forEach((line, k) => {
+            const target = idxs[Math.min(k, idxs.length - 1)];
+            if (target >= 0) scenes[target] = { ...scenes[target], narration: line };
+          });
+        };
+        if (a.opening?.length) applyBySlot(a.opening, "opening");
         if (a.connectors?.length) {
           for (const c of a.connectors) {
             const idx = scenes.findIndex((s) => s.hostSlot === "connector" && (s.connectorAfter ?? 0) === c.after);
             if (idx >= 0) scenes[idx] = { ...scenes[idx], narration: c.revised };
           }
         }
-        if (a.closing?.length) {
-          const closingIdxs = scenes.map((s, i) => (s.hostSlot === "closing" ? i : -1)).filter((i) => i >= 0);
-          a.closing.forEach((line, k) => {
-            const target = closingIdxs[Math.min(k, closingIdxs.length - 1)];
-            if (target >= 0) scenes[target] = { ...scenes[target], narration: line };
-          });
-        }
+        if (a.closing?.length) applyBySlot(a.closing, "closing");
         host.scenes = scenes;
         host.updatedAt = now;
         await saveProject(host);
@@ -111,17 +113,20 @@ export async function POST(req: NextRequest) {
       summary: (s?.scenes ?? []).map((sc) => sc.narration).filter(Boolean).join(" ").slice(0, 250),
     };
   });
-  const openingLines = longform.opening?.script ?? [];
   const connectors: { after: number; text: string }[] = [];
   const closingLines: string[] = [];
+  const hostOpeningLines: string[] = [];
   if (longform.hostProjectId) {
     const host = await getProject(longform.hostProjectId);
     for (const sc of host?.scenes ?? []) {
+      if (sc.hostSlot === "opening") hostOpeningLines.push(sc.narration ?? "");
       if (sc.hostSlot === "connector") connectors.push({ after: sc.connectorAfter ?? 0, text: sc.narration ?? "" });
       if (sc.hostSlot === "closing") closingLines.push(sc.narration ?? "");
     }
     connectors.sort((x, y) => x.after - y.after);
   }
+  // 오프닝은 진행자가 하므로 호스트 오프닝 씬을 우선(없으면 열린 고리 툴 결과).
+  const openingLines = hostOpeningLines.length ? hostOpeningLines : longform.opening?.script ?? [];
   const input: LongformReviewInput = {
     topic: longform.title,
     openingLines,
