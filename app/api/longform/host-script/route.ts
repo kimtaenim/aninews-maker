@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
     }));
 
   try {
-    const { opening: openingScenes, connectors, closing } = await generateHostScript({
+    const { connectors, closing } = await generateHostScript({
       projectId,
       segments,
       opening: longform.opening?.openLoop ?? null, // [호응] 오프닝 선언 고리를 따르게
@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
       hostSlot,
       ...(connectorAfter !== undefined ? { connectorAfter } : {}),
     });
-    for (const d of openingScenes) scenes.push(mk(d, "opening"));
+    // 진행자는 오프닝 없음 — 세그먼트마다 뒤에 연결(connectorAfter=i), 마지막 뒤에 마무리(구독·좋아요).
     connectors.forEach((d, i) => scenes.push(mk(d, "connector", i)));
     for (const d of closing) scenes.push(mk(d, "closing"));
 
@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       hostProjectId: hostId,
-      counts: { opening: openingScenes.length, connectors: connectors.length, closing: closing.length },
+      counts: { connectors: connectors.length, closing: closing.length },
     });
   } catch (e) {
     return NextResponse.json(

@@ -2612,6 +2612,14 @@ export default function Studio({
           <span className="align-middle text-xs font-normal text-zinc-400">✎</span>
         </h1>
       )}
+      {project.longformId && (
+        <a
+          href={`/project/${project.longformId}`}
+          className="mt-1 inline-block text-xs font-medium text-accent hover:underline"
+        >
+          ← 롱폼으로 돌아가기
+        </a>
+      )}
       <p className="mt-1 text-xs text-zinc-500">project: {project.id}</p>
 
       {/* 제목 자동 추천(뉴스) — 확정 대본 기반 후보 3개. 실패해도 확정은 진행. */}
