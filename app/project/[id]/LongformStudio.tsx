@@ -22,7 +22,7 @@ interface HostProject {
 }
 
 // 롱폼 전용 화면 — 세그먼트(16:9로 재합성한 숏폼) 완성 현황을 보여주고,
-// 전부 완성되면 "롱폼 합성"(세그먼트 완성본 + 아이캐치 이어붙이기)을 돌린다.
+// 전부 완성되면 "롱폼 합성"(세그먼트 완성본 + 진행자 씬 이어붙이기)을 돌린다.
 // 세그먼트 재생성은 각 세그먼트 프로젝트(스튜디오)에서 하고, 여기선 상태만 모아 본다.
 export default function LongformStudio({
   project,
@@ -232,9 +232,6 @@ export default function LongformStudio({
   const [progress, setProgress] = useState<string>("");
   const [finalUrl, setFinalUrl] = useState<string | undefined>(project.finalVideoUrl);
   const [error, setError] = useState<string>("");
-  const [eyecatchUrl, setEyecatchUrl] = useState<string | undefined>(project.eyecatchUrl);
-  const [genBusy, setGenBusy] = useState(false);
-  const [genErr, setGenErr] = useState("");
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const [segs, setSegs] = useState(segments); // 순서 변경용 로컬 상태
   const [reordering, setReordering] = useState(false);
@@ -311,24 +308,6 @@ export default function LongformStudio({
     }
   }
 
-  async function genEyecatch() {
-    setGenBusy(true);
-    setGenErr("");
-    try {
-      const r = await fetch("/api/longform/eyecatch", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ projectId: project.id }),
-      });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok || !d.ok) throw new Error(d.error || "아이캐치 생성 실패");
-      setEyecatchUrl(d.url);
-    } catch (e) {
-      setGenErr(e instanceof Error ? e.message : "아이캐치 생성 실패");
-    } finally {
-      setGenBusy(false);
-    }
-  }
 
   async function startCompose() {
     if (!allReady || composing) return;
@@ -374,7 +353,7 @@ export default function LongformStudio({
       </div>
       <p className="mt-2 text-xs text-zinc-500">
         가로 16:9 롱폼 — 아래 세그먼트를 각각 완성한 뒤 <b>롱폼 합성</b>을 누르면 세그먼트 완성본을
-        순서대로 이어붙이고 사이에 구독 아이캐치를 넣습니다.
+        순서대로 이어붙이고 사이·마지막에 진행자가 이어주고 구독을 유도합니다.
       </p>
 
       {/* 롱폼 제목 자동 생성 */}
@@ -612,36 +591,6 @@ export default function LongformStudio({
           </div>
         </div>
       )}
-
-      {/* 아이캐치 — 맨 위에 눈에 띄게. 세그먼트 사이마다 들어갈 마스코트 카드. */}
-      <div className="mt-4 rounded-xl border border-accent/40 bg-accent/5 p-3">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold">구독 아이캐치</h2>
-          <button
-            onClick={genEyecatch}
-            disabled={genBusy}
-            className="shrink-0 text-xs rounded-lg bg-accent hover:bg-accent-strong text-white px-3 py-1.5 disabled:opacity-40"
-          >
-            {genBusy ? "생성 중…" : eyecatchUrl ? "다시 생성" : "아이캐치 생성"}
-          </button>
-        </div>
-        <p className="mt-1 text-[11px] text-zinc-500">
-          송곳니 안경 미소녀 마스코트 + 구독 버튼(16:9). 세그먼트 사이마다 1초씩 들어갑니다. 롱폼당 1장.
-        </p>
-        {genErr && <p className="mt-2 text-[11px] text-red-600">{genErr}</p>}
-        {eyecatchUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={eyecatchUrl}
-            alt="아이캐치"
-            className="mt-2 w-full max-w-xs aspect-[16/9] object-cover rounded-lg border border-zinc-200 dark:border-zinc-800"
-          />
-        ) : (
-          <p className="mt-2 text-[11px] text-amber-600 dark:text-amber-400">
-            아직 없음 — 합성 전에 눌러서 만들어 두세요.
-          </p>
-        )}
-      </div>
 
       {/* 진행자(마스코트) */}
       <div className="mt-4 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
