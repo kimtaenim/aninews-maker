@@ -2504,7 +2504,7 @@ export default function Studio({
 
       {/* 제목 자동 추천(뉴스) — 확정 대본 기반 후보 3개. 실패해도 확정은 진행. */}
       {project.mode !== "cliche" && (titleCands || titleGenBusy || titleGenErr) && (
-        <div className="mt-3 rounded-xl border border-accent/40 bg-accent/5 p-3">
+        <div id="title-panel" className="mt-3 rounded-xl border border-accent/40 bg-accent/5 p-3">
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-sm font-semibold">✨ 추천 제목</h2>
             <button
@@ -2988,9 +2988,17 @@ export default function Studio({
                   onClick={async () => {
                     await flushScenes(); // 미저장 편집 먼저 반영 후 생성
                     genTitles();
+                    // 결과 패널이 페이지 상단에 있어, 눌렀을 때 그리로 스크롤.
+                    setTimeout(
+                      () =>
+                        document
+                          .getElementById("title-panel")
+                          ?.scrollIntoView({ behavior: "smooth", block: "center" }),
+                      80
+                    );
                   }}
                   disabled={titleGenBusy}
-                  title="확정 대본으로 제목 후보 생성(위 ✨ 추천 제목에 표시)"
+                  title="확정 대본으로 제목 후보 생성(맨 위 ✨ 추천 제목에 표시)"
                   className="shrink-0 rounded-xl border border-accent px-4 text-sm font-medium text-accent hover:bg-accent/10 disabled:opacity-40 transition-colors"
                 >
                   {titleGenBusy ? "생성 중…" : "✨ 제목 생성"}
