@@ -2,6 +2,7 @@ import Link from "next/link";
 import { listProjectIds, getProjectsBulk } from "@/lib/projectStore";
 import type { Project } from "@/lib/types";
 import ProjectCard from "@/components/ProjectCard";
+import LongformDeleteButton from "./LongformDeleteButton";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -85,6 +86,7 @@ export default async function LongformListPage() {
                       {l.hostProjectId ? " · 진행자" : ""}
                       {l.finalVideoUrl ? " · 완성" : ""}
                     </span>
+                    <LongformDeleteButton projectId={l.id} title={l.title} />
                   </summary>
                   <ul className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-3">
                     {[l, ...children].map((c) => (
