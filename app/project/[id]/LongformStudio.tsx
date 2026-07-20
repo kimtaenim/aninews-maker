@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { LongformOpening } from "@/lib/types";
+import type { LongformReviewResult } from "@/lib/longformReview";
 
 interface SegInfo {
   id: string;
@@ -95,6 +96,67 @@ export default function LongformStudio({
     } catch {
       /* 무시 */
     }
+  }
+
+  // 롱폼 전체 구조 검수(열린 고리) — 진단 + 동의 모달 + 채택 반영.
+  const [rvBusy, setRvBusy] = useState(false);
+  const [rvErr, setRvErr] = useState("");
+  const [rvPassed, setRvPassed] = useState(false);
+  const [rvData, setRvData] = useState<LongformReviewResult | null>(null);
+  const [rvStage, setRvStage] = useState<null | "consent" | "revise">(null);
+  const [rvPick, setRvPick] = useState({ opening: true, order: true, connectors: true, closing: true });
+
+  async function genReview() {
+    setRvBusy(true);
+    setRvErr("");
+    setRvPassed(false);
+    try {
+      const r = await fetch("/api/longform/review", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId: project.id }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok || !d.review) throw new Error(d.error || "구조 검수 실패");
+      const rev = d.review as LongformReviewResult;
+      if (rev.pass) {
+        setRvPassed(true);
+      } else {
+        setRvData(rev);
+        setRvPick({ opening: true, order: true, connectors: true, closing: true });
+        setRvStage("consent");
+      }
+    } catch (e) {
+      setRvErr(e instanceof Error ? e.message : "구조 검수 실패");
+    } finally {
+      setRvBusy(false);
+    }
+  }
+
+  async function applyReview() {
+    if (!rvData) return;
+    const apply: {
+      opening?: string[];
+      order?: number[];
+      connectors?: { after: number; revised: string }[];
+      closing?: string[];
+    } = {};
+    if (rvPick.opening && rvData.revisedOpening) apply.opening = rvData.revisedOpening;
+    if (rvPick.order && rvData.suggestedOrder) apply.order = rvData.suggestedOrder;
+    if (rvPick.connectors && rvData.revisedConnectors.length) apply.connectors = rvData.revisedConnectors;
+    if (rvPick.closing && rvData.revisedClosing) apply.closing = rvData.revisedClosing;
+    try {
+      await fetch("/api/longform/review", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId: project.id, apply }),
+      });
+    } catch {
+      /* 무시 */
+    }
+    setRvStage(null);
+    setRvData(null);
+    router.refresh();
   }
   const [hostBusy, setHostBusy] = useState(false);
   const [hostErr, setHostErr] = useState("");
@@ -390,6 +452,166 @@ export default function LongformStudio({
           </>
         )}
       </div>
+
+      {/* 전체 구조 검수(열린 고리) */}
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <button
+          onClick={genReview}
+          disabled={rvBusy}
+          className="text-xs rounded-lg border border-accent px-3 py-1.5 text-accent hover:bg-accent/10 disabled:opacity-40"
+        >
+          {rvBusy ? "구조 검수 중…" : "🔍 전체 구조 검수"}
+        </button>
+        {rvPassed && (
+          <span className="text-xs text-emerald-600 dark:text-emerald-400">✓ 구조 검수 통과 — 열린 고리 확인됨</span>
+        )}
+        {rvErr && <span className="text-xs text-amber-600 dark:text-amber-400">검수 실패: {rvErr}</span>}
+      </div>
+
+      {rvStage && rvData && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-3"
+          onClick={() => {
+            setRvStage(null);
+            setRvData(null);
+          }}
+        >
+          <div
+            className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-4 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-semibold">🔍 롱폼 전체 구조 검수</h3>
+            <p className="mt-2 text-xs leading-relaxed text-zinc-600 dark:text-zinc-300">{rvData.diagnosisSummary}</p>
+            {rvData.violations.length > 0 && (
+              <ul className="mt-2 grid list-disc gap-0.5 pl-4 text-[11px] text-red-600">
+                {rvData.violations.map((v, i) => (
+                  <li key={i}>{v}</li>
+                ))}
+              </ul>
+            )}
+            {rvStage === "consent" ? (
+              <>
+                <p className="mt-3 text-sm font-medium">{rvData.consentQuestion}</p>
+                <p className="mt-1 text-[11px] text-zinc-400">동의 전엔 원문을 바꾸지 않아요.</p>
+                <div className="mt-3 flex gap-2">
+                  <button
+                    onClick={() => setRvStage("revise")}
+                    className="flex-1 rounded-lg bg-accent hover:bg-accent-strong py-2 text-sm font-medium text-white"
+                  >
+                    수정안 볼게요
+                  </button>
+                  <button
+                    onClick={() => {
+                      setRvStage(null);
+                      setRvData(null);
+                    }}
+                    className="flex-1 rounded-lg border border-zinc-300 dark:border-zinc-700 py-2 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-900"
+                  >
+                    원문대로 두기
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="mt-3 text-xs font-semibold">수정안 · 채택할 파트 선택</p>
+                <div className="mt-1 grid gap-2 text-[11px]">
+                  {rvData.revisedOpening && (
+                    <label className="flex items-start gap-2 rounded-lg border border-zinc-200 dark:border-zinc-800 p-2">
+                      <input
+                        type="checkbox"
+                        checked={rvPick.opening}
+                        onChange={(e) => setRvPick((p) => ({ ...p, opening: e.target.checked }))}
+                        className="mt-0.5"
+                      />
+                      <div>
+                        <p className="font-semibold text-accent">오프닝</p>
+                        <p className="mt-0.5">{rvData.revisedOpening.join(" ")}</p>
+                      </div>
+                    </label>
+                  )}
+                  {rvData.suggestedOrder && (
+                    <label className="flex items-start gap-2 rounded-lg border border-zinc-200 dark:border-zinc-800 p-2">
+                      <input
+                        type="checkbox"
+                        checked={rvPick.order}
+                        onChange={(e) => setRvPick((p) => ({ ...p, order: e.target.checked }))}
+                        className="mt-0.5"
+                      />
+                      <div>
+                        <p className="font-semibold text-accent">세그먼트 순서</p>
+                        <p className="mt-0.5">{rvData.suggestedOrder.map((i) => segs[i]?.title ?? `#${i}`).join(" → ")}</p>
+                      </div>
+                    </label>
+                  )}
+                  {rvData.revisedConnectors.length > 0 && (
+                    <label className="flex items-start gap-2 rounded-lg border border-zinc-200 dark:border-zinc-800 p-2">
+                      <input
+                        type="checkbox"
+                        checked={rvPick.connectors}
+                        onChange={(e) => setRvPick((p) => ({ ...p, connectors: e.target.checked }))}
+                        className="mt-0.5"
+                      />
+                      <div>
+                        <p className="font-semibold text-accent">연결</p>
+                        <ul className="mt-0.5 grid gap-0.5">
+                          {rvData.revisedConnectors.map((c, i) => (
+                            <li key={i}>
+                              세그 {c.after}→{c.after + 1}: {c.revised}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </label>
+                  )}
+                  {rvData.revisedClosing && (
+                    <label className="flex items-start gap-2 rounded-lg border border-zinc-200 dark:border-zinc-800 p-2">
+                      <input
+                        type="checkbox"
+                        checked={rvPick.closing}
+                        onChange={(e) => setRvPick((p) => ({ ...p, closing: e.target.checked }))}
+                        className="mt-0.5"
+                      />
+                      <div>
+                        <p className="font-semibold text-accent">마무리</p>
+                        <p className="mt-0.5">{rvData.revisedClosing.join(" ")}</p>
+                      </div>
+                    </label>
+                  )}
+                  {!rvData.revisedOpening &&
+                    !rvData.suggestedOrder &&
+                    rvData.revisedConnectors.length === 0 &&
+                    !rvData.revisedClosing && (
+                      <p className="text-zinc-500">구체적 수정안이 없어요 — 진단만 참고하세요.</p>
+                    )}
+                </div>
+                {rvData.reason && <p className="mt-2 text-[10px] text-zinc-500">↳ {rvData.reason}</p>}
+                {(rvData.revisedConnectors.length > 0 || rvData.revisedClosing) && !hostProject && (
+                  <p className="mt-1 text-[10px] text-amber-600">
+                    연결·마무리 반영은 진행자 프로젝트가 필요해요(먼저 진행자 대본 생성).
+                  </p>
+                )}
+                <div className="mt-3 flex gap-2">
+                  <button
+                    onClick={applyReview}
+                    className="flex-1 rounded-lg bg-accent hover:bg-accent-strong py-2 text-sm font-medium text-white"
+                  >
+                    선택 채택하고 반영
+                  </button>
+                  <button
+                    onClick={() => {
+                      setRvStage(null);
+                      setRvData(null);
+                    }}
+                    className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-2 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-900"
+                  >
+                    닫기
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* 아이캐치 — 맨 위에 눈에 띄게. 세그먼트 사이마다 들어갈 마스코트 카드. */}
       <div className="mt-4 rounded-xl border border-accent/40 bg-accent/5 p-3">

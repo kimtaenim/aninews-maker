@@ -1,0 +1,148 @@
+// ============================================================================
+// 롱폼 전체 구조 검수 — 오프닝+세그먼트순서+연결+마무리를 열린 고리 원칙으로 진단·수정안.
+// ----------------------------------------------------------------------------
+// 파이프라인 공용 Anthropic 클라이언트 재사용. JSON 파싱 실패면 1회 재시도.
+// 위반이 있어도 pass=false 로 그대로 반환(원문 변경·동의 흐름은 UI/route).
+// ============================================================================
+
+import { getAnthropic, MODELS } from "./anthropic";
+import { anthropicCostUsd, recordCost } from "./cost";
+import { LONGFORM_REVIEW_SYSTEM_PROMPT } from "./longformReviewPrompt";
+import principles from "../config/longform-structure-principles.json";
+
+export interface LongformReviewInput {
+  topic: string;
+  openingLines: string[];
+  segments: { title: string; summary: string }[];
+  connectors: { after: number; text: string }[];
+  closingLines: string[];
+}
+
+export interface LongformReviewResult {
+  pass: boolean;
+  loopMap: { part: string; status: string; note: string }[];
+  violations: string[];
+  diagnosisSummary: string;
+  consentQuestion: string;
+  revisedOpening: string[] | null;
+  revisedConnectors: { after: number; revised: string }[];
+  revisedClosing: string[] | null;
+  suggestedOrder: number[] | null;
+  reason: string;
+  costUsd: number;
+}
+
+export function assembleReviewText(d: LongformReviewInput): string {
+  const lines: string[] = [];
+  lines.push(`[주제] ${d.topic}`);
+  lines.push(`\n[오프닝]\n${d.openingLines.length ? d.openingLines.join(" ") : "(없음)"}`);
+  lines.push("\n[세그먼트 순서]");
+  d.segments.forEach((s, i) => lines.push(`  ${i}. [${s.title}] ${s.summary}`));
+  lines.push("\n[진행자 연결]");
+  if (d.connectors.length) {
+    d.connectors.forEach((c) => lines.push(`  세그 ${c.after}→${c.after + 1}: ${c.text || "(없음)"}`));
+  } else {
+    lines.push("  (없음)");
+  }
+  lines.push(`\n[마무리]\n${d.closingLines.length ? d.closingLines.join(" ") : "(없음)"}`);
+  return lines.join("\n");
+}
+
+function toStr(v: unknown): string {
+  return typeof v === "string" ? v : "";
+}
+function toLines(v: unknown): string[] | null {
+  if (!Array.isArray(v)) return null;
+  const arr = v.filter((s): s is string => typeof s === "string" && s.trim().length > 0).map((s) => s.trim());
+  return arr.length ? arr : null;
+}
+
+export function parseLongformReview(raw: string): LongformReviewResult | null {
+  const m = raw.match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  let j: Record<string, unknown>;
+  try {
+    j = JSON.parse(m[0]);
+  } catch {
+    return null;
+  }
+  const loopMap = Array.isArray(j.loop_map)
+    ? j.loop_map.map((e) => {
+        const o = (e ?? {}) as Record<string, unknown>;
+        return { part: toStr(o.part), status: toStr(o.status), note: toStr(o.note) };
+      })
+    : [];
+  const connectors = Array.isArray(j.revised_connectors)
+    ? j.revised_connectors
+        .map((e) => {
+          const o = (e ?? {}) as Record<string, unknown>;
+          return { after: typeof o.after === "number" ? o.after : Number(o.after) || 0, revised: toStr(o.revised) };
+        })
+        .filter((c) => c.revised.trim().length > 0)
+    : [];
+  const order = Array.isArray(j.suggested_order)
+    ? j.suggested_order.map((n) => (typeof n === "number" ? n : Number(n))).filter((n) => Number.isInteger(n))
+    : null;
+  return {
+    pass: j.pass === true,
+    loopMap,
+    violations: Array.isArray(j.violations) ? j.violations.filter((v): v is string => typeof v === "string") : [],
+    diagnosisSummary: toStr(j.diagnosis_summary),
+    consentQuestion: toStr(j.consent_question) || "구조를 열린 고리로 수정해볼까요?",
+    revisedOpening: toLines(j.revised_opening),
+    revisedConnectors: connectors,
+    revisedClosing: toLines(j.revised_closing),
+    suggestedOrder: order && order.length ? order : null,
+    reason: toStr(j.reason),
+    costUsd: 0,
+  };
+}
+
+export async function reviewLongform(args: {
+  projectId: string;
+  input: LongformReviewInput;
+}): Promise<LongformReviewResult> {
+  const { projectId, input } = args;
+  const client = getAnthropic();
+  const system = LONGFORM_REVIEW_SYSTEM_PROMPT.replace("{{PRINCIPLES}}", JSON.stringify(principles, null, 2));
+  const text = assembleReviewText(input);
+  let totalCost = 0;
+
+  const call = async (extra?: string): Promise<LongformReviewResult | null> => {
+    const r = await client.messages.create({
+      model: MODELS.sonnet,
+      max_tokens: 3000,
+      system,
+      messages: [{ role: "user", content: extra ? `${text}\n\n${extra}` : text }],
+    });
+    const textBlocks = r.content.filter(
+      (b: { type: string }) => b.type === "text"
+    ) as Array<{ type: "text"; text: string }>;
+    const rawOut = textBlocks.map((b) => b.text).join("").trim();
+    totalCost += anthropicCostUsd({
+      inputTokens: r.usage.input_tokens,
+      outputTokens: r.usage.output_tokens,
+      cacheReadTokens: r.usage.cache_read_input_tokens ?? undefined,
+      cacheWriteTokens: r.usage.cache_creation_input_tokens ?? undefined,
+      model: MODELS.sonnet,
+    });
+    return parseLongformReview(rawOut);
+  };
+
+  let result = await call();
+  if (!result) result = await call("JSON 형식이 어긋났다. 지정된 JSON 만 정확히 다시 출력하라.");
+  if (!result) throw new Error("롱폼 구조 검수 실패 — 응답에서 JSON 을 못 찾았어요");
+
+  // suggested_order 검증 — 세그먼트 수와 같은 집합의 재배열이 아니면 무시.
+  if (result.suggestedOrder) {
+    const n = input.segments.length;
+    const ok =
+      result.suggestedOrder.length === n &&
+      [...result.suggestedOrder].sort((a, b) => a - b).join(",") === Array.from({ length: n }, (_, i) => i).join(",");
+    if (!ok) result.suggestedOrder = null;
+  }
+
+  await recordCost({ projectId, vendor: "anthropic", model: MODELS.sonnet, costUsd: totalCost, meta: { kind: "longform-review" } });
+  result.costUsd = totalCost;
+  return result;
+}
