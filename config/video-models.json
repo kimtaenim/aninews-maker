@@ -1,7 +1,7 @@
 {
   "version": "2.0",
   "updated": "2026-06-17",
-  "_comment": "image-to-video 모델 레지스트리. provider(fal|kling|grok)별로 교차 사용. fal endpoint=fal 모델 경로, kling endpoint=Kling model_name(예: kling-v2-master), grok endpoint=xAI 모델명. Kling 은 직접 API(env KLING_ACCESS_KEY/KLING_SECRET_KEY, JWT). 한 프로바이더가 막히면(잔액·콘텐츠 정책) 다른 걸로 교차.",
+  "_comment": "image-to-video 모델 레지스트리. provider(fal|kling|grok)별로 교차 사용. fal endpoint=fal 모델 경로, kling endpoint=Kling model_name(예: kling-v3), grok endpoint=xAI 모델명. Kling 은 직접 API(env KLING_API_KEY 단일 키, Bearer). 한 프로바이더가 막히면(잔액·콘텐츠 정책) 다른 걸로 교차.",
   "default": "minimax",
   "models": [
     {
@@ -21,8 +21,8 @@
     {
       "id": "kling",
       "provider": "kling",
-      "label": "Kling (직접 API · 모션 우수)",
-      "endpoint": "kling-v2-master",
+      "label": "Kling 3 (직접 API · 모션 우수)",
+      "endpoint": "kling-v3",
       "defaultParams": {}
     },
     {

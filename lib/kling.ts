@@ -1,17 +1,16 @@
 // ============================================================================
 // Kling(직접 API) image-to-video 프로바이더 — fal 경유 Kling 을 대체하는 별도 API.
 // ----------------------------------------------------------------------------
-// 공식 Kling API(Kuaishou). 인증 = JWT(HS256): payload {iss:accessKey, exp, nbf} 를
-// secretKey 로 서명해 Authorization: Bearer <jwt>.
+// 인증 = 단일 API 키(Bearer). env KLING_API_KEY 하나면 됨(access/secret·JWT 아님).
 //   제출: POST {base}/v1/videos/image2video { model_name, image(URL), prompt, duration, mode, aspect_ratio }
 //         → { code, data:{ task_id } }
 //   폴링: GET  {base}/v1/videos/image2video/{task_id}
 //         → { code, data:{ task_status, task_result:{ videos:[{ url }] } } }
-// env: KLING_ACCESS_KEY, KLING_SECRET_KEY (앱). 선택: KLING_API_BASE(기본 https://api.klingai.com).
-// 모델명(model_name)은 config/video-models.json 의 endpoint 로 넘긴다(예: kling-v2-master).
+// env: KLING_API_KEY(필수). 선택: KLING_API_BASE(기본 https://api.klingai.com),
+//      KLING_MODEL(기본 kling-v3), KLING_MODE(기본 std).
+// 모델명(model_name)은 config/video-models.json 의 endpoint 로도 넘긴다.
 // ============================================================================
 
-import crypto from "crypto";
 import type { VideoPoll } from "./fal";
 
 const TIMEOUT_MS = 60_000;
@@ -20,21 +19,10 @@ function base(): string {
   return (process.env.KLING_API_BASE || "https://api.klingai.com").replace(/\/$/, "");
 }
 
-function b64url(buf: Buffer): string {
-  return buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-// Kling 인증 JWT(HS256) — 30분 만료. 매 호출마다 새로 서명.
-function signToken(): string {
-  const ak = process.env.KLING_ACCESS_KEY;
-  const sk = process.env.KLING_SECRET_KEY;
-  if (!ak || !sk) throw new Error("KLING_ACCESS_KEY / KLING_SECRET_KEY 가 .env 에 없어요");
-  const header = b64url(Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })));
-  const now = Math.floor(Date.now() / 1000);
-  const payload = b64url(Buffer.from(JSON.stringify({ iss: ak, exp: now + 1800, nbf: now - 5 })));
-  const data = `${header}.${payload}`;
-  const sig = b64url(crypto.createHmac("sha256", sk).update(data).digest());
-  return `${data}.${sig}`;
+function getKey(): string {
+  const k = process.env.KLING_API_KEY;
+  if (!k) throw new Error("KLING_API_KEY 가 .env 에 없어요");
+  return k;
 }
 
 function klingError(status: number, bodyText: string): string {
@@ -59,11 +47,11 @@ export async function submitKlingVideo(opts: {
   imageUrl: string;
   prompt?: string;
   duration?: number;
-  model?: string; // model_name (config endpoint). 없으면 기본.
+  model?: string; // model_name (config endpoint). 없으면 기본(kling-v3).
   aspect?: string; // "16:9" | "9:16" 등
 }): Promise<string> {
   const body: Record<string, unknown> = {
-    model_name: opts.model || process.env.KLING_MODEL || "kling-v2-master",
+    model_name: opts.model || process.env.KLING_MODEL || "kling-v3",
     image: opts.imageUrl,
     mode: process.env.KLING_MODE || "std",
     duration: (opts.duration ?? 5) > 5 ? "10" : "5",
@@ -73,7 +61,7 @@ export async function submitKlingVideo(opts: {
 
   const r = await fetch(`${base()}/v1/videos/image2video`, {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${signToken()}` },
+    headers: { "content-type": "application/json", authorization: `Bearer ${getKey()}` },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
@@ -93,7 +81,7 @@ export async function pollKlingVideo(taskId: string): Promise<VideoPoll> {
   let r: Response;
   try {
     r = await fetch(`${base()}/v1/videos/image2video/${taskId}`, {
-      headers: { authorization: `Bearer ${signToken()}` },
+      headers: { authorization: `Bearer ${getKey()}` },
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch (e) {
