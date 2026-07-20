@@ -2982,6 +2982,20 @@ export default function Studio({
                   ✓ 스크립트 승인됨 — 아래 키프레임 단계로 진행하세요.
                 </p>
               )}
+              {project.mode !== "cliche" && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await flushScenes(); // 미저장 편집 먼저 반영 후 생성
+                    genTitles();
+                  }}
+                  disabled={titleGenBusy}
+                  title="확정 대본으로 제목 후보 생성(위 ✨ 추천 제목에 표시)"
+                  className="shrink-0 rounded-xl border border-accent px-4 text-sm font-medium text-accent hover:bg-accent/10 disabled:opacity-40 transition-colors"
+                >
+                  {titleGenBusy ? "생성 중…" : "✨ 제목 생성"}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={copyScript}
