@@ -28,13 +28,74 @@ export default function LongformStudio({
   segments,
   hostProject,
   initialOpening,
+  initialTitles,
 }: {
   project: { id: string; title: string; finalVideoUrl?: string; eyecatchUrl?: string };
   segments: SegInfo[];
   hostProject: HostProject | null;
   initialOpening: LongformOpening | null;
+  initialTitles: {
+    candidates: Array<{ title: string; structure?: string; rationale?: string; banned?: string[] }>;
+    recommendedIndex: number;
+    seoKeywords: string[];
+  } | null;
 }) {
   const router = useRouter();
+
+  // 롱폼 제목 자동 생성
+  const [lfTitle, setLfTitle] = useState(project.title);
+  const [titleCands, setTitleCands] = useState<
+    Array<{ title: string; structure?: string; rationale?: string; banned?: string[] }> | null
+  >(initialTitles?.candidates ?? null);
+  const [titleRec, setTitleRec] = useState(initialTitles?.recommendedIndex ?? 0);
+  const [titleSeo, setTitleSeo] = useState<string[]>(initialTitles?.seoKeywords ?? []);
+  const [titleBusy, setTitleBusy] = useState(false);
+  const [titleErr, setTitleErr] = useState("");
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+
+  async function genLongTitle() {
+    setTitleBusy(true);
+    setTitleErr("");
+    try {
+      const r = await fetch("/api/longform/title", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId: project.id }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) throw new Error(d.error || "제목 생성 실패");
+      setTitleCands(d.candidates ?? []);
+      setTitleRec(typeof d.recommended_index === "number" ? d.recommended_index : 0);
+      setTitleSeo(Array.isArray(d.seo_keywords) ? d.seo_keywords : []);
+    } catch (e) {
+      setTitleErr(e instanceof Error ? e.message : "제목 생성 실패");
+    } finally {
+      setTitleBusy(false);
+    }
+  }
+  async function applyLongTitle(t: string) {
+    const v = t.trim();
+    if (!v || v === lfTitle) return;
+    try {
+      await fetch("/api/project/title", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId: project.id, title: v }),
+      });
+      setLfTitle(v);
+    } catch {
+      /* 무시 */
+    }
+  }
+  async function copyLongTitle(t: string, i: number) {
+    try {
+      await navigator.clipboard.writeText(t);
+      setCopiedIdx(i);
+      setTimeout(() => setCopiedIdx((c) => (c === i ? null : c)), 1500);
+    } catch {
+      /* 무시 */
+    }
+  }
   const [hostBusy, setHostBusy] = useState(false);
   const [hostErr, setHostErr] = useState("");
 
@@ -232,7 +293,7 @@ export default function LongformStudio({
   return (
     <main className="px-4 py-8 md:max-w-2xl md:mx-auto">
       <div className="flex items-center justify-between gap-2">
-        <h1 className="text-lg font-semibold tracking-tight line-clamp-1">🎞 {project.title}</h1>
+        <h1 className="text-lg font-semibold tracking-tight line-clamp-1">🎞 {lfTitle}</h1>
         <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={delLongform}
@@ -253,6 +314,82 @@ export default function LongformStudio({
         가로 16:9 롱폼 — 아래 세그먼트를 각각 완성한 뒤 <b>롱폼 합성</b>을 누르면 세그먼트 완성본을
         순서대로 이어붙이고 사이에 구독 아이캐치를 넣습니다.
       </p>
+
+      {/* 롱폼 제목 자동 생성 */}
+      <div className="mt-4 rounded-xl border border-accent/40 bg-accent/5 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold">✨ 롱폼 제목</h2>
+          <button
+            onClick={genLongTitle}
+            disabled={titleBusy}
+            className="shrink-0 text-xs rounded-lg border border-accent px-3 py-1.5 text-accent hover:bg-accent/10 disabled:opacity-40"
+          >
+            {titleBusy ? "생성 중…" : titleCands ? "다시 생성" : "제목 생성"}
+          </button>
+        </div>
+        <p className="mt-1 text-[11px] text-zinc-500">
+          세그먼트·오프닝을 모아 6원칙으로 제목 후보를 만듭니다. [적용]으로 롱폼 제목 지정, [📋 복사]로 클립보드.
+        </p>
+        {titleErr && <p className="mt-2 text-[11px] text-red-600">{titleErr}</p>}
+        {titleCands && titleCands.length > 0 && (
+          <>
+            <ul className="mt-2 grid gap-2">
+              {titleCands.map((c, i) => {
+                const selected = lfTitle === c.title;
+                return (
+                  <li
+                    key={i}
+                    className={`rounded-lg border p-2 ${selected ? "border-accent bg-accent/10" : "border-zinc-200 dark:border-zinc-800"}`}
+                  >
+                    <div className="flex items-start gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          {i === titleRec && (
+                            <span className="shrink-0 rounded bg-accent px-1 py-0.5 text-[9px] font-bold text-white">
+                              추천
+                            </span>
+                          )}
+                          <span className="text-sm font-medium">{c.title}</span>
+                        </div>
+                        <div className="mt-0.5 text-[10px] text-zinc-500">
+                          {c.structure ? `[${c.structure}] ` : ""}
+                          {c.rationale}
+                          {c.banned && c.banned.length > 0 && (
+                            <span className="text-red-500"> · ⚠ {c.banned.join(", ")}</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 flex-col gap-1">
+                        <button
+                          type="button"
+                          onClick={() => copyLongTitle(c.title, i)}
+                          className="rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 text-[11px] hover:bg-zinc-100 dark:hover:bg-zinc-900"
+                        >
+                          {copiedIdx === i ? "✓ 복사됨" : "📋 복사"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => applyLongTitle(c.title)}
+                          className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${
+                            selected ? "bg-accent/20 text-accent" : "bg-accent text-white hover:bg-accent-strong"
+                          }`}
+                        >
+                          {selected ? "✓ 적용됨" : "적용"}
+                        </button>
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            {titleSeo.length > 0 && (
+              <p className="mt-1 text-[10px] text-zinc-500">
+                <span className="font-semibold">설명란 키워드:</span> {titleSeo.join(" · ")}
+              </p>
+            )}
+          </>
+        )}
+      </div>
 
       {/* 아이캐치 — 맨 위에 눈에 띄게. 세그먼트 사이마다 들어갈 마스코트 카드. */}
       <div className="mt-4 rounded-xl border border-accent/40 bg-accent/5 p-3">
