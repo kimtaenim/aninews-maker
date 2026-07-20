@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProject, saveProject } from "@/lib/projectStore";
+import { setTitleSelected } from "@/lib/titleLog";
 
 export const runtime = "nodejs";
 
@@ -29,5 +30,7 @@ export async function POST(req: NextRequest) {
   project.title = title;
   project.updatedAt = Date.now();
   await saveProject(project);
+  // 제목 생성 로그가 있으면 최종 선택/수정 제목 기록(추후 성과 조인용). 없으면 조용히 통과.
+  await setTitleSelected(projectId, title);
   return NextResponse.json({ ok: true, title });
 }
