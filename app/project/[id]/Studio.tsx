@@ -527,6 +527,7 @@ export default function Studio({
   const [titleSeo, setTitleSeo] = useState<string[]>([]);
   const [titleGenBusy, setTitleGenBusy] = useState(false);
   const [titleGenErr, setTitleGenErr] = useState("");
+  const [copiedTitleIdx, setCopiedTitleIdx] = useState<number | null>(null);
   async function saveTitle() {
     const t = titleInput.trim();
     setEditingTitle(false);
@@ -1787,6 +1788,17 @@ export default function Studio({
     }
   }
 
+  // 후보 제목을 클립보드로 복사(유튜브 제목란 등에 붙여넣기용).
+  async function copyTitle(t: string, i: number) {
+    try {
+      await navigator.clipboard.writeText(t);
+      setCopiedTitleIdx(i);
+      setTimeout(() => setCopiedTitleIdx((cur) => (cur === i ? null : cur)), 1500);
+    } catch {
+      /* 클립보드 불가 무시 */
+    }
+  }
+
   async function approveScript() {
     setError(null);
     setBusy("approve-script");
@@ -2524,37 +2536,57 @@ export default function Studio({
                 {titleCands.map((c, i) => {
                   const selected = project.title === c.title;
                   return (
-                    <li key={i}>
-                      <button
-                        onClick={() => applyTitle(c.title)}
-                        className={`w-full text-left rounded-lg border p-2 transition-colors ${
-                          selected
-                            ? "border-accent bg-accent/10"
-                            : "border-zinc-200 dark:border-zinc-800 hover:border-accent"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          {i === titleRec && (
-                            <span className="shrink-0 rounded bg-accent px-1 py-0.5 text-[9px] font-bold text-white">
-                              추천
-                            </span>
-                          )}
-                          <span className="text-sm font-medium">{c.title}</span>
+                    <li
+                      key={i}
+                      className={`rounded-lg border p-2 ${
+                        selected ? "border-accent bg-accent/10" : "border-zinc-200 dark:border-zinc-800"
+                      }`}
+                    >
+                      <div className="flex items-start gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            {i === titleRec && (
+                              <span className="shrink-0 rounded bg-accent px-1 py-0.5 text-[9px] font-bold text-white">
+                                추천
+                              </span>
+                            )}
+                            <span className="text-sm font-medium">{c.title}</span>
+                          </div>
+                          <div className="mt-0.5 text-[10px] text-zinc-500">
+                            {c.structure ? `[${c.structure}] ` : ""}
+                            {c.rationale}
+                            {c.banned && c.banned.length > 0 && (
+                              <span className="text-red-500"> · ⚠ {c.banned.join(", ")}</span>
+                            )}
+                          </div>
                         </div>
-                        <div className="mt-0.5 text-[10px] text-zinc-500">
-                          {c.structure ? `[${c.structure}] ` : ""}
-                          {c.rationale}
-                          {c.banned && c.banned.length > 0 && (
-                            <span className="text-red-500"> · ⚠ {c.banned.join(", ")}</span>
-                          )}
+                        <div className="flex shrink-0 flex-col gap-1">
+                          <button
+                            type="button"
+                            onClick={() => copyTitle(c.title, i)}
+                            className="rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 text-[11px] hover:bg-zinc-100 dark:hover:bg-zinc-900"
+                          >
+                            {copiedTitleIdx === i ? "✓ 복사됨" : "📋 복사"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => applyTitle(c.title)}
+                            className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${
+                              selected
+                                ? "bg-accent/20 text-accent"
+                                : "bg-accent text-white hover:bg-accent-strong"
+                            }`}
+                          >
+                            {selected ? "✓ 적용됨" : "적용"}
+                          </button>
                         </div>
-                      </button>
+                      </div>
                     </li>
                   );
                 })}
               </ul>
               <p className="mt-2 text-[10px] text-zinc-400">
-                클릭하면 제목이 적용돼요. 상단 제목을 다시 클릭하면 직접 수정할 수 있어요.
+                [적용]으로 프로젝트 제목 지정, [📋 복사]로 클립보드에 복사(붙여넣기용). 상단 제목 클릭으로 직접 수정.
               </p>
               {titleSeo.length > 0 && (
                 <p className="mt-1 text-[10px] text-zinc-500">
