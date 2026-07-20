@@ -157,6 +157,24 @@ export interface Watermark {
   position: "tl" | "tr" | "bl" | "br"; // 좌상 / 우상 / 좌하 / 우하
 }
 
+// ── [롱폼] 열린 고리 오프닝 ───────────────────────────────────────────────────
+// 롱폼 오프닝은 "답을 못 들었다"는 열린 고리로 끝까지 붙잡는 게 목적. 자동 생성 결과.
+export interface LongformOpening {
+  script: string[]; // 오프닝 나레이션 문장들(4~6, 낭독 15~25초). 사용자 수정 가능.
+  openLoop: {
+    question: string; // 오프닝이 여는 질문
+    closesAt: string; // 닫히는 챕터(번호 또는 "마지막 챕터")
+    closingLineHint: string; // 닫을 때 쓸 문장 힌트
+  };
+  chapterBridges: { chapter: number; role: string; bridgeHint: string }[]; // 챕터별 고리 연결 가이드
+  selfCheck: {
+    firstWordDrawer?: string; // 인물 | 종목 | 지갑 | 국가
+    roadmapLeak?: boolean; // 목차/로드맵 노출 여부(true면 재생성 대상)
+    midpointExitCost?: string; // 중간에 끄면 아쉬운 것
+  };
+  generatedAt: number;
+}
+
 // ── 프로젝트 ──────────────────────────────────────────────────────────────────
 export interface Project {
   id: string;
@@ -179,6 +197,8 @@ export interface Project {
   // [롱폼] 진행자(호스트) 프로젝트 id — 오프닝·연결·마무리 호스트 씬을 담은 별도 프로젝트.
   // Studio 에서 세그먼트처럼 씬별 편집. 합성 때 슬롯대로 세그먼트와 교차.
   hostProjectId?: string;
+  // [롱폼] 열린 고리(Open Loop) 오프닝 — 자동 생성된 오프닝 스크립트 + 고리 명세 + 챕터 가이드.
+  opening?: LongformOpening;
   cast?: string[]; // [cliche] 등장 인물 이름들(화자 = 이 이름 또는 "내레이션"). 목소리·씬 화자에 사용.
   castMembers?: CastMember[]; // [cliche] 캐스팅 단계 산출물(얼굴·목소리 포함). cast/castVoices 의 원천.
   styleProfileId: string; // config/style-profiles.json 의 id
