@@ -122,7 +122,15 @@ export async function POST(req: NextRequest) {
     }
     connectors.sort((x, y) => x.after - y.after);
   }
-  const input: LongformReviewInput = { topic: longform.title, openingLines, segments, connectors, closingLines };
+  const input: LongformReviewInput = {
+    topic: longform.title,
+    openingLines,
+    segments,
+    connectors,
+    closingLines,
+    declaredLoop: longform.opening?.openLoop ?? null,
+    chapterBridges: longform.opening?.chapterBridges ?? [],
+  };
 
   try {
     const review = await reviewLongform({ projectId, input });

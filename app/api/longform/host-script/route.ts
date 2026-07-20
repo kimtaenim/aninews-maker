@@ -46,7 +46,11 @@ export async function POST(req: NextRequest) {
     }));
 
   try {
-    const { opening, connectors, closing } = await generateHostScript({ projectId, segments });
+    const { opening: openingScenes, connectors, closing } = await generateHostScript({
+      projectId,
+      segments,
+      opening: longform.opening?.openLoop ?? null, // [호응] 오프닝 선언 고리를 따르게
+    });
 
     // 호스트 씬 배열 — 오프닝 → 연결(connectorAfter=i) → 마무리. 씬0(첫 오프닝)=캐릭터 키프레임.
     const scenes: Scene[] = [];
@@ -61,7 +65,7 @@ export async function POST(req: NextRequest) {
       hostSlot,
       ...(connectorAfter !== undefined ? { connectorAfter } : {}),
     });
-    for (const d of opening) scenes.push(mk(d, "opening"));
+    for (const d of openingScenes) scenes.push(mk(d, "opening"));
     connectors.forEach((d, i) => scenes.push(mk(d, "connector", i)));
     for (const d of closing) scenes.push(mk(d, "closing"));
 

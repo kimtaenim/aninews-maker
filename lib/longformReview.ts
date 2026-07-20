@@ -16,6 +16,9 @@ export interface LongformReviewInput {
   segments: { title: string; summary: string }[];
   connectors: { after: number; text: string }[];
   closingLines: string[];
+  // 오프닝 툴이 선언한 열린 고리 — 있으면 이 고리를 "기준"으로 검수(호응). 없으면 스크립트에서 추론.
+  declaredLoop?: { question: string; closesAt: string; closingLineHint: string } | null;
+  chapterBridges?: { chapter: number; role: string; bridgeHint: string }[];
 }
 
 export interface LongformReviewResult {
@@ -35,9 +38,19 @@ export interface LongformReviewResult {
 export function assembleReviewText(d: LongformReviewInput): string {
   const lines: string[] = [];
   lines.push(`[주제] ${d.topic}`);
+  if (d.declaredLoop && d.declaredLoop.question.trim()) {
+    lines.push(
+      `\n[오프닝이 선언한 열린 고리 — 이걸 기준 고리로 검수]\n  연 질문: ${d.declaredLoop.question}\n  닫는 위치: ${d.declaredLoop.closesAt}` +
+        (d.declaredLoop.closingLineHint ? `\n  닫는 힌트: ${d.declaredLoop.closingLineHint}` : "")
+    );
+  }
   lines.push(`\n[오프닝]\n${d.openingLines.length ? d.openingLines.join(" ") : "(없음)"}`);
   lines.push("\n[세그먼트 순서]");
-  d.segments.forEach((s, i) => lines.push(`  ${i}. [${s.title}] ${s.summary}`));
+  d.segments.forEach((s, i) => {
+    const bridge = d.chapterBridges?.find((b) => b.chapter === i + 1 || b.chapter === i);
+    const roleHint = bridge ? ` (오프닝이 의도한 역할: ${bridge.role} — ${bridge.bridgeHint})` : "";
+    lines.push(`  ${i}. [${s.title}] ${s.summary}${roleHint}`);
+  });
   lines.push("\n[진행자 연결]");
   if (d.connectors.length) {
     d.connectors.forEach((c) => lines.push(`  세그 ${c.after}→${c.after + 1}: ${c.text || "(없음)"}`));
