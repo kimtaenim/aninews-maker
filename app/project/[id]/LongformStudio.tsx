@@ -62,9 +62,53 @@ export default function LongformStudio({
   const [genBusy, setGenBusy] = useState(false);
   const [genErr, setGenErr] = useState("");
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [segs, setSegs] = useState(segments); // 순서 변경용 로컬 상태
+  const [reordering, setReordering] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
-  const readyCount = segments.filter((s) => s.finalVideoUrl).length;
-  const allReady = segments.length > 0 && readyCount === segments.length;
+  const readyCount = segs.filter((s) => s.finalVideoUrl).length;
+  const allReady = segs.length > 0 && readyCount === segs.length;
+
+  // 세그먼트 순서 위/아래로 — 로컬 즉시 반영 + 서버 저장.
+  async function moveSeg(i: number, dir: -1 | 1) {
+    const j = i + dir;
+    if (j < 0 || j >= segs.length || reordering) return;
+    const next = [...segs];
+    [next[i], next[j]] = [next[j], next[i]];
+    setSegs(next);
+    setReordering(true);
+    try {
+      await fetch("/api/longform/reorder", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId: project.id, order: next.map((s) => s.id) }),
+      });
+    } catch {
+      /* 저장 실패해도 로컬 순서는 유지(다음 이동에서 재시도) */
+    } finally {
+      setReordering(false);
+    }
+  }
+
+  // 롱폼 통째 삭제(세그먼트·진행자 포함).
+  async function delLongform() {
+    if (deleting) return;
+    if (!confirm(`"${project.title}" 롱폼을 삭제할까요?\n세그먼트·진행자까지 전부 지워지고 되돌릴 수 없어요.`)) return;
+    setDeleting(true);
+    try {
+      const r = await fetch("/api/longform/delete", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId: project.id }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) throw new Error(d.error || "삭제 실패");
+      router.push("/longform");
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "삭제 실패");
+      setDeleting(false);
+    }
+  }
 
   useEffect(() => {
     return () => {
@@ -138,12 +182,21 @@ export default function LongformStudio({
     <main className="px-4 py-8 md:max-w-2xl md:mx-auto">
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-lg font-semibold tracking-tight line-clamp-1">🎞 {project.title}</h1>
-        <Link
-          href="/longform"
-          className="shrink-0 text-xs font-medium rounded-lg border border-zinc-200 dark:border-zinc-800 px-3 py-1.5 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-900"
-        >
-          ← 롱폼
-        </Link>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={delLongform}
+            disabled={deleting}
+            className="text-xs font-medium rounded-lg border border-red-300 dark:border-red-800 px-3 py-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-950 disabled:opacity-40"
+          >
+            {deleting ? "삭제 중…" : "🗑 삭제"}
+          </button>
+          <Link
+            href="/longform"
+            className="text-xs font-medium rounded-lg border border-zinc-200 dark:border-zinc-800 px-3 py-1.5 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-900"
+          >
+            ← 롱폼
+          </Link>
+        </div>
       </div>
       <p className="mt-2 text-xs text-zinc-500">
         가로 16:9 롱폼 — 아래 세그먼트를 각각 완성한 뒤 <b>롱폼 합성</b>을 누르면 세그먼트 완성본을
@@ -225,15 +278,34 @@ export default function LongformStudio({
 
       {/* 세그먼트 현황 */}
       <div className="mt-5 flex items-center justify-between">
-        <h2 className="text-sm font-semibold">세그먼트 ({readyCount}/{segments.length} 완성)</h2>
+        <h2 className="text-sm font-semibold">세그먼트 ({readyCount}/{segs.length} 완성)</h2>
       </div>
       <ol className="mt-2 grid gap-2">
-        {segments.map((s, i) => (
+        {segs.map((s, i) => (
           <li
             key={s.id}
-            className="flex items-center gap-3 rounded-xl border border-zinc-200 dark:border-zinc-800 p-2"
+            className="flex items-center gap-2 rounded-xl border border-zinc-200 dark:border-zinc-800 p-2"
           >
-            <span className="shrink-0 w-5 text-center text-xs font-bold text-zinc-400">{i + 1}</span>
+            {/* 순서 변경 ↑↓ */}
+            <div className="flex flex-col shrink-0">
+              <button
+                onClick={() => moveSeg(i, -1)}
+                disabled={i === 0 || reordering}
+                aria-label="위로"
+                className="leading-none text-[10px] text-zinc-500 hover:text-accent disabled:opacity-30"
+              >
+                ▲
+              </button>
+              <button
+                onClick={() => moveSeg(i, 1)}
+                disabled={i === segs.length - 1 || reordering}
+                aria-label="아래로"
+                className="leading-none text-[10px] text-zinc-500 hover:text-accent disabled:opacity-30"
+              >
+                ▼
+              </button>
+            </div>
+            <span className="shrink-0 w-4 text-center text-xs font-bold text-zinc-400">{i + 1}</span>
             <div className="h-10 w-16 shrink-0 overflow-hidden rounded bg-zinc-100 dark:bg-zinc-900">
               {s.keyframeUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -267,7 +339,7 @@ export default function LongformStudio({
           disabled={!allReady || composing}
           className="w-full rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white text-sm font-medium py-2"
         >
-          {composing ? "합성 중…" : allReady ? "롱폼 합성" : `세그먼트 완성 대기 (${readyCount}/${segments.length})`}
+          {composing ? "합성 중…" : allReady ? "롱폼 합성" : `세그먼트 완성 대기 (${readyCount}/${segs.length})`}
         </button>
         {composing && (
           <p className="mt-2 text-[11px] text-zinc-500">
