@@ -519,6 +519,14 @@ export default function Studio({
   // 제목 클릭 편집
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState(initial.title);
+  // 제목 자동 생성(뉴스) — 확정 대본으로 후보 3개 + 추천 + SEO.
+  const [titleCands, setTitleCands] = useState<
+    Array<{ title: string; structure?: string; rationale?: string; banned?: string[] }> | null
+  >(null);
+  const [titleRec, setTitleRec] = useState(0);
+  const [titleSeo, setTitleSeo] = useState<string[]>([]);
+  const [titleGenBusy, setTitleGenBusy] = useState(false);
+  const [titleGenErr, setTitleGenErr] = useState("");
   async function saveTitle() {
     const t = titleInput.trim();
     setEditingTitle(false);
@@ -1739,6 +1747,46 @@ export default function Studio({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keyframeApproved, project.scenes]);
 
+  // 제목 자동 생성 — 확정 대본으로 후보 3개. 뉴스만(클리셰 제외). 실패해도 확정엔 영향 없음.
+  async function genTitles() {
+    if (project.mode === "cliche") return;
+    setTitleGenBusy(true);
+    setTitleGenErr("");
+    try {
+      const r = await fetch("/api/title/generate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId: project.id }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) throw new Error(d.error || "제목 생성 실패");
+      setTitleCands(d.candidates ?? []);
+      const rec = typeof d.recommended_index === "number" ? d.recommended_index : 0;
+      setTitleRec(rec);
+      setTitleSeo(Array.isArray(d.seo_keywords) ? d.seo_keywords : []);
+      // 기본 선택 = 추천(자동 저장은 안 함 — 사용자가 클릭으로 확정).
+      const recTitle = d.candidates?.[rec]?.title;
+      if (recTitle) setTitleInput(recTitle);
+    } catch (e) {
+      setTitleGenErr(e instanceof Error ? e.message : "제목 생성 실패");
+    } finally {
+      setTitleGenBusy(false);
+    }
+  }
+
+  // 후보 제목을 프로젝트 제목으로 적용(저장). 이후 제목 클릭으로 수동 수정 가능.
+  async function applyTitle(t: string) {
+    const v = t.trim();
+    if (!v || v === project.title) return;
+    try {
+      await call("/api/project/title", { projectId: project.id, title: v });
+      setProject((p) => ({ ...p, title: v }));
+      setTitleInput(v);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "제목 저장 실패");
+    }
+  }
+
   async function approveScript() {
     setError(null);
     setBusy("approve-script");
@@ -1757,6 +1805,7 @@ export default function Studio({
         steps: { ...p.steps, script: { ...p.steps.script, status: "approved" } },
       }));
       if (savedScenes) setScenes(savedScenes.map(toEdit));
+      void genTitles(); // 확정 직후 제목 후보 자동 생성(실패해도 확정은 유지)
     } catch (e) {
       setError(e instanceof Error ? e.message : "승인 실패");
     } finally {
@@ -2452,6 +2501,70 @@ export default function Studio({
         </h1>
       )}
       <p className="mt-1 text-xs text-zinc-500">project: {project.id}</p>
+
+      {/* 제목 자동 추천(뉴스) — 확정 대본 기반 후보 3개. 실패해도 확정은 진행. */}
+      {project.mode !== "cliche" && (titleCands || titleGenBusy || titleGenErr) && (
+        <div className="mt-3 rounded-xl border border-accent/40 bg-accent/5 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold">✨ 추천 제목</h2>
+            <button
+              onClick={genTitles}
+              disabled={titleGenBusy}
+              className="shrink-0 text-xs rounded-lg border border-accent px-3 py-1.5 text-accent hover:bg-accent/10 disabled:opacity-40"
+            >
+              {titleGenBusy ? "생성 중…" : "제목 다시 생성"}
+            </button>
+          </div>
+          {titleGenErr && (
+            <p className="mt-2 text-[11px] text-red-600">{titleGenErr} — 확정은 그대로 진행됩니다.</p>
+          )}
+          {titleCands && titleCands.length > 0 && (
+            <>
+              <ul className="mt-2 grid gap-2">
+                {titleCands.map((c, i) => {
+                  const selected = project.title === c.title;
+                  return (
+                    <li key={i}>
+                      <button
+                        onClick={() => applyTitle(c.title)}
+                        className={`w-full text-left rounded-lg border p-2 transition-colors ${
+                          selected
+                            ? "border-accent bg-accent/10"
+                            : "border-zinc-200 dark:border-zinc-800 hover:border-accent"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          {i === titleRec && (
+                            <span className="shrink-0 rounded bg-accent px-1 py-0.5 text-[9px] font-bold text-white">
+                              추천
+                            </span>
+                          )}
+                          <span className="text-sm font-medium">{c.title}</span>
+                        </div>
+                        <div className="mt-0.5 text-[10px] text-zinc-500">
+                          {c.structure ? `[${c.structure}] ` : ""}
+                          {c.rationale}
+                          {c.banned && c.banned.length > 0 && (
+                            <span className="text-red-500"> · ⚠ {c.banned.join(", ")}</span>
+                          )}
+                        </div>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+              <p className="mt-2 text-[10px] text-zinc-400">
+                클릭하면 제목이 적용돼요. 상단 제목을 다시 클릭하면 직접 수정할 수 있어요.
+              </p>
+              {titleSeo.length > 0 && (
+                <p className="mt-1 text-[10px] text-zinc-500">
+                  <span className="font-semibold">설명란 키워드:</span> {titleSeo.join(" · ")}
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       {/* 스텝퍼 */}
       <ol className="mt-5 flex flex-wrap gap-2">
