@@ -34,6 +34,13 @@ export default async function ProjectStudioPage({
         keyframeUrl: s.keyframeUrl,
         finalVideoUrl: s.finalVideoUrl,
       }));
+    const hostScenes = (project.scenes ?? [])
+      .filter((s) => s.hostSlot)
+      .map((s) => ({
+        slot: s.hostSlot as "opening" | "connector" | "closing",
+        connectorAfter: s.connectorAfter,
+        narration: s.narration,
+      }));
     return (
       <LongformStudio
         project={{
@@ -43,6 +50,7 @@ export default async function ProjectStudioPage({
           eyecatchUrl: project.eyecatchUrl,
         }}
         segments={segments}
+        hostScenes={hostScenes}
       />
     );
   }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 interface SegInfo {
@@ -10,16 +11,49 @@ interface SegInfo {
   finalVideoUrl?: string;
 }
 
+interface HostScene {
+  slot: "opening" | "connector" | "closing";
+  connectorAfter?: number;
+  narration: string;
+}
+
 // 롱폼 전용 화면 — 세그먼트(16:9로 재합성한 숏폼) 완성 현황을 보여주고,
 // 전부 완성되면 "롱폼 합성"(세그먼트 완성본 + 아이캐치 이어붙이기)을 돌린다.
 // 세그먼트 재생성은 각 세그먼트 프로젝트(스튜디오)에서 하고, 여기선 상태만 모아 본다.
 export default function LongformStudio({
   project,
   segments,
+  hostScenes,
 }: {
   project: { id: string; title: string; finalVideoUrl?: string; eyecatchUrl?: string };
   segments: SegInfo[];
+  hostScenes: HostScene[];
 }) {
+  const router = useRouter();
+  const [hostBusy, setHostBusy] = useState(false);
+  const [hostErr, setHostErr] = useState("");
+  const opening = hostScenes.filter((h) => h.slot === "opening");
+  const connectors = hostScenes.filter((h) => h.slot === "connector");
+  const closing = hostScenes.filter((h) => h.slot === "closing");
+
+  async function genHostScript() {
+    setHostBusy(true);
+    setHostErr("");
+    try {
+      const r = await fetch("/api/longform/host-script", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId: project.id }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) throw new Error(d.error || "진행자 대본 생성 실패");
+      router.refresh(); // 서버에서 새 호스트 씬을 다시 읽어와 표시
+    } catch (e) {
+      setHostErr(e instanceof Error ? e.message : "진행자 대본 생성 실패");
+    } finally {
+      setHostBusy(false);
+    }
+  }
   const [composing, setComposing] = useState(false);
   const [status, setStatus] = useState<string>("");
   const [progress, setProgress] = useState<string>("");
@@ -144,6 +178,56 @@ export default function LongformStudio({
           <p className="mt-2 text-[11px] text-amber-600 dark:text-amber-400">
             아직 없음 — 합성 전에 눌러서 만들어 두세요.
           </p>
+        )}
+      </div>
+
+      {/* 진행자(마스코트) 대본 */}
+      <div className="mt-4 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold">진행자 대본</h2>
+          <button
+            onClick={genHostScript}
+            disabled={hostBusy}
+            className="shrink-0 text-xs rounded-lg border border-accent px-3 py-1.5 text-accent hover:bg-accent/10 disabled:opacity-40"
+          >
+            {hostBusy ? "생성 중…" : hostScenes.length ? "다시 생성" : "진행자 대본 생성"}
+          </button>
+        </div>
+        <p className="mt-1 text-[11px] text-zinc-500">
+          안경 미소녀 + 사족로봇이 세그먼트를 소개·연결·마무리합니다. 세그먼트 스크립트를 읽어 Claude가 작성(이미지·영상·음성은 다음 단계).
+        </p>
+        {hostErr && <p className="mt-2 text-[11px] text-red-600">{hostErr}</p>}
+        {hostScenes.length > 0 && (
+          <div className="mt-2 grid gap-2 text-[11px] text-zinc-600 dark:text-zinc-300">
+            <div>
+              <span className="font-semibold text-accent">오프닝</span>
+              <ul className="mt-0.5 list-disc pl-4">
+                {opening.map((h, i) => (
+                  <li key={i}>{h.narration}</li>
+                ))}
+              </ul>
+            </div>
+            {connectors.length > 0 && (
+              <div>
+                <span className="font-semibold text-accent">연결</span>
+                <ul className="mt-0.5 list-disc pl-4">
+                  {connectors.map((h, i) => (
+                    <li key={i}>
+                      세그 {(h.connectorAfter ?? i) + 1}→{(h.connectorAfter ?? i) + 2}: {h.narration}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div>
+              <span className="font-semibold text-accent">마무리</span>
+              <ul className="mt-0.5 list-disc pl-4">
+                {closing.map((h, i) => (
+                  <li key={i}>{h.narration}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
         )}
       </div>
 

@@ -79,6 +79,10 @@ export interface Scene {
   sfxUrl?: string; // [cliche] 생성된 효과음 오디오(Blob). 합성 때 목소리 밑에 믹싱.
   sfxVolume?: number; // [cliche] 효과음 볼륨(0~1, 기본 0.35). 목소리 대비.
   skipped?: boolean; // 건너뛴 씬 — 이미지/영상/음성 생성·합성·완료판정에서 제외
+  // [롱폼] 호스트(마스코트) 씬 — 오프닝/연결/마무리. 없으면 일반 씬(세그먼트 본문). 롱폼은
+  // 이 호스트 씬들과 세그먼트 완성본을 교차로 이어붙인다.
+  hostSlot?: "opening" | "connector" | "closing";
+  connectorAfter?: number; // [롱폼] connector 씬이 몇 번째 세그먼트(0-based) 뒤에 오는지.
 }
 
 export interface TtsWord {
