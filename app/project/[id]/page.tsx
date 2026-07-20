@@ -54,6 +54,7 @@ export default async function ProjectStudioPage({
         }}
         segments={segments}
         hostProject={hostProject}
+        initialOpening={project.opening ?? null}
       />
     );
   }

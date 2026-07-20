@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import type { LongformOpening } from "@/lib/types";
 
 interface SegInfo {
   id: string;
@@ -26,14 +27,64 @@ export default function LongformStudio({
   project,
   segments,
   hostProject,
+  initialOpening,
 }: {
   project: { id: string; title: string; finalVideoUrl?: string; eyecatchUrl?: string };
   segments: SegInfo[];
   hostProject: HostProject | null;
+  initialOpening: LongformOpening | null;
 }) {
   const router = useRouter();
   const [hostBusy, setHostBusy] = useState(false);
   const [hostErr, setHostErr] = useState("");
+
+  // 열린 고리 오프닝
+  const [opening, setOpening] = useState<LongformOpening | null>(initialOpening);
+  const [openScript, setOpenScript] = useState((initialOpening?.script ?? []).join("\n"));
+  const [openBusy, setOpenBusy] = useState(false);
+  const [openSaveBusy, setOpenSaveBusy] = useState(false);
+  const [openErr, setOpenErr] = useState("");
+
+  async function genOpening() {
+    setOpenBusy(true);
+    setOpenErr("");
+    try {
+      const r = await fetch("/api/longform/opening", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId: project.id }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) throw new Error(d.error || "오프닝 생성 실패");
+      setOpening(d.opening);
+      setOpenScript((d.opening?.script ?? []).join("\n"));
+    } catch (e) {
+      setOpenErr(e instanceof Error ? e.message : "오프닝 생성 실패");
+    } finally {
+      setOpenBusy(false);
+    }
+  }
+
+  async function saveOpening() {
+    const script = openScript.split("\n").map((l) => l.trim()).filter(Boolean);
+    if (script.length === 0) return;
+    setOpenSaveBusy(true);
+    setOpenErr("");
+    try {
+      const r = await fetch("/api/longform/opening", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId: project.id, script }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) throw new Error(d.error || "저장 실패");
+      setOpening(d.opening);
+    } catch (e) {
+      setOpenErr(e instanceof Error ? e.message : "저장 실패");
+    } finally {
+      setOpenSaveBusy(false);
+    }
+  }
 
   async function genHostScript() {
     setHostBusy(true);
@@ -273,6 +324,73 @@ export default function LongformStudio({
           <p className="mt-2 text-[11px] text-amber-600 dark:text-amber-400">
             아직 없음 — &lsquo;진행자 대본 생성&rsquo;을 눌러 시작하세요.
           </p>
+        )}
+      </div>
+
+      {/* 열린 고리 오프닝 */}
+      <div className="mt-4 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold">🎣 오프닝 (열린 고리)</h2>
+          <button
+            onClick={genOpening}
+            disabled={openBusy}
+            className="shrink-0 text-xs rounded-lg border border-accent px-3 py-1.5 text-accent hover:bg-accent/10 disabled:opacity-40"
+          >
+            {openBusy ? "생성 중…" : opening ? "다시 생성" : "오프닝 생성"}
+          </button>
+        </div>
+        <p className="mt-1 text-[11px] text-zinc-500">
+          시청자가 &lsquo;아직 답을 못 들었다&rsquo;며 끝까지 보게 만드는 오프닝. 세그먼트를 챕터로 읽어 Claude가 작성.
+        </p>
+        {openErr && <p className="mt-2 text-[11px] text-red-600">{openErr} — 확정은 그대로 진행됩니다.</p>}
+        {opening && (
+          <div className="mt-2 grid gap-2">
+            <div>
+              <textarea
+                value={openScript}
+                onChange={(e) => setOpenScript(e.target.value)}
+                rows={Math.max(4, openScript.split("\n").length)}
+                className="w-full rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-2 text-xs leading-relaxed outline-none focus:border-accent"
+              />
+              <div className="mt-1 flex justify-end">
+                <button
+                  onClick={saveOpening}
+                  disabled={openSaveBusy}
+                  className="text-[11px] rounded-md bg-accent hover:bg-accent-strong text-white px-3 py-1 disabled:opacity-40"
+                >
+                  {openSaveBusy ? "저장 중…" : "오프닝 저장"}
+                </button>
+              </div>
+            </div>
+            <div className="rounded-lg bg-accent/5 border border-accent/30 p-2 text-[11px]">
+              <p>
+                <span className="font-semibold text-accent">연 질문:</span> {opening.openLoop.question}
+              </p>
+              <p className="mt-0.5">
+                <span className="font-semibold text-accent">닫는 곳:</span> 이 질문은{" "}
+                <b>{opening.openLoop.closesAt}</b>에서 닫으세요.
+                {opening.openLoop.closingLineHint ? ` (힌트: ${opening.openLoop.closingLineHint})` : ""}
+              </p>
+              {opening.selfCheck.midpointExitCost && (
+                <p className="mt-0.5 text-zinc-500">중간 이탈 손해: {opening.selfCheck.midpointExitCost}</p>
+              )}
+              {opening.selfCheck.roadmapLeak && (
+                <p className="mt-0.5 text-red-500">⚠ 로드맵(목차) 노출 위험 — 다시 생성 권장</p>
+              )}
+            </div>
+            {opening.chapterBridges.length > 0 && (
+              <div className="text-[11px]">
+                <p className="font-semibold text-zinc-600 dark:text-zinc-300">챕터 연결 가이드</p>
+                <ul className="mt-0.5 grid gap-0.5">
+                  {opening.chapterBridges.map((b, i) => (
+                    <li key={i} className="text-zinc-500">
+                      <b>C{b.chapter}</b> [{b.role}] {b.bridgeHint}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
         )}
       </div>
 
