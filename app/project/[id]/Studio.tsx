@@ -195,6 +195,7 @@ export default function Studio({
   styleProfiles,
   videoModels,
   tts,
+  initialTitles,
 }: {
   project: Project;
   styleProfiles: { id: string; label: string }[];
@@ -204,6 +205,11 @@ export default function Studio({
     configured: { elevenlabs: boolean; typecast: boolean };
     typecastVoices?: { fallback: boolean; perLang: Record<string, boolean> };
   };
+  initialTitles?: {
+    candidates: Array<{ title: string; structure?: string; rationale?: string; banned?: string[] }>;
+    recommendedIndex: number;
+    seoKeywords: string[];
+  } | null;
 }) {
   const [project, setProject] = useState<Project>(initial);
   // 롱폼(가로 16:9) 프로젝트면 이미지·미리보기 종횡비를 가로로. 없으면 세로 9:16(기존).
@@ -522,9 +528,9 @@ export default function Studio({
   // 제목 자동 생성(뉴스) — 확정 대본으로 후보 3개 + 추천 + SEO.
   const [titleCands, setTitleCands] = useState<
     Array<{ title: string; structure?: string; rationale?: string; banned?: string[] }> | null
-  >(null);
-  const [titleRec, setTitleRec] = useState(0);
-  const [titleSeo, setTitleSeo] = useState<string[]>([]);
+  >(initialTitles?.candidates ?? null);
+  const [titleRec, setTitleRec] = useState(initialTitles?.recommendedIndex ?? 0);
+  const [titleSeo, setTitleSeo] = useState<string[]>(initialTitles?.seoKeywords ?? []);
   const [titleGenBusy, setTitleGenBusy] = useState(false);
   const [titleGenErr, setTitleGenErr] = useState("");
   const [copiedTitleIdx, setCopiedTitleIdx] = useState<number | null>(null);

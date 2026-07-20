@@ -3,6 +3,7 @@ import { getProject, getProjectsBulk } from "@/lib/projectStore";
 import { listStyleProfiles } from "@/lib/styleProfiles";
 import { listVideoModels } from "@/lib/videoProvider";
 import { ttsProviderInfo } from "@/lib/tts";
+import { getTitleLog } from "@/lib/titleLog";
 import Studio from "./Studio";
 import LongformStudio from "./LongformStudio";
 
@@ -62,12 +63,23 @@ export default async function ProjectStudioPage({
   const styleProfiles = listStyleProfiles().map((p) => ({ id: p.id, label: p.label }));
   const videoModels = listVideoModels().map((m) => ({ id: m.id, label: m.label }));
 
+  // 저장된 제목 후보(있으면) — 리로드해도 추천 패널이 유지되게 초기값으로 전달.
+  const titleLog = await getTitleLog(id);
+  const initialTitles = titleLog
+    ? {
+        candidates: titleLog.candidates,
+        recommendedIndex: titleLog.recommendedIndex,
+        seoKeywords: titleLog.seoKeywords,
+      }
+    : null;
+
   return (
     <Studio
       project={project}
       styleProfiles={styleProfiles}
       videoModels={videoModels}
       tts={ttsProviderInfo()}
+      initialTitles={initialTitles}
     />
   );
 }

@@ -22,6 +22,15 @@ export interface TitleLog {
   selectedAt?: number;
 }
 
+// 저장된 제목 로그 읽기 — 페이지 리로드 시 후보를 복원해 패널이 유지되게.
+export async function getTitleLog(projectId: string): Promise<TitleLog | null> {
+  try {
+    return (await getRedis().get<TitleLog>(KEY(projectId))) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function saveTitleGenLog(projectId: string, r: TitleResult): Promise<void> {
   try {
     const redis = getRedis();
