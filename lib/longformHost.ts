@@ -29,7 +29,7 @@ export async function generateHostScript(args: {
   // [호응] 롱폼 오프닝이 선언한 열린 고리 — 있으면 연결은 이 고리 유지, 마무리는 이 고리 닫기로 쓴다.
   opening?: { question?: string; closesAt?: string; closingLineHint?: string } | null;
 }): Promise<HostScriptResult> {
-  const { projectId, segments, opening } = args;
+  const { projectId, segments, opening: openingLoop } = args;
   const n = segments.length;
   const gaps = Math.max(0, n - 1);
   const client = getAnthropic();
@@ -52,8 +52,8 @@ export async function generateHostScript(args: {
     "",
     segList,
     "",
-    opening?.question?.trim()
-      ? `이 롱폼 오프닝이 연 열린 고리: "${opening.question}" (닫는 위치: ${opening.closesAt || "마지막"}). connectors 는 이 고리를 유지하는 브리지로(단순 '다음은 X' 금지), closing 은 이 고리를 명시적으로 닫도록 써라${opening.closingLineHint ? ` (닫는 힌트: ${opening.closingLineHint})` : ""}.`
+    openingLoop?.question?.trim()
+      ? `이 롱폼 오프닝이 연 열린 고리: "${openingLoop.question}" (닫는 위치: ${openingLoop.closesAt || "마지막"}). connectors 는 이 고리를 유지하는 브리지로(단순 '다음은 X' 금지), closing 은 이 고리를 명시적으로 닫도록 써라${openingLoop.closingLineHint ? ` (닫는 힌트: ${openingLoop.closingLineHint})` : ""}.`
       : "",
     "만들 것(각 씬 = {narration, image}):",
     `- opening: 2~3씬. 전체 ${n}개 주제를 소개하고 기대감. 합쳐 10~15초. 첫 씬 image=두 마스코트 확정샷.`,

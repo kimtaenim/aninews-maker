@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       hostProjectId: hostId,
-      counts: { opening: opening.length, connectors: connectors.length, closing: closing.length },
+      counts: { opening: openingScenes.length, connectors: connectors.length, closing: closing.length },
     });
   } catch (e) {
     return NextResponse.json(
