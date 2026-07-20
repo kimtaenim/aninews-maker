@@ -20,6 +20,7 @@ import type { SourceMaterial } from "@/lib/source";
 import { resolveLang, otherLanguages } from "@/lib/languages";
 import Spinner from "@/components/Spinner";
 import ScenePreview from "./ScenePreview";
+import type { ScriptReviewResult } from "@/lib/scriptReview";
 import SceneVideoThumb, { useActiveRow } from "./SceneVideoThumb";
 import CaptionControls from "./CaptionControls";
 import { EMOTIONS } from "@/lib/emotions";
@@ -534,6 +535,13 @@ export default function Studio({
   const [titleGenBusy, setTitleGenBusy] = useState(false);
   const [titleGenErr, setTitleGenErr] = useState("");
   const [copiedTitleIdx, setCopiedTitleIdx] = useState<number | null>(null);
+  // 대본 구조 검수(열린 고리) — 확정 전 게이트 + 동의 모달.
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewErr, setReviewErr] = useState("");
+  const [reviewPassed, setReviewPassed] = useState(false);
+  const [reviewData, setReviewData] = useState<ScriptReviewResult | null>(null);
+  const [reviewStage, setReviewStage] = useState<null | "consent" | "revise">(null);
+  const [selectedRev, setSelectedRev] = useState<Set<number>>(new Set());
   async function saveTitle() {
     const t = titleInput.trim();
     setEditingTitle(false);
@@ -1805,12 +1813,11 @@ export default function Studio({
     }
   }
 
-  async function approveScript() {
-    setError(null);
+  // 실제 승인(2단계 진행) — 검수 게이트를 통과/우회한 뒤 호출.
+  async function doApprove() {
     setBusy("approve-script");
-    await flushScenes(); // 미저장 편집을 먼저 저장하고 승인
+    await flushScenes(); // 미저장 편집(수정안 반영 포함) 저장 후 승인
     try {
-      // 텍스트 대비 짧은 씬 길이는 묻지 않고 자동 적용(confirmAdjustments) 후 승인.
       const data = await call("/api/step/approve", {
         projectId: project.id,
         step: "script",
@@ -1829,6 +1836,93 @@ export default function Studio({
     } finally {
       setBusy(null);
     }
+  }
+
+  function closeReview() {
+    setReviewStage(null);
+    setReviewData(null);
+  }
+  function logReviewOutcome(consented: boolean, adopted: "all" | "partial" | "manual" | "none") {
+    void fetch("/api/script/review", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectId: project.id, outcome: { consented, adopted } }),
+    }).catch(() => {});
+  }
+
+  // 확정 클릭 → 구조 검수 게이트. 통과=바로 승인, 위반=동의 모달, 오류=검수 생략하고 승인.
+  async function approveScript() {
+    setError(null);
+    setReviewErr("");
+    setReviewPassed(false);
+    await flushScenes(); // 검수 전 최신 대본 저장
+    setReviewBusy(true);
+    try {
+      const r = await fetch("/api/script/review", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId: project.id }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok || !d.review) throw new Error(d.error || "검수 실패");
+      const review = d.review as ScriptReviewResult;
+      if (review.pass) {
+        setReviewPassed(true);
+        await doApprove();
+      } else {
+        setReviewData(review);
+        setSelectedRev(new Set(review.revisedScenes.filter((s) => s.changed).map((s) => s.scene)));
+        setReviewStage("consent");
+      }
+    } catch (e) {
+      // 검수 실패 → 확정은 그대로 진행 + 재실행 버튼 노출.
+      setReviewErr(e instanceof Error ? e.message : "구조 검수 실패");
+      await doApprove();
+    } finally {
+      setReviewBusy(false);
+    }
+  }
+
+  // "원문대로 진행" — 검수 거절, 원문 그대로 승인(진단만 기록).
+  async function proceedOriginal() {
+    logReviewOutcome(false, "none");
+    closeReview();
+    await doApprove();
+  }
+
+  // 선택한 수정안을 씬 나레이션에 반영·저장(⑧ 마무리는 잠금) 후 승인. scenesRef 로 최신 버퍼 기준.
+  async function applyRevisionsAndApprove() {
+    if (!reviewData) return;
+    const lastIdx = scenesRef.current.length - 1;
+    const changed = reviewData.revisedScenes.filter((s) => s.changed && s.revised.trim());
+    const revById = new Map(changed.map((s) => [s.scene, s.revised]));
+    const newScenes = scenesRef.current.map((s, idx) => {
+      const num = idx + 1;
+      if (idx !== lastIdx && selectedRev.has(num) && revById.has(num)) {
+        return { ...s, narration: revById.get(num) as string };
+      }
+      return s;
+    });
+    try {
+      const r = await fetch("/api/script/scenes", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId: project.id, scenes: newScenes }),
+      });
+      const data = await r.json();
+      if (r.ok && data.ok) {
+        const saved = data.scenes as Scene[];
+        setProject((p) => ({ ...p, scenes: saved }));
+        setScenes(saved.map(toEdit));
+        setDirty(false);
+      }
+    } catch {
+      /* 저장 실패해도 doApprove 의 flush 가 재시도 */
+    }
+    const adoptedCount = [...selectedRev].filter((n) => revById.has(n)).length;
+    logReviewOutcome(true, adoptedCount === changed.length ? "all" : "partial");
+    closeReview();
+    await doApprove();
   }
 
   async function generateKeyframe() {
@@ -2604,6 +2698,117 @@ export default function Studio({
         </div>
       )}
 
+      {/* 대본 구조 검수 — 동의 모달(위반 시). 동의 전엔 원문 안 바꿈. */}
+      {reviewStage && reviewData && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-3"
+          onClick={closeReview}
+        >
+          <div
+            className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-4 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-semibold">🔍 대본 구조 검수 (열린 고리)</h3>
+            <p className="mt-2 text-xs leading-relaxed text-zinc-600 dark:text-zinc-300">
+              {reviewData.diagnosisSummary}
+            </p>
+            {reviewData.violations.length > 0 && (
+              <ul className="mt-2 grid list-disc gap-0.5 pl-4 text-[11px] text-red-600">
+                {reviewData.violations.map((v, i) => (
+                  <li key={i}>{v}</li>
+                ))}
+              </ul>
+            )}
+            {reviewStage === "consent" ? (
+              <>
+                <p className="mt-3 text-sm font-medium">{reviewData.consentQuestion}</p>
+                <p className="mt-1 text-[11px] text-zinc-400">동의하기 전엔 원문을 바꾸지 않아요.</p>
+                <div className="mt-3 flex gap-2">
+                  <button
+                    onClick={() => setReviewStage("revise")}
+                    className="flex-1 rounded-lg bg-accent hover:bg-accent-strong py-2 text-sm font-medium text-white"
+                  >
+                    수정안 볼게요
+                  </button>
+                  <button
+                    onClick={proceedOriginal}
+                    className="flex-1 rounded-lg border border-zinc-300 dark:border-zinc-700 py-2 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-900"
+                  >
+                    원문대로 진행
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="mt-3 text-xs font-semibold">수정안 (원문 → 수정) · 채택할 씬 선택</p>
+                <ul className="mt-1 grid gap-2">
+                  {reviewData.revisedScenes
+                    .filter((s) => s.changed)
+                    .map((s) => {
+                      const locked = s.scene >= scenesRef.current.length; // ⑧ 마무리(마지막 씬) 잠금
+                      return (
+                        <li
+                          key={s.scene}
+                          className={`rounded-lg border p-2 ${locked ? "opacity-50 border-zinc-200 dark:border-zinc-800" : "border-zinc-200 dark:border-zinc-800"}`}
+                        >
+                          <label className="flex items-start gap-2">
+                            <input
+                              type="checkbox"
+                              disabled={locked}
+                              checked={!locked && selectedRev.has(s.scene)}
+                              onChange={(e) =>
+                                setSelectedRev((prev) => {
+                                  const n = new Set(prev);
+                                  if (e.target.checked) n.add(s.scene);
+                                  else n.delete(s.scene);
+                                  return n;
+                                })
+                              }
+                              className="mt-0.5"
+                            />
+                            <div className="min-w-0 flex-1 text-[11px]">
+                              <p className="font-semibold text-accent">
+                                씬 {s.scene}
+                                {locked ? " (마무리·잠금)" : ""}
+                              </p>
+                              <p className="mt-0.5 text-zinc-400 line-through">{s.original}</p>
+                              <p className="mt-0.5 text-zinc-800 dark:text-zinc-100">{s.revised}</p>
+                              {s.reason && <p className="mt-0.5 text-[10px] text-zinc-500">↳ {s.reason}</p>}
+                            </div>
+                          </label>
+                        </li>
+                      );
+                    })}
+                </ul>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    onClick={applyRevisionsAndApprove}
+                    className="flex-1 rounded-lg bg-accent hover:bg-accent-strong py-2 text-sm font-medium text-white"
+                  >
+                    선택 채택하고 승인
+                  </button>
+                  <button
+                    onClick={() => {
+                      logReviewOutcome(true, "manual");
+                      closeReview();
+                    }}
+                    className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-2 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-900"
+                  >
+                    직접 수정
+                  </button>
+                  <button
+                    onClick={proceedOriginal}
+                    className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-2 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-900"
+                  >
+                    원문대로 진행
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* 스텝퍼 */}
       <ol className="mt-5 flex flex-wrap gap-2">
         {STEP_ORDER.map((s, i) => {
@@ -3006,10 +3211,12 @@ export default function Studio({
                 <button
                   type="button"
                   onClick={() => approveScript()}
-                  disabled={busy !== null}
+                  disabled={busy !== null || reviewBusy}
                   className="flex-1 rounded-xl bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-semibold py-3 transition-colors"
                 >
-                  {busy === "approve-script" ? (
+                  {reviewBusy ? (
+                    <Busy>구조 검수 중…</Busy>
+                  ) : busy === "approve-script" ? (
                     <Busy>승인 중…</Busy>
                   ) : (
                     "✓ 스크립트 승인하고 키프레임 단계로 →"
@@ -3051,6 +3258,19 @@ export default function Studio({
                 {copiedScript ? "✓ 복사됨" : "📋 스크립트 복사"}
               </button>
             </div>
+            {reviewPassed && !reviewBusy && (
+              <p className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">
+                ✓ 구조 검수 통과 — 열린 고리 구조 확인됨
+              </p>
+            )}
+            {reviewErr && (
+              <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                ⚠ 구조 검수 실패({reviewErr}) — 확정은 진행됐어요.{" "}
+                <button type="button" onClick={() => approveScript()} className="underline hover:no-underline">
+                  구조 검수 다시 실행
+                </button>
+              </p>
+            )}
           </>
         )}
       </section>
