@@ -89,6 +89,12 @@ export function grokVideoCostUsd(): number {
   return GROK_VIDEO_USD;
 }
 
+// Kling(직접 API) image-to-video — 대략값(실측 후 조정). 5초 std 기준.
+export const KLING_VIDEO_USD = 0.35;
+export function klingVideoCostUsd(): number {
+  return KLING_VIDEO_USD;
+}
+
 // ElevenLabs TTS — 문자당 USD (eleven_multilingual_v2 기준 ~$0.30/1000자).
 export const ELEVENLABS_USD_PER_CHAR = 0.0003;
 

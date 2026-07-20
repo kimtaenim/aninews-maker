@@ -10,9 +10,10 @@
 import videoModels from "../config/video-models.json";
 import { generateVideo as falGenerate, pollVideo as falPoll, type VideoPoll } from "./fal";
 import { submitGrokVideo, pollGrokVideo } from "./grok";
-import { falVideoCostUsd, grokVideoCostUsd } from "./cost";
+import { submitKlingVideo, pollKlingVideo } from "./kling";
+import { falVideoCostUsd, grokVideoCostUsd, klingVideoCostUsd } from "./cost";
 
-export type VideoProvider = "fal" | "grok";
+export type VideoProvider = "fal" | "grok" | "kling";
 
 export interface VideoModel {
   id: string;
@@ -49,6 +50,11 @@ export async function submitVideo(
     const requestId = await submitGrokVideo(opts);
     return { jobId: `grok${SEP}${requestId}` };
   }
+  if (model.provider === "kling") {
+    // model.endpoint = Kling model_name(예: kling-v2-master). 가로면 aspect 전달.
+    const taskId = await submitKlingVideo({ ...opts, model: model.endpoint, aspect: opts.aspect });
+    return { jobId: `kling${SEP}${taskId}` };
+  }
   // fal — falGenerate 가 "<endpoint>::<requestId>" 를 돌려줌. 모델 필수 파라미터 전달.
   // 가로(롱폼)면 aspect_ratio 를 쓰는 모델만 덮어쓴다: Seedance 는 defaultParams 로 "9:16"
   // 을 강제하므로 "16:9"로 교체. 나머지(MiniMax·Kling·Grok)는 입력 이미지 비율(이미 16:9)을
@@ -69,6 +75,9 @@ export async function pollVideoJob(jobId: string): Promise<VideoPoll> {
   if (jobId.startsWith(`grok${SEP}`)) {
     return pollGrokVideo(jobId.slice(`grok${SEP}`.length));
   }
+  if (jobId.startsWith(`kling${SEP}`)) {
+    return pollKlingVideo(jobId.slice(`kling${SEP}`.length));
+  }
   if (jobId.startsWith(`fal${SEP}`)) {
     return falPoll(jobId.slice(`fal${SEP}`.length)); // "<endpoint>::<requestId>"
   }
@@ -79,9 +88,10 @@ export async function pollVideoJob(jobId: string): Promise<VideoPoll> {
 export function videoCostUsd(modelId: string): number {
   const model = getVideoModel(modelId);
   if (model.provider === "grok") return grokVideoCostUsd();
+  if (model.provider === "kling") return klingVideoCostUsd();
   return falVideoCostUsd(model.endpoint);
 }
 
-export function videoVendor(modelId: string): "fal" | "grok" {
+export function videoVendor(modelId: string): VideoProvider {
   return getVideoModel(modelId).provider;
 }
