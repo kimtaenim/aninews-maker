@@ -11,10 +11,12 @@ interface SegInfo {
   finalVideoUrl?: string;
 }
 
-interface HostScene {
-  slot: "opening" | "connector" | "closing";
-  connectorAfter?: number;
-  narration: string;
+interface HostProject {
+  id: string;
+  title: string;
+  keyframeUrl?: string;
+  sceneCount: number;
+  finalVideoUrl?: string;
 }
 
 // 롱폼 전용 화면 — 세그먼트(16:9로 재합성한 숏폼) 완성 현황을 보여주고,
@@ -23,18 +25,15 @@ interface HostScene {
 export default function LongformStudio({
   project,
   segments,
-  hostScenes,
+  hostProject,
 }: {
   project: { id: string; title: string; finalVideoUrl?: string; eyecatchUrl?: string };
   segments: SegInfo[];
-  hostScenes: HostScene[];
+  hostProject: HostProject | null;
 }) {
   const router = useRouter();
   const [hostBusy, setHostBusy] = useState(false);
   const [hostErr, setHostErr] = useState("");
-  const opening = hostScenes.filter((h) => h.slot === "opening");
-  const connectors = hostScenes.filter((h) => h.slot === "connector");
-  const closing = hostScenes.filter((h) => h.slot === "closing");
 
   async function genHostScript() {
     setHostBusy(true);
@@ -181,53 +180,46 @@ export default function LongformStudio({
         )}
       </div>
 
-      {/* 진행자(마스코트) 대본 */}
+      {/* 진행자(마스코트) */}
       <div className="mt-4 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold">진행자 대본</h2>
+          <h2 className="text-sm font-semibold">진행자</h2>
           <button
             onClick={genHostScript}
             disabled={hostBusy}
             className="shrink-0 text-xs rounded-lg border border-accent px-3 py-1.5 text-accent hover:bg-accent/10 disabled:opacity-40"
           >
-            {hostBusy ? "생성 중…" : hostScenes.length ? "다시 생성" : "진행자 대본 생성"}
+            {hostBusy ? "생성 중…" : hostProject ? "대본 다시 생성" : "진행자 대본 생성"}
           </button>
         </div>
         <p className="mt-1 text-[11px] text-zinc-500">
-          안경 미소녀 + 사족로봇이 세그먼트를 소개·연결·마무리합니다. 세그먼트 스크립트를 읽어 Claude가 작성(이미지·영상·음성은 다음 단계).
+          안경 미소녀 + 사족로봇이 세그먼트를 소개·연결·마무리합니다. 대본 생성 뒤 <b>진행자 편집</b>에서
+          세그먼트처럼 씬별로 이미지·영상·음성을 만드세요(오프닝 첫 씬 = 캐릭터 확정).
         </p>
         {hostErr && <p className="mt-2 text-[11px] text-red-600">{hostErr}</p>}
-        {hostScenes.length > 0 && (
-          <div className="mt-2 grid gap-2 text-[11px] text-zinc-600 dark:text-zinc-300">
-            <div>
-              <span className="font-semibold text-accent">오프닝</span>
-              <ul className="mt-0.5 list-disc pl-4">
-                {opening.map((h, i) => (
-                  <li key={i}>{h.narration}</li>
-                ))}
-              </ul>
+        {hostProject ? (
+          <div className="mt-2 flex items-center gap-3 rounded-lg border border-zinc-200 dark:border-zinc-800 p-2">
+            <div className="h-10 w-16 shrink-0 overflow-hidden rounded bg-zinc-100 dark:bg-zinc-900">
+              {hostProject.keyframeUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={hostProject.keyframeUrl} alt="진행자" className="h-full w-full object-cover" />
+              ) : null}
             </div>
-            {connectors.length > 0 && (
-              <div>
-                <span className="font-semibold text-accent">연결</span>
-                <ul className="mt-0.5 list-disc pl-4">
-                  {connectors.map((h, i) => (
-                    <li key={i}>
-                      세그 {(h.connectorAfter ?? i) + 1}→{(h.connectorAfter ?? i) + 2}: {h.narration}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            <div>
-              <span className="font-semibold text-accent">마무리</span>
-              <ul className="mt-0.5 list-disc pl-4">
-                {closing.map((h, i) => (
-                  <li key={i}>{h.narration}</li>
-                ))}
-              </ul>
-            </div>
+            <span className="flex-1 text-xs">
+              호스트 씬 {hostProject.sceneCount}개
+              {hostProject.finalVideoUrl ? " · 완성" : ""}
+            </span>
+            <Link
+              href={`/project/${hostProject.id}`}
+              className="shrink-0 text-[11px] rounded-md border border-accent px-2 py-1 text-accent hover:bg-accent/10"
+            >
+              진행자 편집 →
+            </Link>
           </div>
+        ) : (
+          <p className="mt-2 text-[11px] text-amber-600 dark:text-amber-400">
+            아직 없음 — &lsquo;진행자 대본 생성&rsquo;을 눌러 시작하세요.
+          </p>
         )}
       </div>
 

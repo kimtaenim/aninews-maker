@@ -173,9 +173,12 @@ export interface Project {
   // [롱폼] 세그먼트 사이/뒤에 1초씩 끼우는 아이캐치(송곳니 안경 미소녀 + 구독 버튼) 이미지.
   // 롱폼당 1장 생성해 매 경계에 재사용. 구독 마무리씬을 대체(반복 노출로 구독 유도).
   eyecatchUrl?: string;
-  // [롱폼-세그먼트] 이 프로젝트가 어떤 롱폼의 세그먼트인지(역참조). 라이브러리에서 롱폼
+  // [롱폼-세그먼트] 이 프로젝트가 어떤 롱폼의 세그먼트/진행자인지(역참조). 라이브러리에서 롱폼
   // 이름 폴더로 묶는 키. 이 필드가 있는 "새" 항목만 폴더로 렌더(기존 항목은 평면 유지).
   longformId?: string;
+  // [롱폼] 진행자(호스트) 프로젝트 id — 오프닝·연결·마무리 호스트 씬을 담은 별도 프로젝트.
+  // Studio 에서 세그먼트처럼 씬별 편집. 합성 때 슬롯대로 세그먼트와 교차.
+  hostProjectId?: string;
   cast?: string[]; // [cliche] 등장 인물 이름들(화자 = 이 이름 또는 "내레이션"). 목소리·씬 화자에 사용.
   castMembers?: CastMember[]; // [cliche] 캐스팅 단계 산출물(얼굴·목소리 포함). cast/castVoices 의 원천.
   styleProfileId: string; // config/style-profiles.json 의 id

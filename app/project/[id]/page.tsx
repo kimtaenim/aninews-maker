@@ -34,13 +34,16 @@ export default async function ProjectStudioPage({
         keyframeUrl: s.keyframeUrl,
         finalVideoUrl: s.finalVideoUrl,
       }));
-    const hostScenes = (project.scenes ?? [])
-      .filter((s) => s.hostSlot)
-      .map((s) => ({
-        slot: s.hostSlot as "opening" | "connector" | "closing",
-        connectorAfter: s.connectorAfter,
-        narration: s.narration,
-      }));
+    const host = project.hostProjectId ? await getProject(project.hostProjectId) : null;
+    const hostProject = host
+      ? {
+          id: host.id,
+          title: host.title,
+          keyframeUrl: host.keyframeUrl,
+          sceneCount: (host.scenes ?? []).length,
+          finalVideoUrl: host.finalVideoUrl,
+        }
+      : null;
     return (
       <LongformStudio
         project={{
@@ -50,7 +53,7 @@ export default async function ProjectStudioPage({
           eyecatchUrl: project.eyecatchUrl,
         }}
         segments={segments}
-        hostScenes={hostScenes}
+        hostProject={hostProject}
       />
     );
   }

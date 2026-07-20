@@ -14,21 +14,32 @@ function isLongform(p: Project): boolean {
 // 롱폼 전용 탭 — 롱폼들을 폴더로(롱폼 + 세그먼트). 일반 라이브러리와 분리 관리.
 export default async function LongformListPage() {
   let longforms: Project[] = [];
-  const segByLongform = new Map<string, Project[]>();
+  // 폴더 자식: [진행자(있으면), ...세그먼트] 순.
+  const childrenByLongform = new Map<string, Project[]>();
   let loadError = false;
   try {
     const ids = await listProjectIds(0, 300);
     const projects = await getProjectsBulk(ids);
     longforms = projects.filter(isLongform).sort((a, b) => b.updatedAt - a.updatedAt);
-    // 각 롱폼의 세그먼트를 sourceProjectIds 로 로드(순서 유지, 페이지 무관).
-    const allSegIds = [...new Set(longforms.flatMap((l) => l.sourceProjectIds ?? []))];
-    const segs = allSegIds.length ? await getProjectsBulk(allSegIds) : [];
-    const segById = new Map(segs.map((s) => [s.id, s]));
+    // 각 롱폼의 진행자·세그먼트를 id 로 로드(순서 유지, 페이지 무관).
+    const childIds = [
+      ...new Set(
+        longforms.flatMap((l) => [
+          ...(l.hostProjectId ? [l.hostProjectId] : []),
+          ...(l.sourceProjectIds ?? []),
+        ])
+      ),
+    ];
+    const kids = childIds.length ? await getProjectsBulk(childIds) : [];
+    const kidById = new Map(kids.map((s) => [s.id, s]));
     for (const l of longforms) {
-      const ordered = (l.sourceProjectIds ?? [])
-        .map((id) => segById.get(id))
+      const ordered = [
+        ...(l.hostProjectId ? [l.hostProjectId] : []),
+        ...(l.sourceProjectIds ?? []),
+      ]
+        .map((id) => kidById.get(id))
         .filter((s): s is Project => !!s);
-      segByLongform.set(l.id, ordered);
+      childrenByLongform.set(l.id, ordered);
     }
   } catch {
     loadError = true;
@@ -61,7 +72,8 @@ export default async function LongformListPage() {
       ) : (
         <ul className="mt-6 grid gap-3">
           {longforms.map((l) => {
-            const segs = segByLongform.get(l.id) ?? [];
+            const children = childrenByLongform.get(l.id) ?? [];
+            const segCount = (l.sourceProjectIds ?? []).length;
             return (
               <li key={l.id}>
                 <details open className="rounded-2xl border border-accent/40 bg-accent/5 p-2">
@@ -69,12 +81,13 @@ export default async function LongformListPage() {
                     <span aria-hidden>📁</span>
                     <span className="line-clamp-1 flex-1">{l.title}</span>
                     <span className="shrink-0 text-[11px] text-zinc-500">
-                      세그먼트 {segs.length}
+                      세그먼트 {segCount}
+                      {l.hostProjectId ? " · 진행자" : ""}
                       {l.finalVideoUrl ? " · 완성" : ""}
                     </span>
                   </summary>
                   <ul className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {[l, ...segs].map((c) => (
+                    {[l, ...children].map((c) => (
                       <ProjectCard key={c.id} p={c} />
                     ))}
                   </ul>

@@ -2,28 +2,36 @@
 // 롱폼 진행자(호스트) 대본 생성 — Claude 가 세그먼트 스크립트를 읽고 오프닝·연결·마무리를 쓴다.
 // ----------------------------------------------------------------------------
 // 호스트 = 송곳니 안경 미소녀 + 머리·얼굴 없는 사족보행 로봇 콤비(config/eyecatch.json).
-// 오프닝 첫 씬에서 이 캐릭터를 생성해 키프레임(레퍼런스)으로 삼고, 연결·마무리·썸네일에 계속 주입.
-// 여기선 "나레이션"만 만든다(이미지 프롬프트·모션·이미지·영상·음성은 이후 파이프라인).
+// 각 호스트 씬은 나레이션 + 이미지 프롬프트(마스코트가 진행하는 장면). 오프닝 첫 씬은 두
+// 마스코트를 또렷이 잡는 확정샷(이게 키프레임=레퍼런스가 되어 이후 씬에 계속 주입된다).
+// 결과는 "진행자 프로젝트"의 scenes[] 로 들어가 Studio 에서 세그먼트처럼 씬별 편집된다.
 // ============================================================================
 
 import { getAnthropic, MODELS } from "./anthropic";
 import { anthropicCostUsd, recordCost } from "./cost";
+import eyecatchConfig from "../config/eyecatch.json";
+
+export interface HostSceneDraft {
+  narration: string;
+  imagePrompt: string;
+}
 
 export interface HostScriptResult {
-  opening: string[]; // 오프닝 나레이션(2~3, 각 한 씬)
-  connectors: string[]; // 연결 나레이션 — 세그먼트 사이 간격 수(= 세그먼트 수 - 1)
-  closing: string[]; // 마무리 나레이션(1~2)
+  opening: HostSceneDraft[]; // 2~3(각 한 씬). 첫 씬 = 두 마스코트 확정샷.
+  connectors: HostSceneDraft[]; // 세그먼트 사이 간격 수(= 세그먼트 수 - 1)
+  closing: HostSceneDraft[]; // 1~2
   costUsd: number;
 }
 
 export async function generateHostScript(args: {
   projectId: string;
-  segments: { title: string; narration: string }[]; // 각 세그먼트의 합친 나레이션
+  segments: { title: string; narration: string }[];
 }): Promise<HostScriptResult> {
   const { projectId, segments } = args;
   const n = segments.length;
   const gaps = Math.max(0, n - 1);
   const client = getAnthropic();
+  const mascot = (eyecatchConfig as { description?: string }).description ?? "";
 
   const segList = segments
     .map((s, i) => `[${i + 1}] 제목: ${s.title}\n내용: ${s.narration}`)
@@ -31,26 +39,29 @@ export async function generateHostScript(args: {
 
   const system =
     "너는 여러 경제·뉴스 숏폼을 하나의 가로 롱폼으로 엮는 진행자(호스트) 대본 작가다. " +
-    "진행자는 '송곳니 안경 미소녀' 마스코트와 '머리·얼굴 없는 사족보행 로봇' 콤비다. " +
-    "밝고 친근한 한국어 구어체, 짧고 간결하게.";
+    "진행자는 두 마스코트 콤비다:\n" +
+    mascot +
+    "\n밝고 친근한 한국어 구어체. 각 씬은 나레이션(한국어)과 image(영어 비주얼 프롬프트)를 갖는다. " +
+    "image 는 두 마스코트가 화면에 나와 진행/리액션하는 장면을 묘사한다(밝은 팝 배경). " +
+    "opening 의 첫 씬 image 는 두 마스코트를 또렷이 잡는 전신 확정샷으로 써라(이게 레퍼런스가 된다).";
 
   const userMsg = [
     `아래 숏폼 ${n}개를 순서대로 이어붙인 롱폼의 진행자 대본을 써줘.`,
     "",
     segList,
     "",
-    "다음을 만들어(나레이션만, 한국어 구어체):",
-    `- opening: 2~3개(각 한 씬, 한 문장). 전체 ${n}개 주제를 소개하고 기대감을 준다. 합쳐서 10~15초 분량.`,
-    `- connectors: 정확히 ${gaps}개. i번째는 세그먼트 i에서 i+1로 자연스럽게 넘기는 한 문장(예: "환율 얘기 잘 봤죠? 다음은 밸류업이에요").`,
-    "- closing: 1~2개. 전체를 짧게 정리하고 구독·좋아요를 유도한다.",
+    "만들 것(각 씬 = {narration, image}):",
+    `- opening: 2~3씬. 전체 ${n}개 주제를 소개하고 기대감. 합쳐 10~15초. 첫 씬 image=두 마스코트 확정샷.`,
+    `- connectors: 정확히 ${gaps}씬. i번째는 세그먼트 i→i+1 전환 한 문장("~잘 봤죠? 다음은 ~").`,
+    "- closing: 1~2씬. 전체 정리 + 구독·좋아요 유도.",
     "",
-    "반드시 이 JSON 만 출력(다른 말·코드펜스 없이):",
-    `{"opening":["문장","문장"],"connectors":[${gaps > 0 ? '"문장"' : ""}],"closing":["문장"]}`,
+    "반드시 이 JSON 만 출력(코드펜스·다른 말 없이):",
+    '{"opening":[{"narration":"...","image":"..."}],"connectors":[{"narration":"...","image":"..."}],"closing":[{"narration":"...","image":"..."}]}',
   ].join("\n");
 
   const r = await client.messages.create({
     model: MODELS.sonnet,
-    max_tokens: 2000,
+    max_tokens: 3000,
     system,
     messages: [{ role: "user", content: userMsg }],
   });
@@ -77,15 +88,23 @@ export async function generateHostScript(args: {
   } catch {
     throw new Error("진행자 대본 JSON 파싱 실패");
   }
-  const toList = (v: unknown): string[] =>
-    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((s) => s.trim()) : [];
+  const toDrafts = (v: unknown): HostSceneDraft[] =>
+    (Array.isArray(v) ? v : [])
+      .map((x) => {
+        const o = (x ?? {}) as { narration?: unknown; image?: unknown };
+        const narration = typeof o.narration === "string" ? o.narration.trim() : "";
+        const imagePrompt = typeof o.image === "string" ? o.image.trim() : "";
+        return { narration, imagePrompt };
+      })
+      .filter((d) => d.narration.length > 0);
 
-  const opening = toList(parsed.opening);
-  let connectors = toList(parsed.connectors);
-  const closing = toList(parsed.closing);
-  // connectors 개수 보정 — 부족하면 일반 전환 문구로 채우고, 넘치면 자른다.
+  const opening = toDrafts(parsed.opening);
+  let connectors = toDrafts(parsed.connectors);
+  const closing = toDrafts(parsed.closing);
   if (connectors.length > gaps) connectors = connectors.slice(0, gaps);
-  while (connectors.length < gaps) connectors.push("다음 이야기로 넘어가 볼까요?");
+  while (connectors.length < gaps) {
+    connectors.push({ narration: "다음 이야기로 넘어가 볼까요?", imagePrompt: "The two host mascots cheerfully gesturing toward the next topic, bright pop background." });
+  }
 
   if (opening.length === 0 && closing.length === 0) {
     throw new Error("진행자 대본이 비어 있어요 — 다시 시도해 주세요");
