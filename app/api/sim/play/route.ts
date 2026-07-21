@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
       ownerEmail: (await getSessionEmail()) ?? undefined,
     });
 
-    const { reply: opening, costUsd } = await generateOpening(game, target);
+    const { reply: opening, moves, costUsd } = await generateOpening(game, target);
     play.turns.push({ role: "assistant", text: opening, ts: Date.now() });
     play.updatedAt = Date.now();
     await saveSimPlay(play);
@@ -56,6 +56,7 @@ export async function POST(req: NextRequest) {
       dislike: play.dislike,
       costUsd,
       opening,
+      moves,
     });
   } catch (e) {
     return NextResponse.json(

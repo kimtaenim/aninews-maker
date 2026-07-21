@@ -116,6 +116,7 @@ export default function PlayClient({
   const faceGenTried = useRef<Set<string>>(new Set());
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
+  const [moves, setMoves] = useState<string[]>([]); // AI가 제안한 플레이어 대답 후보(선택지)
   const [sending, setSending] = useState(false);
   const [banner, setBanner] = useState<string>("");
   const [cutscene, setCutscene] = useState<Cutscene | null>(null);
@@ -216,6 +217,7 @@ export default function PlayClient({
     setCostUsd(0);
     setTurnCount(r.turns.filter((x) => x.role === "user").length);
     setMsgs(r.turns.map((x) => ({ role: x.role, text: x.text, sulking: x.sulking })));
+    setMoves([]);
     setEnding(null);
     setError("");
     setPhase("playing");
@@ -248,6 +250,7 @@ export default function PlayClient({
       setCostUsd(data.costUsd ?? 0);
       setTurnCount(0);
       setMsgs([{ role: "assistant", text: data.opening }]);
+      setMoves(Array.isArray(data.moves) ? data.moves : []);
       setPhase("playing");
       void ensureFaces(t);
     } catch (e) {
@@ -277,10 +280,11 @@ export default function PlayClient({
     setTimeout(() => setBursts((b) => b.filter((x) => !ids.has(x.id))), 2600);
   }
 
-  async function send() {
-    const text = input.trim();
+  async function send(override?: string) {
+    const text = (override ?? input).trim();
     if (!text || sending || ending) return;
     setInput("");
+    setMoves([]);
     setBanner("");
     setMsgs((m) => [...m, { role: "user", text }]);
     setSending(true);
@@ -319,6 +323,7 @@ export default function PlayClient({
         ...m,
         { role: "assistant", text: data.reply, sulking: data.sulking },
       ]);
+      setMoves(Array.isArray(data.moves) ? data.moves : []);
       // 배너 우선순위: 화해 > 삐짐 > 마일스톤 > 애증(둘 다 상승) > 상황 (숫자는 감추고 상태만)
       if (data.justSoothed) setBanner("💗 마음이 풀렸다 — 화해!");
       else if (data.justSulked) setBanner("💢 토라졌다… 왜 그러는지 눈치껏 사과해야 해");
@@ -591,6 +596,21 @@ export default function PlayClient({
           </div>
         </div>
       ) : (
+        <>
+        {moves.length > 0 && !sending && (
+          <div className="mt-3 flex flex-col gap-1.5">
+            {moves.map((m, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => send(m)}
+                className="rounded-xl border border-accent/40 bg-accent/5 px-3 py-2 text-left text-sm hover:bg-accent/10"
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="mt-3 flex items-center gap-2">
           {protagonist?.name &&
             (protagFace ? (
@@ -621,13 +641,14 @@ export default function PlayClient({
           />
           <button
             type="button"
-            onClick={send}
+            onClick={() => send()}
             disabled={phase !== "playing" || sending || !input.trim()}
             className="rounded-xl bg-accent hover:bg-accent-strong text-white text-sm font-semibold px-4 disabled:opacity-40"
           >
             보내기
           </button>
         </div>
+        </>
       )}
 
       {/* 개발자용 비용 푸터 — 관리자에게만(테스터엔 숨김). 이번 판 누적 Claude 비용. */}

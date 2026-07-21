@@ -104,10 +104,13 @@ function buildSystem(target: SimTarget, protagonist?: SimProtagonist) {
     "",
     memoryInstruction(),
     "",
+    "moves: 플레이어가 지금 할 수 있는 '대답 후보' 3개를 플레이어 1인칭 짧은 대사로 제안한다.",
+    "  톤을 서로 다르게(솔직·능청·당돌·진심·도발 등), 지금 상황·직전 대사에 딱 맞게. 뻔한 것 금지.",
     "반드시 아래 JSON 만 출력한다. 코드펜스(```) 쓰지 말고, 줄바꿈·들여쓰기 없이 '한 줄'로",
     "압축해서 출력한다. reply 는 2~3문장 이내로 짧게(길면 안 됨). 숫자는 3, -3 처럼 쓰고 앞에",
     "+ 를 붙이지 마라(+3 은 안 됨).",
     '{"reply":"대사","likeDelta":정수,"dislikeDelta":정수,' +
+      '"moves":["대답후보1","대답후보2","대답후보3"],' +
       '"event":null|"player_confess"|"npc_confess","sooth":null|"correct"|"generic"|"wrong"|"none",' +
       '"upsetAbout":null|"서운한 이유","memoryAdd":null|{"type":"...","text":"...","key":"..."}}',
   ].join("\n");
@@ -157,10 +160,20 @@ interface ParsedTurn {
   reply: string;
   likeDelta: number;
   dislikeDelta: number;
+  moves?: string[]; // 플레이어 대답 후보(선택지)
   event?: string | null;
   sooth?: string | null;
   upsetAbout?: string | null;
   memoryAdd?: unknown; // {type,text,key?} — simMemory 가 검증·적용
+}
+
+// moves 배열 정리 — 문자열만, 공백 제거, 최대 3개.
+function parseMoves(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .map((s) => (typeof s === "string" ? s.trim() : ""))
+    .filter(Boolean)
+    .slice(0, 3);
 }
 
 function parseTurnJson(raw: string): ParsedTurn | null {
@@ -193,6 +206,7 @@ function parseTurnJson(raw: string): ParsedTurn | null {
       reply,
       likeDelta: clampInt(o.likeDelta, -10, 10),
       dislikeDelta: clampInt(o.dislikeDelta, -10, 10),
+      moves: parseMoves(o.moves),
       event: typeof o.event === "string" ? o.event : null,
       sooth: typeof o.sooth === "string" ? o.sooth : null,
       upsetAbout:
@@ -250,7 +264,7 @@ async function callHaiku(args: {
 export async function generateOpening(
   game: SimGame,
   target: SimTarget
-): Promise<{ reply: string; costUsd: number }> {
+): Promise<{ reply: string; moves: string[]; costUsd: number }> {
   const setup = target.relationship
     ? `너와 플레이어(${game.protagonist?.name ?? "상대"})는 지금 이런 사이·상황이다: ${target.relationship}. 그 상황에 맞게 `
     : "아직 서먹한 사이다. ";
@@ -259,20 +273,24 @@ export async function generateOpening(
     messages: [
       {
         role: "user",
-        content: `(게임 시작 — ${setup}위 '첫 태도'대로 플레이어에게 먼저 짧게 말을 걸고, 대화를 이어갈 여지를 남겨라. 이번엔 JSON 이 아니라 대사 한두 문장만 출력한다.)`,
+        content:
+          `(게임 시작 — ${setup}위 '첫 태도'대로 플레이어에게 먼저 짧게 말을 걸고, 대화를 이어갈 여지를 남겨라. ` +
+          `아래 JSON 한 줄만 출력: {"reply":"먼저 거는 대사","moves":["플레이어 대답후보1","후보2","후보3"]} ` +
+          `moves 는 플레이어 1인칭 짧은 대사 3개, 톤을 다르게.)`,
       },
     ],
     gameId: game.id,
     kind: "sim-opening",
   });
   const asJson = parseTurnJson(raw);
-  return { reply: asJson?.reply || raw || "…안녕.", costUsd };
+  return { reply: asJson?.reply || raw || "…안녕.", moves: asJson?.moves ?? [], costUsd };
 }
 
 export interface JudgeResult {
   reply: string;
   likeDelta: number;
   dislikeDelta: number;
+  moves?: string[]; // 플레이어 대답 후보(선택지)
   like: number;
   dislike: number;
   sulking: boolean;
@@ -424,6 +442,7 @@ export async function judgeTurn(
     reply: parsed.reply,
     likeDelta,
     dislikeDelta,
+    moves: parsed.moves ?? [],
     like,
     dislike,
     sulking,

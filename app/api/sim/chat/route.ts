@@ -93,6 +93,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     ok: true,
     reply: result.reply,
+    moves: result.moves ?? [],
     like: play.like,
     dislike: play.dislike,
     costUsd: result.costUsd,
