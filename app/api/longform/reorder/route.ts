@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProject, saveProject } from "@/lib/projectStore";
+import { buildSections } from "@/lib/longform";
 
 export const runtime = "nodejs";
 
@@ -33,9 +34,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "순서 목록이 세그먼트와 일치하지 않아요" }, { status: 422 });
   }
 
-  // 저장 직전 fresh 재읽기 후 sourceProjectIds 만 머지.
+  // 저장 직전 fresh 재읽기 후 sourceProjectIds 만 머지. 순서가 바뀌면 섹션 그룹핑도
+  // 새 순서로 재구성한다(합성해 둔 섹션 중간본은 무효화 — 순서가 곧 내용이므로 맞다).
   const fresh = (await getProject(projectId)) ?? project;
   fresh.sourceProjectIds = order;
+  if (Array.isArray(fresh.sections) && fresh.sections.length > 0) {
+    fresh.sections = buildSections(order);
+  }
   fresh.updatedAt = Date.now();
   await saveProject(fresh);
   return NextResponse.json({ ok: true });

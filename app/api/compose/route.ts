@@ -129,5 +129,15 @@ export async function GET(req: NextRequest) {
     error: project.steps.compose.error,
     updatedAt: project.steps.compose.updatedAt, // 합성 시작 시각(경과시간 복원용)
     progress, // 워커 진행 로그 마지막 줄 (예: "씬 6/8: 인코딩…")
+    // [롱폼] 섹션 상태 — 섹션별 부분 합성 스피너·완료 판정용(있을 때만).
+    sections: Array.isArray(project.sections)
+      ? project.sections.map((s) => ({
+          id: s.id,
+          segmentIds: s.segmentIds,
+          videoUrl: s.videoUrl,
+          status: s.status,
+          error: s.error,
+        }))
+      : undefined,
   });
 }

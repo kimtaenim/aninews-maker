@@ -62,6 +62,7 @@ export default async function ProjectStudioPage({
           title: project.title,
           finalVideoUrl: project.finalVideoUrl,
           eyecatchUrl: project.eyecatchUrl,
+          sections: project.sections ?? null,
         }}
         segments={segments}
         hostProject={hostProject}

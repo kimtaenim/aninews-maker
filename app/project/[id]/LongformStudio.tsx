@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import type { LongformOpening } from "@/lib/types";
+import type { LongformOpening, LongformSection } from "@/lib/types";
 import type { LongformReviewResult } from "@/lib/longformReview";
 
 interface SegInfo {
@@ -31,7 +31,13 @@ export default function LongformStudio({
   initialOpening,
   initialTitles,
 }: {
-  project: { id: string; title: string; finalVideoUrl?: string; eyecatchUrl?: string };
+  project: {
+    id: string;
+    title: string;
+    finalVideoUrl?: string;
+    eyecatchUrl?: string;
+    sections?: LongformSection[] | null;
+  };
   segments: SegInfo[];
   hostProject: HostProject | null;
   initialOpening: LongformOpening | null;
@@ -236,9 +242,14 @@ export default function LongformStudio({
   const [segs, setSegs] = useState(segments); // 순서 변경용 로컬 상태
   const [reordering, setReordering] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // [롱폼] 섹션(2~3세그 부분 합성 단위) 로컬 상태 — 폴링으로 갱신.
+  const [secList, setSecList] = useState<LongformSection[]>(project.sections ?? []);
 
   const readyCount = segs.filter((s) => s.finalVideoUrl).length;
   const allReady = segs.length > 0 && readyCount === segs.length;
+  const hasSections = secList.length > 0;
+  const secReadyCount = secList.filter((s) => s.videoUrl).length;
+  const allSecReady = hasSections && secReadyCount === secList.length;
 
   // 세그먼트 순서 위/아래로 — 로컬 즉시 반영 + 서버 저장.
   async function moveSeg(i: number, dir: -1 | 1) {
@@ -287,6 +298,11 @@ export default function LongformStudio({
     };
   }, []);
 
+  function startPolling() {
+    if (timer.current) clearInterval(timer.current);
+    timer.current = setInterval(poll, 3000);
+  }
+
   async function poll() {
     try {
       const r = await fetch(`/api/compose?projectId=${encodeURIComponent(project.id)}`);
@@ -294,21 +310,26 @@ export default function LongformStudio({
       if (!d.ok) return;
       setStatus(d.status ?? "");
       setProgress(d.progress ?? "");
+      if (Array.isArray(d.sections)) setSecList(d.sections as LongformSection[]);
+      const anySecGen =
+        Array.isArray(d.sections) &&
+        (d.sections as LongformSection[]).some((s) => s.status === "generating");
+      const joinActive = d.status === "generating";
       if (d.status === "generated" && d.finalVideoUrl) {
         setFinalUrl(d.finalVideoUrl);
         setComposing(false);
-        if (timer.current) clearInterval(timer.current);
       } else if (d.status === "error") {
         setError(d.error || "합성 실패");
         setComposing(false);
-        if (timer.current) clearInterval(timer.current);
       }
+      // 섹션 부분 합성·최종 join 모두 끝났으면 폴링 종료.
+      if (!anySecGen && !joinActive && timer.current) clearInterval(timer.current);
     } catch {
       /* 일시 오류는 다음 폴링에서 회복 */
     }
   }
 
-
+  // 레거시(섹션 없는 구버전 롱폼) — 단일 교차 합성.
   async function startCompose() {
     if (!allReady || composing) return;
     setError("");
@@ -323,10 +344,53 @@ export default function LongformStudio({
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok || !d.ok) throw new Error(d.error || "합성 요청 실패");
-      if (timer.current) clearInterval(timer.current);
-      timer.current = setInterval(poll, 3000);
+      startPolling();
     } catch (e) {
       setError(e instanceof Error ? e.message : "합성 요청 실패");
+      setComposing(false);
+    }
+  }
+
+  // [롱폼] 섹션 하나만 부분 합성 — 그 섹션 세그먼트가 전부 완성돼 있어야 한다.
+  async function composeSection(sectionId: string) {
+    if (composing) return; // 최종 join 중이면 대기
+    setError("");
+    setSecList((prev) =>
+      prev.map((s) => (s.id === sectionId ? { ...s, status: "generating", error: undefined } : s))
+    );
+    try {
+      const r = await fetch("/api/compose", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId: project.id, lang: "ko", sectionId }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) throw new Error(d.error || "섹션 합성 요청 실패");
+      startPolling();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "섹션 합성 요청 실패");
+      setSecList((prev) => prev.map((s) => (s.id === sectionId ? { ...s, status: "error" } : s)));
+    }
+  }
+
+  // [롱폼] 섹션 영상들을 최종 이어붙이기 — 모든 섹션이 합성돼 있어야 한다.
+  async function startJoin() {
+    if (composing || !allSecReady) return;
+    setError("");
+    setComposing(true);
+    setStatus("generating");
+    setProgress("최종 이어붙이기 요청 중…");
+    try {
+      const r = await fetch("/api/compose", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId: project.id, lang: "ko", joinSections: true }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) throw new Error(d.error || "최종 합성 요청 실패");
+      startPolling();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "최종 합성 요청 실패");
       setComposing(false);
     }
   }
@@ -758,22 +822,114 @@ export default function LongformStudio({
         ))}
       </ol>
 
-      {/* 합성 */}
-      <div className="mt-5 rounded-xl bg-zinc-50 dark:bg-zinc-900 p-3">
-        <button
-          onClick={startCompose}
-          disabled={!allReady || composing}
-          className="w-full rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white text-sm font-medium py-2"
-        >
-          {composing ? "합성 중…" : allReady ? "롱폼 합성" : `세그먼트 완성 대기 (${readyCount}/${segs.length})`}
-        </button>
-        {composing && (
-          <p className="mt-2 text-[11px] text-zinc-500">
-            상태: {status} {progress ? `· ${progress}` : ""}
+      {/* 합성 — 섹션이 있으면 섹션별 부분 합성 + 최종 이어붙이기, 없으면 레거시 단일 합성 */}
+      {hasSections ? (
+        <div className="mt-5">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold">섹션별 부분 합성 ({secReadyCount}/{secList.length})</h2>
+          </div>
+          <p className="mt-1 text-[11px] text-zinc-500">
+            세그먼트를 2~3편씩 섹션으로 나눠 <b>섹션별로</b> 굽습니다(한 번에 몰지 않아 서버 부담↓).
+            섹션을 전부 합성한 뒤 <b>최종 이어붙이기</b>를 누르세요.
           </p>
-        )}
-        {error && <p className="mt-2 text-[11px] text-red-600">{error}</p>}
-      </div>
+          <ol className="mt-2 grid gap-2">
+            {secList.map((sec, si) => {
+              const segInfos = sec.segmentIds
+                .map((id) => segs.find((s) => s.id === id))
+                .filter((s): s is SegInfo => !!s);
+              const segReady = segInfos.length > 0 && segInfos.every((s) => s.finalVideoUrl);
+              const gen = sec.status === "generating";
+              const done = !!sec.videoUrl;
+              return (
+                <li
+                  key={sec.id}
+                  className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-2.5"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="shrink-0 text-xs font-bold text-zinc-400">섹션 {si + 1}</span>
+                    <span className="flex-1 text-[11px] text-zinc-500 line-clamp-1">
+                      세그 {sec.segmentIds.length}편 · {segInfos.map((s) => s.title).join(" · ")}
+                    </span>
+                    <span
+                      className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                        gen
+                          ? "bg-sky-500/10 text-sky-600 dark:text-sky-400"
+                          : done
+                            ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                            : sec.status === "error"
+                              ? "bg-red-500/10 text-red-600 dark:text-red-400"
+                              : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                      }`}
+                    >
+                      {gen ? "합성 중" : done ? "완성" : sec.status === "error" ? "에러" : "미합성"}
+                    </span>
+                  </div>
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <button
+                      onClick={() => composeSection(sec.id)}
+                      disabled={!segReady || gen || composing}
+                      className="rounded-md bg-accent hover:bg-accent-strong disabled:opacity-40 text-white text-[11px] font-medium px-3 py-1"
+                    >
+                      {gen ? "합성 중…" : done ? "다시 합성" : "부분 합성"}
+                    </button>
+                    {done && (
+                      <a
+                        href={sec.videoUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+                      >
+                        ▶ 미리보기
+                      </a>
+                    )}
+                    {!segReady && (
+                      <span className="text-[11px] text-amber-600">세그먼트 먼저 완성</span>
+                    )}
+                  </div>
+                  {sec.error && <p className="mt-1 text-[11px] text-red-600">{sec.error}</p>}
+                </li>
+              );
+            })}
+          </ol>
+
+          {/* 최종 이어붙이기 */}
+          <div className="mt-3 rounded-xl bg-zinc-50 dark:bg-zinc-900 p-3">
+            <button
+              onClick={startJoin}
+              disabled={!allSecReady || composing}
+              className="w-full rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white text-sm font-medium py-2"
+            >
+              {composing
+                ? "이어붙이는 중…"
+                : allSecReady
+                  ? "🔗 최종 이어붙이기"
+                  : `섹션 합성 대기 (${secReadyCount}/${secList.length})`}
+            </button>
+            {composing && (
+              <p className="mt-2 text-[11px] text-zinc-500">
+                상태: {status} {progress ? `· ${progress}` : ""}
+              </p>
+            )}
+            {error && <p className="mt-2 text-[11px] text-red-600">{error}</p>}
+          </div>
+        </div>
+      ) : (
+        <div className="mt-5 rounded-xl bg-zinc-50 dark:bg-zinc-900 p-3">
+          <button
+            onClick={startCompose}
+            disabled={!allReady || composing}
+            className="w-full rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white text-sm font-medium py-2"
+          >
+            {composing ? "합성 중…" : allReady ? "롱폼 합성" : `세그먼트 완성 대기 (${readyCount}/${segs.length})`}
+          </button>
+          {composing && (
+            <p className="mt-2 text-[11px] text-zinc-500">
+              상태: {status} {progress ? `· ${progress}` : ""}
+            </p>
+          )}
+          {error && <p className="mt-2 text-[11px] text-red-600">{error}</p>}
+        </div>
+      )}
 
       {/* 결과 */}
       {finalUrl && (
