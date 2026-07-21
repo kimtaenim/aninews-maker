@@ -13,6 +13,7 @@ export default function AutoTextarea({
   placeholder,
   className,
   minRows = 2,
+  maxRows,
   autoFocus,
   inputRef,
 }: {
@@ -23,18 +24,33 @@ export default function AutoTextarea({
   placeholder?: string;
   className?: string;
   minRows?: number;
+  maxRows?: number; // 상한(줄) — 넘으면 그 이상은 내부 스크롤. 짧은 대사용 편집기가 화면을 다 먹지 않게.
   autoFocus?: boolean;
   inputRef?: (el: HTMLTextAreaElement | null) => void;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
 
-  // 값(또는 외부 동기화)이 바뀔 때마다 높이를 내용에 맞춘다.
+  // 값(또는 외부 동기화)이 바뀔 때마다 높이를 내용에 맞춘다. maxRows 가 있으면 그 높이에서 멈추고
+  // 넘치는 만큼만 내부 스크롤을 켠다.
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
-  }, [value]);
+    let h = el.scrollHeight;
+    if (maxRows) {
+      const cs = getComputedStyle(el);
+      const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.4;
+      const extra =
+        parseFloat(cs.paddingTop) +
+        parseFloat(cs.paddingBottom) +
+        parseFloat(cs.borderTopWidth) +
+        parseFloat(cs.borderBottomWidth);
+      const max = lh * maxRows + extra;
+      el.style.overflowY = h > max ? "auto" : "hidden";
+      if (h > max) h = max;
+    }
+    el.style.height = `${h}px`;
+  }, [value, maxRows]);
 
   return (
     <textarea

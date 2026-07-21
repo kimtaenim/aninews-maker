@@ -3022,6 +3022,7 @@ export default function Studio({
                       value={sc.narration}
                       onChange={(e) => patchScene(i, { narration: e.target.value })}
                       minRows={2}
+                      maxRows={6}
                       className={fieldCls}
                     />
                   </label>
@@ -3125,6 +3126,7 @@ export default function Studio({
                     }
                   }}
                   minRows={2}
+                  maxRows={6}
                   autoFocus
                   placeholder="예: 정부가 새 정책을 발표했다.  (Enter=추가, Shift+Enter=줄바꿈)"
                   className={fieldCls}
