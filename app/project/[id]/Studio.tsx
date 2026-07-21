@@ -1875,7 +1875,7 @@ export default function Studio({
         setReviewStage("consent");
       }
     } catch (e) {
-      setReviewErr(e instanceof Error ? e.message : "구조 검수 실패");
+      setReviewErr(e instanceof Error ? e.message : "대본 다듬기 실패");
     } finally {
       setReviewBusy(false);
     }
@@ -2713,7 +2713,7 @@ export default function Studio({
             className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-4 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-sm font-semibold">🔍 대본 구조 검수 (열린 고리)</h3>
+            <h3 className="text-sm font-semibold">✍️ 대본 다듬기 (열린 고리)</h3>
             <p className="mt-2 text-xs leading-relaxed text-zinc-600 dark:text-zinc-300">
               {reviewData.diagnosisSummary}
             </p>
@@ -3235,10 +3235,10 @@ export default function Studio({
                   type="button"
                   onClick={() => runReview()}
                   disabled={busy !== null || reviewBusy}
-                  title="열린 고리 구조 검수 — 진단·수정안을 미리 보고 고친 뒤 승인하세요 (승인은 안 함)"
+                  title="열린 고리 구조로 대본 다듬기 — 진단·수정안을 미리 보고 고친 뒤 승인하세요 (승인은 안 함)"
                   className="shrink-0 rounded-xl border border-accent px-4 text-sm font-medium text-accent hover:bg-accent/10 disabled:opacity-40 transition-colors"
                 >
-                  {reviewBusy ? "검수 중…" : "🔍 구조 검수"}
+                  {reviewBusy ? "다듬는 중…" : "✍️ 대본 다듬기"}
                 </button>
               )}
               {project.mode !== "cliche" && (
@@ -3274,12 +3274,12 @@ export default function Studio({
             </div>
             {reviewPassed && !reviewBusy && (
               <p className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">
-                ✓ 구조 검수 통과 — 열린 고리 구조 확인됨
+                ✓ 다듬을 곳 없어요 — 열린 고리 구조 확인됨
               </p>
             )}
             {reviewErr && (
               <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
-                ⚠ 구조 검수 실패({reviewErr}).{" "}
+                ⚠ 대본 다듬기 실패({reviewErr}).{" "}
                 <button type="button" onClick={() => runReview()} className="underline hover:no-underline">
                   다시 실행
                 </button>
