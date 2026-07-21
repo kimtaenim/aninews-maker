@@ -15,10 +15,39 @@
 import { randomUUID } from "crypto";
 import { emptySteps, saveProject, getProject } from "./projectStore";
 import { hasSubscribeOutro } from "./outro";
-import type { Project, Scene, StepKind, StepState } from "./types";
+import type { Project, Scene, StepKind, StepState, LongformSection } from "./types";
 
 const MIN_SEGMENTS = 2;
-const MAX_SEGMENTS = 12;
+const MAX_SEGMENTS = 30; // 섹션(2~3편 부분 합성)으로 리소스가 고정돼 편수 상한을 넉넉히.
+const SECTION_TARGET = 3; // 섹션당 목표 세그먼트 수(2~3 사이로 균등 분할).
+
+// 세그먼트 수 n 을 2~3 크기의 섹션 개수로 균등 분할한 크기 배열을 만든다.
+// g = ceil(n/3) 개 섹션에 균등 배분 → 각 섹션 크기는 항상 2 또는 3(n>=2 가정).
+//   n=10 → [3,3,2,2], n=7 → [3,2,2], n=5 → [3,2], n=4 → [2,2], n=3 → [3], n=2 → [2].
+export function sectionSizes(n: number, target = SECTION_TARGET): number[] {
+  if (n <= 0) return [];
+  if (n < 2 * 2) return [n]; // 2,3 은 한 섹션(2*2=4 미만이면 쪼갤 실익 없음)
+  const g = Math.ceil(n / target);
+  const base = Math.floor(n / g);
+  const extra = n % g; // 앞쪽 extra 개 섹션은 base+1
+  return Array.from({ length: g }, (_, i) => (i < extra ? base + 1 : base));
+}
+
+// 세그먼트 id 순서 → 섹션 배열(각 섹션 2~3편). 최종 join 대상 중간본을 담는 그릇.
+export function buildSections(segmentIds: string[]): LongformSection[] {
+  const sizes = sectionSizes(segmentIds.length);
+  const out: LongformSection[] = [];
+  let off = 0;
+  for (const size of sizes) {
+    out.push({
+      id: randomUUID(),
+      segmentIds: segmentIds.slice(off, off + size),
+      status: "pending",
+    });
+    off += size;
+  }
+  return out;
+}
 
 function stepAt(kind: StepKind, status: StepState["status"], now: number): StepState {
   return { kind, status, params: {}, chat: [], updatedAt: now };
@@ -134,11 +163,13 @@ export async function createLongformFromShorts(
   }
   steps.compose = stepAt("compose", "pending", now);
 
+  const segmentIds = segments.map((s) => s.id);
   const longform: Project = {
     id: longformId,
     title: `${shorts[0].title} 외 ${shorts.length - 1}편 · 롱폼`,
     format: "long",
-    sourceProjectIds: segments.map((s) => s.id),
+    sourceProjectIds: segmentIds,
+    sections: buildSections(segmentIds),
     styleProfileId: shorts[0].styleProfileId,
     styleBible: shorts[0].styleBible,
     scenes: [],

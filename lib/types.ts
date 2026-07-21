@@ -175,6 +175,25 @@ export interface LongformOpening {
   generatedAt: number;
 }
 
+// ── [롱폼] 섹션 — 2~3 세그먼트씩 묶어 "부분 합성"한 중간본 ─────────────────────
+// 10편+ 롱폼을 한 워커 잡에서 몰아 합성하면 디스크·메모리가 위험(각 잡이 세그먼트를
+// 전부 다운로드). 그래서 세그먼트를 2~3개씩 섹션으로 나눠 섹션마다 별도 합성 잡으로
+// 굽고(그 잡은 2~3편만 만짐·임시폴더는 잡마다 새로 생겼다 삭제), 최종 join 은 섹션
+// 영상들만 이어붙인다 → 한 잡이 잡는 리소스가 총 편수와 무관하게 항상 고정.
+//   · segmentIds = sourceProjectIds 의 순서 유지 부분집합.
+//   · videoUrl = 부분 합성 결과(Blob). 최종 join 이 이걸 concat.
+//   · 진행자 연결 씬: 섹션 "내부"(세그 사이) 연결은 그 섹션 합성에, 섹션 "경계" 연결은
+//     최종 join 에 넣는다(경계 = 섹션 마지막 세그 뒤).
+export interface LongformSection {
+  id: string;
+  segmentIds: string[]; // 이 섹션 세그먼트들(순서대로). sourceProjectIds 의 부분집합.
+  videoUrl?: string; // 부분 합성 결과(Blob) — 최종 join 대상.
+  status?: "pending" | "generating" | "generated" | "error";
+  jobId?: string; // 이 섹션 합성 잡 id(진행 추적).
+  error?: string;
+  updatedAt?: number;
+}
+
 // ── 프로젝트 ──────────────────────────────────────────────────────────────────
 export interface Project {
   id: string;
@@ -199,6 +218,9 @@ export interface Project {
   hostProjectId?: string;
   // [롱폼] 열린 고리(Open Loop) 오프닝 — 자동 생성된 오프닝 스크립트 + 고리 명세 + 챕터 가이드.
   opening?: LongformOpening;
+  // [롱폼] 섹션 — 세그먼트를 2~3개씩 묶은 부분 합성 단위. 있으면 합성을 섹션별 잡으로 쪼갠 뒤
+  // 최종 join(섹션 영상 이어붙이기)을 한다. 없으면 기존 단일 runLongformConcat 경로.
+  sections?: LongformSection[];
   cast?: string[]; // [cliche] 등장 인물 이름들(화자 = 이 이름 또는 "내레이션"). 목소리·씬 화자에 사용.
   castMembers?: CastMember[]; // [cliche] 캐스팅 단계 산출물(얼굴·목소리 포함). cast/castVoices 의 원천.
   styleProfileId: string; // config/style-profiles.json 의 id
