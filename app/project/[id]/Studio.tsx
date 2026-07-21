@@ -3015,14 +3015,14 @@ export default function Studio({
                     ) : (
                       <span className="text-[11px] text-zinc-500">나레이션</span>
                     )}
-                    <textarea
-                      ref={(el) => {
+                    <AutoTextarea
+                      inputRef={(el) => {
                         narrRefs.current[i] = el;
                       }}
                       value={sc.narration}
                       onChange={(e) => patchScene(i, { narration: e.target.value })}
-                      rows={2}
-                      className={fieldCls + " resize-y"}
+                      minRows={2}
+                      className={fieldCls}
                     />
                   </label>
                   <div className="flex flex-wrap items-center gap-2">
@@ -3115,7 +3115,7 @@ export default function Studio({
                 <span className="text-[11px] font-medium text-zinc-600 dark:text-zinc-300">
                   새 씬 — 나레이션 입력 후 Enter (길이는 자동, 프롬프트·모션은 3~5단계에서)
                 </span>
-                <textarea
+                <AutoTextarea
                   value={newNarration}
                   onChange={(e) => setNewNarration(e.target.value)}
                   onKeyDown={(e) => {
@@ -3124,10 +3124,10 @@ export default function Studio({
                       addSceneFromNarration();
                     }
                   }}
-                  rows={2}
+                  minRows={2}
                   autoFocus
                   placeholder="예: 정부가 새 정책을 발표했다.  (Enter=추가, Shift+Enter=줄바꿈)"
-                  className={fieldCls + " resize-y"}
+                  className={fieldCls}
                 />
                 <div className="flex items-center gap-2">
                   <button
