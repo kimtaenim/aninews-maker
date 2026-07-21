@@ -35,6 +35,23 @@ interface DirectChar {
   archetype: string;
 }
 
+// #9 상황 프리셋 — 설정 고민 없이 바로 고르는 '관계·만남의 계기' 예시.
+const PREMISE_PRESETS = [
+  "오늘 첫 출근한 회사의 신입과 까칠한 사수",
+  "10년 만에 재회한 소꿉친구",
+  "라이벌 회사 후계자로 협상 테이블에서 만남",
+  "사정상 연인인 척 계약 연애 중",
+  "같은 과 조별과제 짝",
+  "짝사랑하던 선배와 우연히 단둘이 남음",
+];
+// 주인공(나) 성격 프리셋.
+const PROTAG_PRESETS = [
+  "당돌하고 솔직한 신입",
+  "낯가리지만 은근 승부욕 있는 대학생",
+  "무던하고 다 받아주는 성격",
+  "겁 많지만 정 많은 사람",
+];
+
 export default function SimNewForm({
   sources,
   videos,
@@ -405,6 +422,18 @@ export default function SimNewForm({
               placeholder="내 성격·설정 (예: 당돌하고 솔직한 신입 사원)"
               className="mt-2 w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-transparent p-3 text-sm"
             />
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {PROTAG_PRESETS.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setProtagPersona(p)}
+                  className="rounded-full border border-zinc-200 dark:border-zinc-800 px-2.5 py-0.5 text-xs text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
           </div>
 
           {targets.map((t) => (
@@ -456,6 +485,18 @@ export default function SimNewForm({
                 placeholder={`${t.name}와의 관계·만남의 계기 (예: 오늘 첫 출근한 그의 비서)`}
                 className="mt-2 w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-transparent px-3 py-2 text-sm"
               />
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {PREMISE_PRESETS.map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setRelationships((r) => ({ ...r, [t.name]: p }))}
+                    className="rounded-full border border-zinc-200 dark:border-zinc-800 px-2.5 py-0.5 text-xs text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
 
               <p className="mt-2 text-xs text-zinc-400">
                 표정 얼굴은 이 인물을 처음 플레이할 때 자동으로 만들어져요.
