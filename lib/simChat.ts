@@ -20,7 +20,8 @@ import { getAnthropic, MODELS } from "./anthropic";
 import { anthropicCostUsd, recordCost } from "./cost";
 import { pickSituation, rollNextSituationTurn, SIM_SITUATIONS } from "./simSituations";
 import { applyMemoryAdd, formatMemory, memoryInstruction } from "./simMemory";
-import type { SimGame, SimMemory, SimPlay, SimProtagonist, SimTarget } from "./types";
+import type { SimGame, SimMemory, SimPlay, SimProtagonist, SimScenario, SimTarget } from "./types";
+import type { SituationTag } from "./simSituations";
 
 // 대화·채점은 품질 우선 Sonnet(대사 자연스러움·리액션·캐릭터성). 대사는 짧게 유지해 비용 관리.
 const SIM_MODEL = MODELS.sonnet;
@@ -38,7 +39,11 @@ const REPAIR_DISLIKE_DROP = 30; // 정확한 사과로 풀리는 싫음의 양
 
 // 페르소나 + 게임 규칙 = 캐시 가능한 안정 프리픽스. 매 턴 바뀌는 상태(좋음·싫음·
 // 삐짐·삐진 이유·상황 지시)는 시스템에 넣지 않고 마지막 user 메시지에 실어 고정.
-function buildSystem(target: SimTarget, protagonist?: SimProtagonist) {
+function buildSystem(
+  target: SimTarget,
+  protagonist?: SimProtagonist,
+  scenario?: SimScenario
+) {
   const rules = [
     "",
     "── 연기 지침 (제일 중요) ──",
@@ -134,10 +139,30 @@ function buildSystem(target: SimTarget, protagonist?: SimProtagonist) {
         .join("\n")
     : "";
 
+  // 시나리오 연출(Step3~7) — 서사 배경·감정 곡선·말투 스타일·엔딩 톤을 연기에 반영.
+  const s = scenario;
+  const scenarioBlock =
+    s && (s.setting || s.emotionCurve || s.toneStyle || s.ending)
+      ? [
+          "",
+          "── 시나리오 연출 (반드시 반영) ──",
+          s.setting ? `· 서사 배경: ${s.setting} (이 무게감·시간축을 깔고 대화하라)` : "",
+          s.emotionCurve
+            ? `· 감정 곡선: ${s.emotionCurve} — 이 리듬으로 장면을 끌어라(완만=잔잔히 서서히 설레게, 롤러코스터=불안·긴장과 고조를 오가며, 급반전=갈등을 세웠다가 확 풀며).`
+            : "",
+          s.toneStyle
+            ? `· 말투 스타일: ${s.toneStyle} — (직진형=속마음을 직설적으로, 밀당형=돌려 말하고 튕기며, 존댓말→반말 전환형=거리감이 줄면 말투가 서서히 풀리게).`
+            : "",
+          s.ending ? `· 결말 지향: ${s.ending} — 이 방향으로 관계의 아크를 끌어가라.` : "",
+        ]
+          .filter(Boolean)
+          .join("\n")
+      : "";
+
   return [
     {
       type: "text" as const,
-      text: `너는 아래 인물을 연기한다.\n\n── 인물 설정 ──\n${target.persona}\n${rules}${playerBlock}`,
+      text: `너는 아래 인물을 연기한다.\n\n── 인물 설정 ──\n${target.persona}\n${rules}${playerBlock}${scenarioBlock}`,
       cache_control: { type: "ephemeral" as const },
     },
   ];
@@ -269,7 +294,7 @@ export async function generateOpening(
     ? `너와 플레이어(${game.protagonist?.name ?? "상대"})는 지금 이런 사이·상황이다: ${target.relationship}. 그 상황에 맞게 `
     : "아직 서먹한 사이다. ";
   const { raw, costUsd } = await callHaiku({
-    system: buildSystem(target, game.protagonist),
+    system: buildSystem(target, game.protagonist, game.scenario),
     messages: [
       {
         role: "user",
@@ -316,7 +341,10 @@ export async function judgeTurn(
   let situationId: string | undefined;
   let directive = "";
   if (!play.sulking && assistantTurns + 1 >= play.nextSituationAtTurn) {
-    const situation = pickSituation(play.situationsUsed);
+    const situation = pickSituation(
+      play.situationsUsed,
+      game.scenario?.triggers as SituationTag[] | undefined
+    );
     if (situation) {
       situationId = situation.id;
       directive =
@@ -341,7 +369,7 @@ export async function judgeTurn(
   }
 
   const { raw, costUsd } = await callHaiku({
-    system: buildSystem(target, game.protagonist),
+    system: buildSystem(target, game.protagonist, game.scenario),
     messages,
     gameId: game.id,
     kind: "sim-turn",

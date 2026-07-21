@@ -57,6 +57,19 @@ const PROTAG_PRESETS = [
   "겁 많지만 정 많은 사람",
 ];
 
+// 로맨스 플로우 Step3~7 선택지(전부 선택 — 비면 자유).
+const SC_SETTINGS = ["현재진행형", "첫사랑 재회형", "오래된 인연의 발전형"];
+const SC_TRIGGERS = [
+  { id: "jealousy", label: "질투 유발" },
+  { id: "misunderstanding", label: "오해와 갈등" },
+  { id: "rescue", label: "위기에서 구해주기" },
+  { id: "triangle", label: "삼각관계 긴장" },
+  { id: "skinship", label: "설레는 밀착" },
+];
+const SC_CURVES = ["완만한 설렘형", "롤러코스터형", "급반전형"];
+const SC_TONES = ["직진형(직설 고백)", "밀당형(돌려 말하기)", "존댓말→반말 전환형"];
+const SC_ENDINGS = ["신뢰 회복형 해피엔딩", "자기희생 후 재결합", "여운 남는 열린 결말"];
+
 export default function SimNewForm({
   sources,
   videos,
@@ -85,6 +98,37 @@ export default function SimNewForm({
   const [protagName, setProtagName] = useState("");
   const [protagPersona, setProtagPersona] = useState("");
   const [relationships, setRelationships] = useState<Record<string, string>>({});
+  // 시나리오 설계(Step3~7).
+  const [scenario, setScenario] = useState<{
+    setting?: string;
+    triggers: string[];
+    emotionCurve?: string;
+    toneStyle?: string;
+    ending?: string;
+  }>({ triggers: [] });
+  const pickScn = (k: "setting" | "emotionCurve" | "toneStyle" | "ending", v: string) =>
+    setScenario((s) => ({ ...s, [k]: s[k] === v ? undefined : v }));
+  const toggleTrigger = (id: string) =>
+    setScenario((s) => ({
+      ...s,
+      triggers: s.triggers.includes(id)
+        ? s.triggers.filter((x) => x !== id)
+        : [...s.triggers, id],
+    }));
+  const scnChip = (active: boolean, onClick: () => void, label: string) => (
+    <button
+      key={label}
+      type="button"
+      onClick={onClick}
+      className={`rounded-full border px-2.5 py-0.5 text-xs ${
+        active
+          ? "border-accent bg-accent/10"
+          : "border-zinc-200 dark:border-zinc-800 text-zinc-500"
+      }`}
+    >
+      {label}
+    </button>
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -161,6 +205,20 @@ export default function SimNewForm({
           protagonist:
             protagName.trim() && protagPersona.trim()
               ? { name: protagName.trim(), persona: protagPersona.trim() }
+              : undefined,
+          scenario:
+            scenario.setting ||
+            scenario.emotionCurve ||
+            scenario.toneStyle ||
+            scenario.ending ||
+            scenario.triggers.length
+              ? {
+                  setting: scenario.setting,
+                  emotionCurve: scenario.emotionCurve,
+                  toneStyle: scenario.toneStyle,
+                  ending: scenario.ending,
+                  triggers: scenario.triggers,
+                }
               : undefined,
           targets: targets.map((t) => ({
             name: t.name,
@@ -575,6 +633,45 @@ export default function SimNewForm({
               있어요.
             </p>
           )}
+
+          {/* 🎬 시나리오 설계(Step3~7) — 전부 선택(비우면 자유). 서사 톤·감정 트리거를 대화에 반영 */}
+          <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 p-4">
+            <div className="text-sm font-semibold">
+              🎬 시나리오 설계{" "}
+              <span className="text-xs font-normal text-zinc-500">
+                — 선택(비우면 자유). 서사 톤·감정 트리거를 대화에 반영해요
+              </span>
+            </div>
+
+            <div className="mt-3 text-xs text-zinc-500">서사 배경</div>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {SC_SETTINGS.map((v) => scnChip(scenario.setting === v, () => pickScn("setting", v), v))}
+            </div>
+
+            <div className="mt-3 text-xs text-zinc-500">
+              감정 트리거 <span className="text-zinc-400">(복수 — 이 계열 상황이 우선 등장)</span>
+            </div>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {SC_TRIGGERS.map((t) =>
+                scnChip(scenario.triggers.includes(t.id), () => toggleTrigger(t.id), t.label)
+              )}
+            </div>
+
+            <div className="mt-3 text-xs text-zinc-500">감정 곡선</div>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {SC_CURVES.map((v) => scnChip(scenario.emotionCurve === v, () => pickScn("emotionCurve", v), v))}
+            </div>
+
+            <div className="mt-3 text-xs text-zinc-500">대사·말투 스타일</div>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {SC_TONES.map((v) => scnChip(scenario.toneStyle === v, () => pickScn("toneStyle", v), v))}
+            </div>
+
+            <div className="mt-3 text-xs text-zinc-500">엔딩 톤</div>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {SC_ENDINGS.map((v) => scnChip(scenario.ending === v, () => pickScn("ending", v), v))}
+            </div>
+          </div>
 
           <div>
             <h2 className="text-sm font-semibold">게임 이름 (비우면 자동)</h2>

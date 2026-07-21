@@ -20,6 +20,7 @@ export async function POST(req: NextRequest) {
     title?: string;
     sourceProjectId?: string;
     protagonist?: unknown;
+    scenario?: unknown;
     targets?: unknown;
   };
   try {
@@ -133,6 +134,26 @@ export async function POST(req: NextRequest) {
     if (pName && pPersona) protagonist = { name: pName, persona: pPersona };
   }
 
+  // 시나리오 설계(Step3~7) — 문자열/문자열배열만 통과.
+  let scenario:
+    | { setting?: string; triggers?: string[]; emotionCurve?: string; toneStyle?: string; ending?: string }
+    | undefined;
+  if (body.scenario && typeof body.scenario === "object") {
+    const sc = body.scenario as Record<string, unknown>;
+    const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+    const triggers = Array.isArray(sc.triggers)
+      ? sc.triggers.filter((t): t is string => typeof t === "string" && !!t.trim()).slice(0, 8)
+      : undefined;
+    const built = {
+      setting: str(sc.setting),
+      emotionCurve: str(sc.emotionCurve),
+      toneStyle: str(sc.toneStyle),
+      ending: str(sc.ending),
+      ...(triggers && triggers.length ? { triggers } : {}),
+    };
+    if (Object.values(built).some((v) => v !== undefined)) scenario = built;
+  }
+
   try {
     const game = await createSimGame({
       title:
@@ -140,6 +161,7 @@ export async function POST(req: NextRequest) {
         `💞 ${targets.map((t) => t.name).join("·")} 공략`,
       sourceProjectId,
       ...(protagonist ? { protagonist } : {}),
+      ...(scenario ? { scenario } : {}),
       targets,
       ownerEmail: (await getSessionEmail()) ?? undefined,
     });

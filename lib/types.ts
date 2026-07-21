@@ -263,11 +263,22 @@ export interface SimProtagonist {
   persona: string; // 한 줄~몇 줄 성격·설정
 }
 
+// 시나리오 설계(로맨스 플로우 Step3~7) — 캐릭터(Step1=아키타입)·관계(Step2=relationship)는
+// 이미 target 에 있고, 아래는 게임 전체의 서사 톤. 전부 선택(비면 자유).
+export interface SimScenario {
+  setting?: string; // Step3 시간·서사 배경 (현재진행형/첫사랑 재회형/오래된 인연의 발전형)
+  triggers?: string[]; // Step4 감정 트리거 태그 (jealousy/misunderstanding/rescue/triangle …) — 상황 우선 발동
+  emotionCurve?: string; // Step5 감정 곡선 (완만한 설렘형/롤러코스터형/급반전형)
+  toneStyle?: string; // Step6 대사·말투 스타일 (직진형/밀당형/존댓말→반말 전환형)
+  ending?: string; // Step7 갈등-해소·엔딩 톤 (신뢰 회복형 해피엔딩/자기희생 후 재결합/여운 남는 열린 결말)
+}
+
 export interface SimGame {
   id: string;
   title: string;
   sourceProjectId: string; // castMembers 를 가져온 클리셰 프로젝트
   protagonist?: SimProtagonist; // 주인공(플레이어) 설정 — 없으면 기존처럼 익명 플레이어
+  scenario?: SimScenario; // 시나리오 설계(Step3~7) — 서사 톤·감정 트리거
   targets: SimTarget[]; // 공략 상대들
   ownerEmail?: string; // 만든 사람(로그인 이메일)
   createdAt: number;
