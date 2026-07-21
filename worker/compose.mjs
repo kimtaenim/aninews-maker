@@ -72,37 +72,105 @@ async function download(url, dest) {
   }
 }
 
-// [롱폼] 세그먼트(16:9로 재합성된 숏폼) 완성본들을 순서대로 이어붙이고, 각 세그먼트 뒤에
-// 1초 아이캐치(송곳니 안경 미소녀 + 구독 버튼)를 끼운다. 구독 마무리씬은 이 반복 아이캐치가
-// 대체한다. 세그먼트·아이캐치 모두 워커가 같은 파라미터(libx264/yuv420p/30fps/aac128k, 동일 W·H)로
-// 구웠으므로 재인코딩 없이 -c copy 로 붙는다(씬 합성과 동일 방식 — 이미 검증된 패턴).
-//   dir/log/W/H 는 호출자(composeProject)에서 받아 공유(같은 try/finally·진행로그).
+// [롱폼] 진행자 씬 하나를 클립으로 렌더 — 영상+음성+자막(커버크롭), 세그먼트 완성본과 동일
+// 인코딩(libx264/yuv420p/30fps/aac128k, 동일 W·H)이라 -c copy concat 가능. 기존 씬 루프
+// (composeProject)는 안 건드리고 진행자 씬용으로 별도(효과음·워터마크·크레딧 없음).
+async function renderHostSceneClip(s, dir, tag, sub, W, H) {
+  const vPath = join(dir, `${tag}-v.mp4`);
+  await download(s.videoUrl, vPath);
+  let aPath = null;
+  if (s.audioUrl) {
+    aPath = join(dir, `${tag}-a.mp3`);
+    await download(s.audioUrl, aPath);
+  }
+  const vd = await probeDuration(vPath);
+  const ad = aPath ? await probeDuration(aPath) : 0;
+  const audioLen = ad > 0 ? ad : s.durationSec || vd || 4;
+  const caps = segmentCaptions(s.narration ?? "", sub.size);
+  const capPaths = [];
+  for (let j = 0; j < caps.length; j++) {
+    const png = await renderCaptionPng(caps[j], sub, { W, H, preset: s.captionStyle });
+    const cp = join(dir, `${tag}-cap${j}.png`);
+    await writeFile(cp, png);
+    capPaths.push(cp);
+  }
+  const MIN_CAP = 1.2;
+  const weights = caps.map((c) => Math.max(1, stripMarks(c).replace(/\s/g, "").length));
+  const wSum = weights.reduce((a, b) => a + b, 0) || 1;
+  const durs = weights.map((w) => Math.max(MIN_CAP, (audioLen * w) / wSum));
+  const capTotal = durs.reduce((a, b) => a + b, 0);
+  const duration = capPaths.length ? Math.max(audioLen, capTotal) : audioLen;
+  const speed = vd > 0 && duration > vd ? duration / vd : 1;
+  const spans = [];
+  let acc = 0;
+  durs.forEach((d, j) => {
+    const start = acc;
+    acc += d;
+    const end = j === durs.length - 1 ? duration + 0.5 : acc;
+    spans.push([start, end]);
+  });
+  const baseF =
+    `[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase,` +
+    `crop=${W}:${H},setpts=${speed.toFixed(4)}*PTS,fps=${FPS}`;
+  let filter;
+  if (capPaths.length === 0) {
+    filter = `${baseF}[v]`;
+  } else {
+    filter = `${baseF}[bg]`;
+    let prev = "bg";
+    capPaths.forEach((_, k) => {
+      const label = k === capPaths.length - 1 ? "v" : `o${k}`;
+      filter += `;[${prev}][${2 + k}:v]overlay=0:0:enable='between(t,${spans[k][0].toFixed(3)},${spans[k][1].toFixed(3)})'[${label}]`;
+      prev = label;
+    });
+  }
+  const out = join(dir, `${tag}.mp4`);
+  const args = ["-y", "-i", vPath];
+  if (aPath) args.push("-i", aPath);
+  else args.push("-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100");
+  for (const cp of capPaths) args.push("-loop", "1", "-framerate", String(FPS), "-i", cp);
+  args.push(
+    "-filter_complex", filter,
+    "-map", "[v]", "-map", "1:a",
+    "-t", String(duration), "-r", String(FPS),
+    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-crf", "23",
+    "-c:a", "aac", "-b:a", "128k",
+    out
+  );
+  await run("ffmpeg", args);
+  return out;
+}
+
+// [롱폼] 교차 합성 — 진행자 오프닝 → [세그먼트 → 진행자 연결] 반복 → 마지막 세그먼트 뒤
+// 진행자 마무리(구독). 진행자 씬은 렌더, 세그먼트는 완성본 사용. 모두 동일 파라미터라 -c copy.
+//   dir/log/W/H 는 호출자(composeProject)에서 받아 공유.
 async function runLongformConcat(project, lang, dir, log, W, H) {
   const segIds = project.sourceProjectIds ?? [];
   if (segIds.length === 0) throw new Error("롱폼에 세그먼트(sourceProjectIds)가 없어요");
 
-  // 1) 아이캐치 1초 클립 — 있으면. 세그먼트와 동일 인코딩 파라미터로 구워야 -c copy 가 된다.
-  //    무음 오디오(anullsrc)를 실어 세그먼트(오디오 있음)와 스트림 구성을 맞춘다.
-  let eyecatchClip = null;
-  if (project.eyecatchUrl) {
-    const ePng = join(dir, "eyecatch-src");
-    await download(project.eyecatchUrl, ePng);
-    eyecatchClip = join(dir, "eyecatch.mp4");
-    await run("ffmpeg", [
-      "-y",
-      "-loop", "1", "-framerate", String(FPS), "-i", ePng,
-      "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
-      "-filter_complex",
-      `[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},fps=${FPS}[v]`,
-      "-map", "[v]", "-map", "1:a", "-t", "1", "-r", String(FPS),
-      "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-crf", "23",
-      "-c:a", "aac", "-b:a", "128k",
-      eyecatchClip,
-    ]);
-    await log("아이캐치 1초 클립 준비");
-  } else {
-    await log("아이캐치 없음 — 세그먼트만 이어붙임");
+  const sub = project.subtitle ?? {
+    font: "sans", weight: "regular", size: "small",
+    position: "two-thirds", align: "center", box: "dark", lang: "ko",
+  };
+
+  // 1) 진행자 프로젝트 씬 수집(슬롯별). videoUrl 없는(미생성) 씬은 건너뜀.
+  const hostOpening = [];
+  const hostConnectors = new Map(); // connectorAfter → scene
+  const hostClosing = [];
+  let hostSub = sub;
+  if (project.hostProjectId) {
+    const host = await getProject(project.hostProjectId);
+    if (host) {
+      hostSub = host.subtitle ?? sub;
+      for (const s of host.scenes ?? []) {
+        if (!s.videoUrl) continue;
+        if (s.hostSlot === "opening") hostOpening.push(s);
+        else if (s.hostSlot === "connector") hostConnectors.set(s.connectorAfter ?? 0, s);
+        else if (s.hostSlot === "closing") hostClosing.push(s);
+      }
+    }
   }
+  await log(`진행자 씬 — 오프닝 ${hostOpening.length}·연결 ${hostConnectors.size}·마무리 ${hostClosing.length}`);
 
   // 2) 각 세그먼트 완성본 다운로드
   const segFiles = [];
@@ -116,12 +184,27 @@ async function runLongformConcat(project, lang, dir, log, W, H) {
     segFiles.push(f);
   }
 
-  // 3) concat 순서 — 각 세그먼트 뒤에 아이캐치(마지막 뒤에도 → 구독 마무리 대체).
+  // 3) 교차 순서: 진행자 오프닝 → [세그 → 진행자 연결] → 마무리(구독). 진행자 씬은 클립으로 렌더.
   const order = [];
-  for (const f of segFiles) {
-    order.push(f);
-    if (eyecatchClip) order.push(eyecatchClip);
+  let oi = 0;
+  for (const s of hostOpening) {
+    await log(`오프닝 진행자 씬 렌더 ${oi + 1}/${hostOpening.length}…`);
+    order.push(await renderHostSceneClip(s, dir, `open${oi++}`, hostSub, W, H));
   }
+  for (let i = 0; i < segFiles.length; i++) {
+    order.push(segFiles[i]);
+    const conn = hostConnectors.get(i);
+    if (conn) {
+      await log(`연결 진행자 씬 렌더(세그 ${i + 1} 뒤)…`);
+      order.push(await renderHostSceneClip(conn, dir, `conn${i}`, hostSub, W, H));
+    }
+  }
+  let ci = 0;
+  for (const s of hostClosing) {
+    await log("마무리 진행자 씬 렌더…");
+    order.push(await renderHostSceneClip(s, dir, `close${ci++}`, hostSub, W, H));
+  }
+
   const listPath = join(dir, "list.txt");
   await writeFile(listPath, order.map((f) => `file '${f}'`).join("\n"), "utf8");
   const finalPath = join(dir, "final.mp4");
