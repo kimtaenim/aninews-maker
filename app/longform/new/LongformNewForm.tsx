@@ -97,8 +97,10 @@ export default function LongformNewForm({ shorts }: { shorts: ShortItem[] }) {
                       <span className="text-[11px] text-zinc-400">미생성</span>
                     )}
                     {r && (
-                      <span className="absolute top-1 left-1 h-6 w-6 rounded-full bg-accent text-white flex items-center justify-center text-xs font-bold shadow">
-                        {r}
+                      <span className="absolute inset-0 flex items-center justify-center">
+                        <span className="flex h-16 w-16 items-center justify-center rounded-full bg-accent/90 text-white text-3xl font-extrabold shadow-lg ring-2 ring-white/70">
+                          {r}
+                        </span>
                       </span>
                     )}
                   </div>
