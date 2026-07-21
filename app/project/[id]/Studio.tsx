@@ -535,7 +535,7 @@ export default function Studio({
   const [titleGenBusy, setTitleGenBusy] = useState(false);
   const [titleGenErr, setTitleGenErr] = useState("");
   const [copiedTitleIdx, setCopiedTitleIdx] = useState<number | null>(null);
-  // 대본 구조 검수(열린 고리) — 확정 전 게이트 + 동의 모달.
+  // 대본 구조 검수(열린 고리) — 승인과 분리된 별도 버튼. 미리 돌려 진단·수정안을 보고 고친다(승인 안 함).
   const [reviewBusy, setReviewBusy] = useState(false);
   const [reviewErr, setReviewErr] = useState("");
   const [reviewPassed, setReviewPassed] = useState(false);
@@ -1850,8 +1850,9 @@ export default function Studio({
     }).catch(() => {});
   }
 
-  // 확정 클릭 → 구조 검수 게이트. 통과=바로 승인, 위반=동의 모달, 오류=검수 생략하고 승인.
-  async function approveScript() {
+  // 별도 구조 검수 — 승인과 분리. 원할 때 돌려 진단·수정안을 미리 보고 고친다(승인 안 함).
+  // 통과면 배지만, 위반이면 동의 모달. 사용자가 만족하면 그때 별도로 승인 버튼을 누른다.
+  async function runReview() {
     setError(null);
     setReviewErr("");
     setReviewPassed(false);
@@ -1867,31 +1868,27 @@ export default function Studio({
       if (!r.ok || !d.ok || !d.review) throw new Error(d.error || "검수 실패");
       const review = d.review as ScriptReviewResult;
       if (review.pass) {
-        setReviewPassed(true);
-        await doApprove();
+        setReviewPassed(true); // 통과 배지만 — 승인은 사용자가 별도로.
       } else {
         setReviewData(review);
         setSelectedRev(new Set(review.revisedScenes.filter((s) => s.changed).map((s) => s.scene)));
         setReviewStage("consent");
       }
     } catch (e) {
-      // 검수 실패 → 확정은 그대로 진행 + 재실행 버튼 노출.
       setReviewErr(e instanceof Error ? e.message : "구조 검수 실패");
-      await doApprove();
     } finally {
       setReviewBusy(false);
     }
   }
 
-  // "원문대로 진행" — 검수 거절, 원문 그대로 승인(진단만 기록).
-  async function proceedOriginal() {
+  // "그대로 둘게요" — 검수 닫기. 원문 유지(승인 안 함, 진단만 기록).
+  function dismissReview() {
     logReviewOutcome(false, "none");
     closeReview();
-    await doApprove();
   }
 
-  // 선택한 수정안을 씬 나레이션에 반영·저장(⑧ 마무리는 잠금) 후 승인. scenesRef 로 최신 버퍼 기준.
-  async function applyRevisionsAndApprove() {
+  // 선택한 수정안을 씬 나레이션에 반영·저장(⑧ 마무리는 잠금). 승인은 안 함 — 다시 검수·수정 가능.
+  async function applyRevisions() {
     if (!reviewData) return;
     const lastIdx = scenesRef.current.length - 1;
     const changed = reviewData.revisedScenes.filter((s) => s.changed && s.revised.trim());
@@ -1922,7 +1919,7 @@ export default function Studio({
     const adoptedCount = [...selectedRev].filter((n) => revById.has(n)).length;
     logReviewOutcome(true, adoptedCount === changed.length ? "all" : "partial");
     closeReview();
-    await doApprove();
+    setReviewPassed(false); // 대본이 바뀌었으니 통과 배지 내림 — 다시 검수하도록 유도
   }
 
   async function generateKeyframe() {
@@ -2706,7 +2703,7 @@ export default function Studio({
         </div>
       )}
 
-      {/* 대본 구조 검수 — 동의 모달(위반 시). 동의 전엔 원문 안 바꿈. */}
+      {/* 대본 구조 검수 — 별도 버튼이 띄우는 진단·동의 모달(위반 시). 채택해도 승인은 안 함. */}
       {reviewStage && reviewData && (
         <div
           className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-3"
@@ -2739,10 +2736,10 @@ export default function Studio({
                     수정안 볼게요
                   </button>
                   <button
-                    onClick={proceedOriginal}
+                    onClick={dismissReview}
                     className="flex-1 rounded-lg border border-zinc-300 dark:border-zinc-700 py-2 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-900"
                   >
-                    원문대로 진행
+                    그대로 둘게요
                   </button>
                 </div>
               </>
@@ -2790,10 +2787,10 @@ export default function Studio({
                 </ul>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button
-                    onClick={applyRevisionsAndApprove}
+                    onClick={applyRevisions}
                     className="flex-1 rounded-lg bg-accent hover:bg-accent-strong py-2 text-sm font-medium text-white"
                   >
-                    선택 채택하고 승인
+                    선택 채택 (대본에 반영)
                   </button>
                   <button
                     onClick={() => {
@@ -2805,10 +2802,10 @@ export default function Studio({
                     직접 수정
                   </button>
                   <button
-                    onClick={proceedOriginal}
+                    onClick={dismissReview}
                     className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-2 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-900"
                   >
-                    원문대로 진행
+                    닫기
                   </button>
                 </div>
               </>
@@ -3218,13 +3215,11 @@ export default function Studio({
               {!scriptApproved ? (
                 <button
                   type="button"
-                  onClick={() => approveScript()}
+                  onClick={() => doApprove()}
                   disabled={busy !== null || reviewBusy}
                   className="flex-1 rounded-xl bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-semibold py-3 transition-colors"
                 >
-                  {reviewBusy ? (
-                    <Busy>구조 검수 중…</Busy>
-                  ) : busy === "approve-script" ? (
+                  {busy === "approve-script" ? (
                     <Busy>승인 중…</Busy>
                   ) : (
                     "✓ 스크립트 승인하고 키프레임 단계로 →"
@@ -3234,6 +3229,17 @@ export default function Studio({
                 <p className="flex-1 self-center text-xs text-accent font-medium">
                   ✓ 스크립트 승인됨 — 아래 키프레임 단계로 진행하세요.
                 </p>
+              )}
+              {project.mode !== "cliche" && !scriptApproved && (
+                <button
+                  type="button"
+                  onClick={() => runReview()}
+                  disabled={busy !== null || reviewBusy}
+                  title="열린 고리 구조 검수 — 진단·수정안을 미리 보고 고친 뒤 승인하세요 (승인은 안 함)"
+                  className="shrink-0 rounded-xl border border-accent px-4 text-sm font-medium text-accent hover:bg-accent/10 disabled:opacity-40 transition-colors"
+                >
+                  {reviewBusy ? "검수 중…" : "🔍 구조 검수"}
+                </button>
               )}
               {project.mode !== "cliche" && (
                 <button
@@ -3273,9 +3279,9 @@ export default function Studio({
             )}
             {reviewErr && (
               <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
-                ⚠ 구조 검수 실패({reviewErr}) — 확정은 진행됐어요.{" "}
-                <button type="button" onClick={() => approveScript()} className="underline hover:no-underline">
-                  구조 검수 다시 실행
+                ⚠ 구조 검수 실패({reviewErr}).{" "}
+                <button type="button" onClick={() => runReview()} className="underline hover:no-underline">
+                  다시 실행
                 </button>
               </p>
             )}
