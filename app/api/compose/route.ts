@@ -12,7 +12,13 @@ export const runtime = "nodejs";
 //     합성(보이스·자막·효과음·워터마크 제외 — 소재용) → cleanVideoUrl 에 저장.
 //   GET  ?projectId            → { status, finalVideoUrl?, cleanVideoUrl?, error? }
 export async function POST(req: NextRequest) {
-  let body: { projectId?: string; lang?: string; clean?: boolean };
+  let body: {
+    projectId?: string;
+    lang?: string;
+    clean?: boolean;
+    sectionId?: string; // [롱폼] 섹션 하나만 부분 합성
+    joinSections?: boolean; // [롱폼] 섹션 영상들 최종 이어붙이기
+  };
   try {
     body = await req.json();
   } catch {
@@ -23,17 +29,33 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "projectId 필요" }, { status: 400 });
   }
   const lang = isTargetLang(body.lang) ? (body.lang as string) : "ko";
+  const sectionId = (body.sectionId ?? "").trim() || null;
+  const joinSections = body.joinSections === true;
 
   const project = await getProject(projectId);
   if (!project) {
     return NextResponse.json({ ok: false, error: "프로젝트 없음" }, { status: 404 });
   }
-  const withVideo = project.scenes.filter((s) => s.videoUrl);
-  if (withVideo.length === 0) {
-    return NextResponse.json(
-      { ok: false, error: "비디오가 있는 씬이 없어요 (5단계 먼저)" },
-      { status: 409 }
-    );
+
+  // 롱폼(씬 없음)은 씬 검증을 건너뛴다 — 유효성은 워커가 세그먼트/섹션 완성본으로 판단.
+  const isLongform =
+    project.format === "long" &&
+    Array.isArray(project.sourceProjectIds) &&
+    project.sourceProjectIds.length > 0;
+  if (!isLongform) {
+    const withVideo = project.scenes.filter((s) => s.videoUrl);
+    if (withVideo.length === 0) {
+      return NextResponse.json(
+        { ok: false, error: "비디오가 있는 씬이 없어요 (5단계 먼저)" },
+        { status: 409 }
+      );
+    }
+  }
+
+  // 섹션 부분 합성이면 대상 섹션이 있어야 한다.
+  const section = sectionId ? project.sections?.find((s) => s.id === sectionId) : null;
+  if (sectionId && !section) {
+    return NextResponse.json({ ok: false, error: "섹션을 찾을 수 없어요" }, { status: 404 });
   }
 
   const now = Date.now();
@@ -41,17 +63,30 @@ export async function POST(req: NextRequest) {
     id: randomUUID(),
     type: "compose",
     projectId,
-    payload: { lang, ...(body.clean === true ? { clean: true } : {}) },
+    payload: {
+      lang,
+      ...(body.clean === true ? { clean: true } : {}),
+      ...(sectionId ? { sectionId } : {}),
+      ...(joinSections ? { joinSections: true } : {}),
+    },
     status: "queued",
     createdAt: now,
     updatedAt: now,
   };
   await enqueueJob(job);
 
-  project.steps.compose.status = "generating";
-  project.steps.compose.error = undefined;
-  project.steps.compose.jobId = job.id;
-  project.steps.compose.updatedAt = now;
+  if (section) {
+    // 섹션 잡: 프로젝트 전체 compose 스텝이 아니라 그 섹션 상태만 켠다(섹션별 스피너).
+    section.status = "generating";
+    section.jobId = job.id;
+    section.error = undefined;
+    section.updatedAt = now;
+  } else {
+    project.steps.compose.status = "generating";
+    project.steps.compose.error = undefined;
+    project.steps.compose.jobId = job.id;
+    project.steps.compose.updatedAt = now;
+  }
   project.updatedAt = now;
   await saveProject(project);
 
