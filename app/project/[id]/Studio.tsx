@@ -197,6 +197,7 @@ export default function Studio({
   videoModels,
   tts,
   initialTitles,
+  initialReview,
 }: {
   project: Project;
   styleProfiles: { id: string; label: string }[];
@@ -211,6 +212,7 @@ export default function Studio({
     recommendedIndex: number;
     seoKeywords: string[];
   } | null;
+  initialReview?: { result: ScriptReviewResult } | null;
 }) {
   const [project, setProject] = useState<Project>(initial);
   // 롱폼(가로 16:9) 프로젝트면 이미지·미리보기 종횡비를 가로로. 없으면 세로 9:16(기존).
@@ -538,8 +540,10 @@ export default function Studio({
   // 대본 구조 검수(열린 고리) — 승인과 분리된 별도 버튼. 미리 돌려 진단·수정안을 보고 고친다(승인 안 함).
   const [reviewBusy, setReviewBusy] = useState(false);
   const [reviewErr, setReviewErr] = useState("");
-  const [reviewPassed, setReviewPassed] = useState(false);
-  const [reviewData, setReviewData] = useState<ScriptReviewResult | null>(null);
+  // 초기값 = 서버에 저장된 지난 다듬기 결과(대본이 그대로일 때만 page.tsx 가 넘김). 통과면 배지,
+  // 위반이면 reviewData 만 심어두고 모달은 자동으로 안 띄운다('결과 다시 보기'로 복원).
+  const [reviewPassed, setReviewPassed] = useState(!!initialReview?.result.pass);
+  const [reviewData, setReviewData] = useState<ScriptReviewResult | null>(initialReview?.result ?? null);
   const [reviewStage, setReviewStage] = useState<null | "consent" | "revise">(null);
   const [selectedRev, setSelectedRev] = useState<Set<number>>(new Set());
   async function saveTitle() {
@@ -1842,6 +1846,10 @@ export default function Studio({
     setReviewStage(null);
     setReviewData(null);
   }
+  // 모달만 닫고 진단은 남긴다 — 자리 비웠다 오거나 리로드해도 '결과 다시 보기'로 복원되게.
+  function hideReviewModal() {
+    setReviewStage(null);
+  }
   function logReviewOutcome(consented: boolean, adopted: "all" | "partial" | "manual" | "none") {
     void fetch("/api/script/review", {
       method: "POST",
@@ -1881,10 +1889,10 @@ export default function Studio({
     }
   }
 
-  // "그대로 둘게요" — 검수 닫기. 원문 유지(승인 안 함, 진단만 기록).
+  // "그대로 둘게요/닫기" — 모달만 닫음. 원문 유지(승인 안 함, 진단만 기록·진단은 남김).
   function dismissReview() {
     logReviewOutcome(false, "none");
-    closeReview();
+    hideReviewModal();
   }
 
   // 선택한 수정안을 씬 나레이션에 반영·저장(⑧ 마무리는 잠금). 승인은 안 함 — 다시 검수·수정 가능.
@@ -2707,7 +2715,7 @@ export default function Studio({
       {reviewStage && reviewData && (
         <div
           className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-3"
-          onClick={closeReview}
+          onClick={hideReviewModal}
         >
           <div
             className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-4 shadow-xl"
@@ -2795,7 +2803,7 @@ export default function Studio({
                   <button
                     onClick={() => {
                       logReviewOutcome(true, "manual");
-                      closeReview();
+                      hideReviewModal();
                     }}
                     className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-2 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-900"
                   >
@@ -3275,6 +3283,23 @@ export default function Studio({
             {reviewPassed && !reviewBusy && (
               <p className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">
                 ✓ 다듬을 곳 없어요 — 열린 고리 구조 확인됨
+              </p>
+            )}
+            {reviewData && !reviewPassed && reviewStage === null && !reviewBusy && !scriptApproved && (
+              <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                ✍️ 지난 다듬기에서 고칠 곳을 찾았어요.{" "}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedRev(
+                      new Set(reviewData.revisedScenes.filter((s) => s.changed).map((s) => s.scene))
+                    );
+                    setReviewStage("consent");
+                  }}
+                  className="font-medium underline hover:no-underline"
+                >
+                  결과 다시 보기
+                </button>
               </p>
             )}
             {reviewErr && (

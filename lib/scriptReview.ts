@@ -32,6 +32,12 @@ export interface ScriptReviewResult {
   costUsd: number;
 }
 
+// 대본 지문 — 저장된 다듬기 결과가 현재 대본과 같은지 판정(공백 정규화). 대본이 바뀌면
+// 지문이 달라져 낡은 결과를 복원하지 않게 한다.
+export function reviewFingerprint(narrations: string[]): string {
+  return narrations.map((n) => (n ?? "").replace(/\s+/g, " ").trim()).filter(Boolean).join("\n");
+}
+
 // 대본을 ①-⑧ 로 직렬화(검수 입력).
 export function scenesToReviewText(narrations: string[]): string {
   const circled = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"];

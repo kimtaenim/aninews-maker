@@ -5,18 +5,46 @@
 // ============================================================================
 
 import { getRedis } from "./redis";
-import type { ScriptReviewResult } from "./scriptReview";
+import { reviewFingerprint, type ScriptReviewResult } from "./scriptReview";
 
 const KEY = (id: string) => `scriptreview:${id}`;
 const INDEX = "scriptreview:ids";
 
-export async function saveReviewLog(projectId: string, result: ScriptReviewResult): Promise<void> {
+export interface ReviewLog {
+  projectId: string;
+  result: ScriptReviewResult;
+  reviewedAt: number;
+  fingerprint: string; // 검수 당시 대본 지문 — 리로드 복원 시 최신 여부 판정용
+  outcome?: { consented: boolean; adopted?: "all" | "partial" | "manual" | "none"; at: number };
+}
+
+// 검수 결과 저장 — 당시 대본 지문을 함께 남겨, 리로드 후에도 최신일 때만 복원한다.
+export async function saveReviewLog(
+  projectId: string,
+  result: ScriptReviewResult,
+  narrations: string[]
+): Promise<void> {
   try {
     const redis = getRedis();
-    await redis.set(KEY(projectId), { projectId, result, reviewedAt: Date.now() });
+    const log: ReviewLog = {
+      projectId,
+      result,
+      reviewedAt: Date.now(),
+      fingerprint: reviewFingerprint(narrations),
+    };
+    await redis.set(KEY(projectId), log);
     await redis.sadd(INDEX, projectId);
   } catch {
     /* 무시 */
+  }
+}
+
+// 저장된 다듬기 결과 읽기 — 페이지 로드 시 복원(자리 비웠다 와도 결과 유지).
+export async function getReviewLog(projectId: string): Promise<ReviewLog | null> {
+  try {
+    return (await getRedis().get<ReviewLog>(KEY(projectId))) ?? null;
+  } catch {
+    return null;
   }
 }
 

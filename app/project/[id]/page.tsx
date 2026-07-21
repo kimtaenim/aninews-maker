@@ -4,6 +4,8 @@ import { listStyleProfiles } from "@/lib/styleProfiles";
 import { listVideoModels } from "@/lib/videoProvider";
 import { ttsProviderInfo } from "@/lib/tts";
 import { getTitleLog } from "@/lib/titleLog";
+import { getReviewLog } from "@/lib/scriptReviewLog";
+import { reviewFingerprint } from "@/lib/scriptReview";
 import Studio from "./Studio";
 import LongformStudio from "./LongformStudio";
 
@@ -82,6 +84,14 @@ export default async function ProjectStudioPage({
       }
     : null;
 
+  // 저장된 대본 다듬기 결과 — 대본이 그대로일 때(지문 일치)만 복원. 자리 비웠다 와도 진단 유지.
+  const reviewLog = await getReviewLog(id);
+  const curReviewFp = reviewFingerprint(
+    (project.scenes ?? []).filter((s) => !s.skipped).map((s) => s.narration ?? "")
+  );
+  const initialReview =
+    reviewLog && reviewLog.fingerprint === curReviewFp ? { result: reviewLog.result } : null;
+
   return (
     <Studio
       project={project}
@@ -89,6 +99,7 @@ export default async function ProjectStudioPage({
       videoModels={videoModels}
       tts={ttsProviderInfo()}
       initialTitles={initialTitles}
+      initialReview={initialReview}
     />
   );
 }

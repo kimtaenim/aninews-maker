@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const review = await reviewScript({ projectId, narrations });
-    await saveReviewLog(projectId, review);
+    await saveReviewLog(projectId, review, narrations);
     return NextResponse.json({ ok: true, review });
   } catch (e) {
     return NextResponse.json(
