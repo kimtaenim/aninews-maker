@@ -102,6 +102,7 @@ export default function PlayClient({
   const [playId, setPlayId] = useState("");
   const [like, setLike] = useState(20);
   const [dislike, setDislike] = useState(0);
+  const [myHeart, setMyHeart] = useState(0); // #7 내 마음 — 플레이어가 상대를 평가(마음 주기)
   const [sulking, setSulking] = useState(false);
   const [expr, setExpr] = useState("neutral"); // 현재 표정 얼굴 id
   const exprHold = useRef(0);
@@ -224,6 +225,7 @@ export default function PlayClient({
     setPlayId(r.playId);
     setLike(r.like);
     setDislike(r.dislike);
+    setMyHeart(0);
     setSulking(r.sulking);
     exprHold.current = 0;
     setExpr(r.sulking ? "sulk" : r.like >= 55 && r.dislike < 20 ? "blush" : "neutral");
@@ -257,6 +259,7 @@ export default function PlayClient({
       setPlayId(data.playId);
       setLike(data.like ?? 20);
       setDislike(data.dislike ?? 0);
+      setMyHeart(0);
       setSulking(false);
       exprHold.current = 0;
       setExpr("neutral");
@@ -292,6 +295,13 @@ export default function PlayClient({
     setBursts((b) => [...b, ...items]);
     const ids = new Set(items.map((x) => x.id));
     setTimeout(() => setBursts((b) => b.filter((x) => !ids.has(x.id))), 2600);
+  }
+
+  // #7 마음 주기 — 내 마음 게이지를 올리고 하트를 뿌린다(플레이어가 상대를 평가).
+  function giveHeart() {
+    if (ending) return;
+    setMyHeart((h) => Math.min(100, h + 12));
+    spawnBursts("like", 2);
   }
 
   async function send(override?: string) {
@@ -498,6 +508,24 @@ export default function PlayClient({
               />
             </div>
           </div>
+          {/* #7 내 마음 — 플레이어가 상대를 평가(마음 주기) */}
+          <div className="flex items-center gap-2">
+            <span className="w-6 shrink-0 text-center text-lg">🩷</span>
+            <div className="h-4 flex-1 rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden ring-1 ring-pink-200/60 dark:ring-pink-900/40">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-fuchsia-400 to-pink-500 transition-all duration-500"
+                style={{ width: `${myHeart}%` }}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={giveHeart}
+              disabled={!!ending || myHeart >= 100}
+              className="shrink-0 rounded-full border border-pink-300 dark:border-pink-800 px-2 py-0.5 text-[11px] text-pink-500 hover:bg-pink-50 dark:hover:bg-pink-950/40 disabled:opacity-40"
+            >
+              마음 주기
+            </button>
+          </div>
         </div>
       </div>
 
@@ -574,7 +602,7 @@ export default function PlayClient({
         <div className="mt-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 p-5 text-center">
           <div className="text-3xl">{ending.won ? "💖" : "💔"}</div>
           <div className="mt-2 text-base font-semibold">
-            {ending.won ? "이어졌다!" : "여기까지…"}
+            {ending.won ? "💞 커플 탄생!" : "여기까지…"}
           </div>
           <p className="mt-1 text-sm text-zinc-500">{ending.reason}</p>
           {/* 최종 좋음·싫음 요약 — 숫자 없이 바로만 */}
@@ -616,6 +644,16 @@ export default function PlayClient({
         </div>
       ) : (
         <>
+        {like >= 80 && dislike <= 25 && myHeart >= 80 && !sulking && (
+          <button
+            type="button"
+            onClick={() => send("우리 사귀자. 나랑 정식으로 사귀어줄래?")}
+            disabled={sending}
+            className="mb-2 w-full rounded-xl bg-gradient-to-r from-fuchsia-500 to-rose-500 px-3 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-40"
+          >
+            💞 우리 사귀자 (고백하기)
+          </button>
+        )}
         {moves.length > 0 && !sending && (
           <div className="mt-3 flex flex-col gap-1.5">
             {moves.map((m, i) => (
