@@ -42,7 +42,7 @@ export async function generateSimPersona(args: {
   const userMsg = `이름: ${name}\n아키타입(성격 클리셰): ${archetype || "설정 없음 — 무난하게 다정한 대학 동기"}`;
 
   const r = await client.messages.create({
-    model: MODELS.haiku,
+    model: MODELS.sonnet,
     max_tokens: 900, // 안전 상한(안 잘리게). 위에서 짧게 지시하므로 실제 출력은 훨씬 적다.
     system,
     messages: [{ role: "user", content: userMsg }],
@@ -59,12 +59,12 @@ export async function generateSimPersona(args: {
     outputTokens: r.usage.output_tokens,
     cacheReadTokens: r.usage.cache_read_input_tokens ?? undefined,
     cacheWriteTokens: r.usage.cache_creation_input_tokens ?? undefined,
-    model: MODELS.haiku,
+    model: MODELS.sonnet,
   });
   await recordCost({
     projectId: args.gameId,
     vendor: "anthropic",
-    model: MODELS.haiku,
+    model: MODELS.sonnet,
     costUsd,
     meta: { kind: "sim-persona", target: name },
   });

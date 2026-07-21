@@ -22,6 +22,9 @@ import { pickSituation, rollNextSituationTurn, SIM_SITUATIONS } from "./simSitua
 import { applyMemoryAdd, formatMemory, memoryInstruction } from "./simMemory";
 import type { SimGame, SimMemory, SimPlay, SimProtagonist, SimTarget } from "./types";
 
+// 대화·채점은 품질 우선 Sonnet(대사 자연스러움·리액션·캐릭터성). 대사는 짧게 유지해 비용 관리.
+const SIM_MODEL = MODELS.sonnet;
+
 const HISTORY_WINDOW = 20; // 최근 대화 턴(슬라이딩 윈도우)
 
 const LIKE_CONFESS_MIN = 75; // 플레이어 고백이 수락되는 최소 좋음
@@ -211,7 +214,7 @@ async function callHaiku(args: {
 }): Promise<{ raw: string; costUsd: number }> {
   const client = getAnthropic();
   const r = await client.messages.create({
-    model: MODELS.haiku,
+    model: SIM_MODEL,
     max_tokens: 800, // 한국어 대사(격식체는 더 김) + JSON 이 잘려 파싱 실패하던 걸 방지. 상한일 뿐 실제 출력은 짧다.
     system: args.system,
     messages: args.messages,
@@ -231,12 +234,12 @@ async function callHaiku(args: {
     outputTokens: r.usage.output_tokens,
     cacheReadTokens: r.usage.cache_read_input_tokens ?? undefined,
     cacheWriteTokens: r.usage.cache_creation_input_tokens ?? undefined,
-    model: MODELS.haiku,
+    model: SIM_MODEL,
   });
   await recordCost({
     projectId: args.gameId,
     vendor: "anthropic",
-    model: MODELS.haiku,
+    model: SIM_MODEL,
     costUsd,
     meta: { kind: args.kind },
   });
