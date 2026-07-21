@@ -50,6 +50,20 @@ interface ChatMsg {
   sulking?: boolean; // 이 대사가 삐진 상태의 대사인지(말풍선 톤)
 }
 
+// #6 관계 단계 — 좋음에 따라 관계가 단계로 오른다(진행감·레벨업 연출).
+const STAGES = [
+  { min: 0, label: "서먹한 사이" },
+  { min: 25, label: "조금씩 아는 사이" },
+  { min: 45, label: "친해지는 중" },
+  { min: 65, label: "썸 타는 기류" },
+  { min: 80, label: "연인 직전" },
+];
+function stageOf(like: number): { idx: number; label: string } {
+  let idx = 0;
+  for (let i = 0; i < STAGES.length; i++) if (like >= STAGES[i].min) idx = i;
+  return { idx, label: STAGES[idx].label };
+}
+
 // 상대의 표정 — 좋음·싫음·삐짐을 종합한 소프트 신호(정확한 숫자는 감춘다).
 function moodFace(like: number, dislike: number, sulking: boolean): string {
   if (sulking) return "😤";
@@ -328,6 +342,8 @@ export default function PlayClient({
       if (data.justSoothed) setBanner("💗 마음이 풀렸다 — 화해!");
       else if (data.justSulked) setBanner("💢 토라졌다… 왜 그러는지 눈치껏 사과해야 해");
       else if (data.crossedMilestone) setBanner("💞 사이가 한 뼘 가까워졌다!");
+      else if (stageOf(nl).idx > stageOf(like).idx)
+        setBanner(`💗 관계 상승 — ${stageOf(nl).label}!`);
       else if (nl - like > 0 && nd - dislike > 0)
         setBanner("💘💔 좋으면서도 미운 사람…!!!");
       else if (data.situationLabel) setBanner(`💬 ${data.situationLabel}`);
@@ -441,6 +457,9 @@ export default function PlayClient({
         <div className="mt-2 flex w-full max-w-[300px] items-center gap-1.5 text-sm">
           <span className="font-medium">{target?.name}</span>
           <span className="text-base">{moodFace(like, dislike, sulking)}</span>
+          <span className="rounded-full bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 text-[10px] font-medium text-rose-500">
+            {stageOf(like).label}
+          </span>
           {sulking && (
             <span className="rounded-full bg-red-100 dark:bg-red-950/50 px-2 py-0.5 text-[10px] font-medium text-red-600 dark:text-red-400">
               삐짐
