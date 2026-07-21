@@ -19,7 +19,7 @@ export interface HostSceneDraft {
 export interface HostScriptResult {
   // 진행자가 [오프닝(전체 여는 훅)] → [세그·연결 반복] → [마지막 구독·좋아요]. 각 씬 3~4초 한 문장.
   // 첫 opening 씬 = 두 마스코트 확정샷(키프레임 레퍼런스).
-  opening: HostSceneDraft[]; // 1~2씬. 열린 고리를 여는 훅.
+  opening: HostSceneDraft[]; // 정확히 1씬. 열린 고리를 여는 짧은 훅(= 두 마스코트 확정샷).
   connectors: HostSceneDraft[]; // 세그먼트마다 뒤(= 세그먼트 수 - 1).
   closing: HostSceneDraft[]; // 마지막 세그먼트 뒤 1씬 — 구독·좋아요.
   costUsd: number;
@@ -61,7 +61,7 @@ export async function generateHostScript(args: {
       : "",
     "순서: 진행자 오프닝 → [세그먼트 → 진행자 연결] 반복 → 마지막 세그먼트 뒤 구독·좋아요.",
     "만들 것(각 씬 = {narration, image}. 각 나레이션은 3~4초 안에 끝나는 짧은 한 문장):",
-    "- opening: 1~2씬. 전체를 여는 열린 고리 훅(답이 궁금해지는 질문 하나). 목차/차례 나열 금지. 첫 opening image=두 마스코트 확정샷.",
+    "- opening: 정확히 1씬(짧은 한 문장). 전체를 여는 열린 고리 훅(답이 궁금해지는 질문 하나). 목차/차례 나열 금지. 이 오프닝 바로 뒤는 첫 세그먼트다(진행자 추가 씬 없음). image=두 마스코트 확정샷.",
     `- connectors: 정확히 ${gaps}씬. i번째는 세그먼트 i가 끝난 뒤 나와 세그먼트 i+1로 자연스럽게 이어주는 한 문장.`,
     "- closing: 정확히 1씬. 마지막 세그먼트 뒤, 진행자가 구독·좋아요를 유도하는 한 문장.",
     "",
@@ -108,9 +108,16 @@ export async function generateHostScript(args: {
       })
       .filter((d) => d.narration.length > 0);
 
-  const opening = toDrafts(parsed.opening);
+  let opening = toDrafts(parsed.opening);
   let connectors = toDrafts(parsed.connectors);
   let closing = toDrafts(parsed.closing);
+  // 오프닝은 정확히 1씬.
+  if (opening.length > 1) opening = opening.slice(0, 1);
+  if (opening.length === 0) {
+    opening = [
+      { narration: "오늘 준비한 이야기, 끝까지 보면 답이 있어요!", imagePrompt: "The two host mascots (fanged glasses chibi girl + small headless quadruped robot), full-body establishing shot, cheerfully introducing, bright pop background." },
+    ];
+  }
   if (connectors.length > gaps) connectors = connectors.slice(0, gaps);
   while (connectors.length < gaps) {
     connectors.push({ narration: "다음 이야기로 이어가 볼까요?", imagePrompt: "The two host mascots cheerfully gesturing toward the next topic, bright pop background." });
