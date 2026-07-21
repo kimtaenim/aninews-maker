@@ -141,27 +141,25 @@ async function renderHostSceneClip(s, dir, tag, sub, W, H) {
   return out;
 }
 
-// [롱폼] 교차 합성 — 진행자 오프닝 → [세그먼트 → 진행자 연결] 반복 → 마지막 세그먼트 뒤
-// 진행자 마무리(구독). 진행자 씬은 렌더, 세그먼트는 완성본 사용. 모두 동일 파라미터라 -c copy.
-//   dir/log/W/H 는 호출자(composeProject)에서 받아 공유.
-async function runLongformConcat(project, lang, dir, log, W, H) {
-  const segIds = project.sourceProjectIds ?? [];
-  if (segIds.length === 0) throw new Error("롱폼에 세그먼트(sourceProjectIds)가 없어요");
-
-  const sub = project.subtitle ?? {
+// 롱폼 자막 기본값(진행자 없을 때 폴백).
+function defaultLongSub(project) {
+  return project.subtitle ?? {
     font: "sans", weight: "regular", size: "small",
     position: "two-thirds", align: "center", box: "dark", lang: "ko",
   };
+}
 
-  // 1) 진행자 프로젝트 씬 수집(슬롯별). videoUrl 없는(미생성) 씬은 건너뜀.
+// [롱폼] 진행자 프로젝트 씬을 슬롯별로 수집 — videoUrl 없는(미생성) 씬은 건너뜀.
+//   hostConnectors 는 connectorAfter(전역 세그먼트 인덱스, 0-based) → scene 맵.
+async function collectHostScenes(project, fallbackSub) {
   const hostOpening = [];
-  const hostConnectors = new Map(); // connectorAfter → scene
+  const hostConnectors = new Map();
   const hostClosing = [];
-  let hostSub = sub;
+  let hostSub = fallbackSub;
   if (project.hostProjectId) {
     const host = await getProject(project.hostProjectId);
     if (host) {
-      hostSub = host.subtitle ?? sub;
+      hostSub = host.subtitle ?? fallbackSub;
       for (const s of host.scenes ?? []) {
         if (!s.videoUrl) continue;
         if (s.hostSlot === "opening") hostOpening.push(s);
@@ -170,21 +168,80 @@ async function runLongformConcat(project, lang, dir, log, W, H) {
       }
     }
   }
+  return { hostOpening, hostConnectors, hostClosing, hostSub };
+}
+
+// 세그먼트 완성본(finalVideoUrl) 다운로드 → 로컬 경로 반환.
+async function downloadSegment(segId, idx, total, dir, log) {
+  const sp = await getProject(segId);
+  const url = sp?.finalVideoUrl;
+  if (!url) throw new Error(`세그먼트 ${idx + 1}(${segId}) 완성본(finalVideoUrl)이 없어요`);
+  const f = join(dir, `seg-${segId}.mp4`);
+  await log(`세그먼트 ${idx + 1}/${total} 다운로드…`);
+  await download(url, f);
+  return f;
+}
+
+// concat 리스트 작성 + 무손실 이어붙이기 → 로컬 out 경로 반환.
+async function concatClips(order, dir, log, outName = "final.mp4") {
+  const listPath = join(dir, `list-${outName}.txt`);
+  await writeFile(listPath, order.map((f) => `file '${f}'`).join("\n"), "utf8");
+  const finalPath = join(dir, outName);
+  await log("이어붙이기(무손실 copy)…");
+  await run("ffmpeg", [
+    "-y", "-f", "concat", "-safe", "0", "-i", listPath,
+    "-c", "copy", "-movflags", "+faststart",
+    finalPath,
+  ]);
+  return finalPath;
+}
+
+// 최종 합성본 업로드 + 저장 — 저장 직전 fresh 재읽기 후 finalVideoUrl 만 머지(통째 저장 금지).
+async function uploadAndSaveFinal(project, lang, finalPath, log) {
+  await log("Blob 업로드…");
+  const { url } = await put(
+    `project/${project.id}/final-${lang}-${Date.now()}.mp4`,
+    createReadStream(finalPath),
+    { access: "public", contentType: "video/mp4", addRandomSuffix: false }
+  );
+  const p2 = await getProject(project.id);
+  if (p2) {
+    p2.finalVideoUrl = url;
+    p2.steps.compose.status = "generated";
+    p2.steps.compose.error = undefined;
+    p2.steps.compose.updatedAt = Date.now();
+    p2.updatedAt = Date.now();
+    await saveProject(p2);
+  }
+  return url;
+}
+
+// 섹션 결과를 저장 — fresh 재읽기 후 해당 섹션 필드만 머지(통째 저장 금지 규약).
+async function saveSectionResult(projectId, sectionId, patch) {
+  const p = await getProject(projectId);
+  if (!p || !Array.isArray(p.sections)) return;
+  const sec = p.sections.find((s) => s.id === sectionId);
+  if (!sec) return;
+  Object.assign(sec, patch, { updatedAt: Date.now() });
+  p.updatedAt = Date.now();
+  await saveProject(p);
+}
+
+// [롱폼] 교차 합성(레거시 단일 경로) — 진행자 오프닝 → [세그먼트 → 진행자 연결] 반복 →
+// 마지막 세그먼트 뒤 진행자 마무리(구독). 섹션이 없는 롱폼(구버전)에서만 사용.
+// 진행자 씬은 렌더, 세그먼트는 완성본 사용. 모두 동일 파라미터라 -c copy.
+async function runLongformConcat(project, lang, dir, log, W, H) {
+  const segIds = project.sourceProjectIds ?? [];
+  if (segIds.length === 0) throw new Error("롱폼에 세그먼트(sourceProjectIds)가 없어요");
+  const sub = defaultLongSub(project);
+  const { hostOpening, hostConnectors, hostClosing, hostSub } = await collectHostScenes(project, sub);
   await log(`진행자 씬 — 오프닝 ${hostOpening.length}·연결 ${hostConnectors.size}·마무리 ${hostClosing.length}`);
 
-  // 2) 각 세그먼트 완성본 다운로드
   const segFiles = [];
   for (let i = 0; i < segIds.length; i++) {
-    const sp = await getProject(segIds[i]);
-    const url = sp?.finalVideoUrl;
-    if (!url) throw new Error(`세그먼트 ${i + 1}(${segIds[i]}) 완성본(finalVideoUrl)이 없어요`);
-    const f = join(dir, `seg${i}.mp4`);
-    await log(`세그먼트 ${i + 1}/${segIds.length} 다운로드…`);
-    await download(url, f);
-    segFiles.push(f);
+    segFiles.push(await downloadSegment(segIds[i], i, segIds.length, dir, log));
   }
 
-  // 3) 교차 순서: 진행자 오프닝 → [세그 → 진행자 연결] → 마무리(구독). 진행자 씬은 클립으로 렌더.
   const order = [];
   let oi = 0;
   for (const s of hostOpening) {
@@ -205,33 +262,102 @@ async function runLongformConcat(project, lang, dir, log, W, H) {
     order.push(await renderHostSceneClip(s, dir, `close${ci++}`, hostSub, W, H));
   }
 
-  const listPath = join(dir, "list.txt");
-  await writeFile(listPath, order.map((f) => `file '${f}'`).join("\n"), "utf8");
-  const finalPath = join(dir, "final.mp4");
-  await log("이어붙이기(무손실 copy)…");
-  await run("ffmpeg", [
-    "-y", "-f", "concat", "-safe", "0", "-i", listPath,
-    "-c", "copy", "-movflags", "+faststart",
-    finalPath,
-  ]);
-
-  // 4) 업로드 + 저장 — 저장 직전 fresh 재읽기 후 finalVideoUrl 만 머지(통째 저장 금지 규약).
-  await log("Blob 업로드…");
-  const { url } = await put(
-    `project/${project.id}/final-${lang}-${Date.now()}.mp4`,
-    createReadStream(finalPath),
-    { access: "public", contentType: "video/mp4", addRandomSuffix: false }
-  );
-  const p2 = await getProject(project.id);
-  if (p2) {
-    p2.finalVideoUrl = url;
-    p2.steps.compose.status = "generated";
-    p2.steps.compose.error = undefined;
-    p2.steps.compose.updatedAt = Date.now();
-    p2.updatedAt = Date.now();
-    await saveProject(p2);
-  }
+  const finalPath = await concatClips(order, dir, log);
+  const url = await uploadAndSaveFinal(project, lang, finalPath, log);
   await log("롱폼 합성 완료");
+  return url;
+}
+
+// [롱폼-섹션] 섹션 하나(2~3 세그 + 내부 연결)를 부분 합성 → 중간본을 Blob 에 올리고
+// project.sections[k].videoUrl 에 저장. 이 잡은 그 섹션 세그먼트만 다운로드하므로
+// 총 편수와 무관하게 리소스가 고정된다(OOM 안전판). 섹션 "경계" 연결은 최종 join 이 처리.
+async function runLongformSectionConcat(project, sectionId, lang, dir, log, W, H) {
+  const segIds = project.sourceProjectIds ?? [];
+  const sections = project.sections ?? [];
+  const section = sections.find((s) => s.id === sectionId);
+  if (!section) throw new Error(`섹션을 찾을 수 없어요: ${sectionId}`);
+  const sub = defaultLongSub(project);
+  const { hostConnectors, hostSub } = await collectHostScenes(project, sub);
+
+  // 섹션 세그먼트의 전역 인덱스(연결 위치 매핑용) — sourceProjectIds 순서 기준.
+  const globalIdx = section.segmentIds.map((id) => segIds.indexOf(id));
+  if (globalIdx.some((g) => g < 0)) throw new Error("섹션 세그먼트가 롱폼 소스에 없어요");
+  await log(`섹션 합성 — 세그먼트 ${section.segmentIds.length}편(전역 ${globalIdx.join(",")})`);
+
+  try {
+    const order = [];
+    for (let k = 0; k < section.segmentIds.length; k++) {
+      const g = globalIdx[k];
+      order.push(await downloadSegment(section.segmentIds[k], k, section.segmentIds.length, dir, log));
+      // 내부 연결만: 섹션 마지막 세그(뒤=경계)는 건너뜀 → 경계 연결은 최종 join 이 넣는다.
+      const isLastInSection = k === section.segmentIds.length - 1;
+      if (!isLastInSection) {
+        const conn = hostConnectors.get(g);
+        if (conn) {
+          await log(`연결 진행자 씬 렌더(섹션 내부, 세그 ${g + 1} 뒤)…`);
+          order.push(await renderHostSceneClip(conn, dir, `conn${g}`, hostSub, W, H));
+        }
+      }
+    }
+    const finalPath = await concatClips(order, dir, log, "section.mp4");
+    await log("섹션 Blob 업로드…");
+    const { url } = await put(
+      `project/${project.id}/section-${section.id}-${lang}-${Date.now()}.mp4`,
+      createReadStream(finalPath),
+      { access: "public", contentType: "video/mp4", addRandomSuffix: false }
+    );
+    await saveSectionResult(project.id, section.id, { videoUrl: url, status: "generated", error: undefined });
+    await log("섹션 합성 완료");
+    return url;
+  } catch (e) {
+    await saveSectionResult(project.id, section.id, { status: "error", error: String(e?.message ?? e) });
+    throw e;
+  }
+}
+
+// [롱폼-최종] 섹션 영상들 + 진행자(오프닝·경계연결·마무리)를 이어붙여 finalVideoUrl 생성.
+// 섹션 영상(파일 몇 개)만 다운로드하므로 가볍다. 모든 섹션이 합성(videoUrl)돼 있어야 한다.
+async function runLongformJoin(project, lang, dir, log, W, H) {
+  const segIds = project.sourceProjectIds ?? [];
+  const sections = project.sections ?? [];
+  if (sections.length === 0) throw new Error("섹션이 없어요");
+  const missing = sections.filter((s) => !s.videoUrl);
+  if (missing.length) {
+    throw new Error(`아직 합성 안 된 섹션이 ${missing.length}개 있어요 — 섹션부터 합성해 주세요`);
+  }
+  const sub = defaultLongSub(project);
+  const { hostOpening, hostConnectors, hostClosing, hostSub } = await collectHostScenes(project, sub);
+  await log(`최종 이어붙이기 — 섹션 ${sections.length}·오프닝 ${hostOpening.length}·마무리 ${hostClosing.length}`);
+
+  const order = [];
+  let oi = 0;
+  for (const s of hostOpening) {
+    await log(`오프닝 진행자 씬 렌더 ${oi + 1}/${hostOpening.length}…`);
+    order.push(await renderHostSceneClip(s, dir, `open${oi++}`, hostSub, W, H));
+  }
+  for (let si = 0; si < sections.length; si++) {
+    const sec = sections[si];
+    const f = join(dir, `sec-${sec.id}.mp4`);
+    await log(`섹션 ${si + 1}/${sections.length} 다운로드…`);
+    await download(sec.videoUrl, f);
+    order.push(f);
+    // 경계 연결: 이 섹션 마지막 세그의 전역 인덱스 뒤 연결(섹션 합성에서 건너뛴 것).
+    const lastG = segIds.indexOf(sec.segmentIds[sec.segmentIds.length - 1]);
+    const conn = hostConnectors.get(lastG);
+    if (conn) {
+      await log(`경계 연결 진행자 씬 렌더(섹션 ${si + 1} 뒤)…`);
+      order.push(await renderHostSceneClip(conn, dir, `bconn${si}`, hostSub, W, H));
+    }
+  }
+  let ci = 0;
+  for (const s of hostClosing) {
+    await log("마무리 진행자 씬 렌더…");
+    order.push(await renderHostSceneClip(s, dir, `close${ci++}`, hostSub, W, H));
+  }
+
+  const finalPath = await concatClips(order, dir, log);
+  const url = await uploadAndSaveFinal(project, lang, finalPath, log);
+  await log("롱폼 최종 합성 완료");
   return url;
 }
 
@@ -263,8 +389,14 @@ export async function composeProject(projectId, lang, opts = {}) {
     Array.isArray(project.sourceProjectIds) &&
     project.sourceProjectIds.length > 0;
   const scenes = isLongform ? [] : (project.scenes ?? []).filter((s) => s.videoUrl && !s.skipped);
+  // 섹션 합성 잡 판별 — payload.sectionId(섹션 부분 합성) / payload.joinSections(최종 이어붙이기).
+  const sectionId = typeof opts?.sectionId === "string" ? opts.sectionId : null;
+  const wantJoin = opts?.joinSections === true;
+  const hasSections = Array.isArray(project.sections) && project.sections.length > 0;
   if (isLongform) {
-    await log(`롱폼 합성 — 세그먼트 ${project.sourceProjectIds.length}개 + 아이캐치`);
+    if (sectionId) await log(`롱폼 섹션 부분 합성 — sectionId=${sectionId}`);
+    else if (wantJoin || hasSections) await log(`롱폼 최종 이어붙이기 — 섹션 ${project.sections?.length ?? 0}개`);
+    else await log(`롱폼 합성(레거시 단일) — 세그먼트 ${project.sourceProjectIds.length}개`);
   } else {
     await log(`프로젝트 로드됨 — 비디오 있는 씬 ${scenes.length}개`);
     if (scenes.length === 0) throw new Error("비디오가 있는 씬이 없어요");
@@ -279,8 +411,19 @@ export async function composeProject(projectId, lang, opts = {}) {
   );
   const dir = await mkdtemp(join(tmpdir(), "compose-"));
   try {
-    // 롱폼: 세그먼트 완성본 + 아이캐치를 이어붙이는 경량 경로(씬 재인코딩 없음).
+    // 롱폼: 세그먼트 완성본을 이어붙이는 경량 경로(씬 재인코딩 없음).
+    //  · sectionId  → 섹션 하나만 부분 합성(그 섹션 세그먼트만 다운로드 → 리소스 고정).
+    //  · joinSections/섹션 존재 → 섹션 영상들을 최종 이어붙이기.
+    //  · 둘 다 아님(섹션 없는 구버전) → 레거시 단일 교차 합성.
     if (isLongform) {
+      if (sectionId) {
+        const url = await runLongformSectionConcat(project, sectionId, lang, dir, log, W, H);
+        return url;
+      }
+      if (wantJoin || hasSections) {
+        const url = await runLongformJoin(project, lang, dir, log, W, H);
+        return url;
+      }
       const url = await runLongformConcat(project, lang, dir, log, W, H);
       return url;
     }
