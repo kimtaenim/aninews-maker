@@ -20,15 +20,22 @@ const NO_TEXT =
   "Keep on-image text minimal: avoid signs, banners, paragraphs, or lots of words. A few short words are okay if natural, but no heavy text overlays.";
 
 // 이미지 모델 전용(Claude 비노출). 자막(subtitlePosition) 자리는 비우고, 인물·주요 물체는
-// 자막 반대편에 오도록 능동 배치 지시. (사용자 규칙 — 자막이 화면의 얼마를 먹느냐로 세분:
-//   상단/¼ 자막 = 중앙보다 아래(하단 절반),   ⅓ 자막 = 중앙과 그 아래(가운데+하단),
-//   중앙 자막 = 상·하단(가운데 띠 비움),
-//   ⅔ 자막 = 중앙과 그 위(가운데+상단),      ¾/하단 자막 = 중앙보다 위(상단 절반).)
+// 자막 반대편에 오도록 능동 배치 지시. (사용자 규칙 — 자막이 화면을 적게 먹을수록 중앙을 더 포함:
+//   top·bottom 자막(가장자리 띠) = 중앙 그대로, 그 띠만 비움,
+//   ¼·¾ 자막(사분의 일)          = 중앙에서 살짝만 반대편으로,
+//   ⅓·⅔ 자막(삼분의 일)          = 중앙과 그 반대편 절반(가운데+반대쪽),
+//   중앙 자막                      = 상·하단(가운데 띠 비움).)
 // 카메라 앵글·프레이밍은 그 안에서 자연스럽게.
 function edgeSafe(position?: string): string {
   const rules: Record<string, { clear: string; place: string }> = {
-    top: { clear: "top", place: "below the center, in the lower half of the frame" },
-    "one-quarter": { clear: "upper quarter", place: "below the center, in the lower half of the frame" },
+    top: {
+      clear: "top",
+      place: "around the center of the frame, simply keeping the top band clear",
+    },
+    "one-quarter": {
+      clear: "upper quarter",
+      place: "around the center, nudged slightly downward so the upper quarter stays clear",
+    },
     "one-third": {
       clear: "upper third",
       place: "around the center and below it (the middle and lower area of the frame)",
@@ -41,8 +48,14 @@ function edgeSafe(position?: string): string {
       clear: "lower third",
       place: "around the center and above it (the middle and upper area of the frame)",
     },
-    "three-quarters": { clear: "lower", place: "above the center, in the upper half of the frame" },
-    bottom: { clear: "bottom", place: "above the center, in the upper half of the frame" },
+    "three-quarters": {
+      clear: "lower quarter",
+      place: "around the center, nudged slightly upward so the lower quarter stays clear",
+    },
+    bottom: {
+      clear: "bottom",
+      place: "around the center of the frame, simply keeping the bottom band clear",
+    },
   };
   const r = rules[position ?? ""] ?? rules.bottom;
   return (
