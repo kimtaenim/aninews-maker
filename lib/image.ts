@@ -20,18 +20,27 @@ const NO_TEXT =
   "Keep on-image text minimal: avoid signs, banners, paragraphs, or lots of words. A few short words are okay if natural, but no heavy text overlays.";
 
 // 이미지 모델 전용(Claude 비노출). 자막(subtitlePosition) 자리는 비우고, 인물·주요 물체는
-// 자막 반대편에 오도록 능동 배치 지시. (사용자 규칙: 중앙 자막=상·하단에, 상단/⅓ 자막=중앙보다
-// 아래, ⅔/¾/하단 자막=중앙보다 위.) 카메라 앵글·프레이밍은 그 안에서 자연스럽게.
+// 자막 반대편에 오도록 능동 배치 지시. (사용자 규칙 — 자막이 화면의 얼마를 먹느냐로 세분:
+//   상단/¼ 자막 = 중앙보다 아래(하단 절반),   ⅓ 자막 = 중앙과 그 아래(가운데+하단),
+//   중앙 자막 = 상·하단(가운데 띠 비움),
+//   ⅔ 자막 = 중앙과 그 위(가운데+상단),      ¾/하단 자막 = 중앙보다 위(상단 절반).)
+// 카메라 앵글·프레이밍은 그 안에서 자연스럽게.
 function edgeSafe(position?: string): string {
   const rules: Record<string, { clear: string; place: string }> = {
     top: { clear: "top", place: "below the center, in the lower half of the frame" },
     "one-quarter": { clear: "upper quarter", place: "below the center, in the lower half of the frame" },
-    "one-third": { clear: "upper third", place: "below the center, in the lower half of the frame" },
+    "one-third": {
+      clear: "upper third",
+      place: "around the center and below it (the middle and lower area of the frame)",
+    },
     center: {
       clear: "central/middle",
       place: "in the top and bottom areas, keeping the middle band clear",
     },
-    "two-thirds": { clear: "lower third", place: "above the center, in the upper half of the frame" },
+    "two-thirds": {
+      clear: "lower third",
+      place: "around the center and above it (the middle and upper area of the frame)",
+    },
     "three-quarters": { clear: "lower", place: "above the center, in the upper half of the frame" },
     bottom: { clear: "bottom", place: "above the center, in the upper half of the frame" },
   };
