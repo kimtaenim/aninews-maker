@@ -175,6 +175,90 @@ export interface LongformOpening {
   generatedAt: number;
 }
 
+// ── [롱폼] 모듈 1 — 제목 패키지 ───────────────────────────────────────────────
+// 롱폼 제목은 쇼츠 6원칙이 아니라 "검색 5원칙"으로 만든다(발견 지면이 검색·홈·추천).
+// 원칙 단일 원천 = config/longform-principles.json 의 title 섹션.
+export interface LongformTitleCandidate {
+  title: string;
+  thumbnailText: string; // 7자 이내, 제목과 비중복 괴리 — 모듈 5가 그대로 쓴다.
+  principlesCheck: Record<string, boolean>; // 5원칙 통과 여부
+  screening: Record<string, boolean>; // 검수 질문 3개
+  violations?: string[]; // 코드 검사(시점 표현·30자·묶음가치)로 잡힌 것
+}
+
+export interface LongformTitlePackage {
+  keywordCandidates: string[]; // 검색어 후보 5~8
+  primaryKeyword: string;
+  secondaryKeyword: string;
+  keywordRationale: string;
+  candidates: LongformTitleCandidate[];
+  rejected: { title: string; reason: string }[];
+  recommendation: string; // 최종 추천 1개 + 이유 한 줄
+  recommendedIndex: number;
+  titlePromise: string; // 추천 제목이 약속한 괴리 한 줄 — 모듈 2~5의 기준점
+  // 사용자 확정(여기서 멈추고 확정을 받은 뒤에야 모듈 2~4가 돈다)
+  finalTitle?: string;
+  finalThumbnailText?: string;
+  confirmedAt?: number;
+  generatedAt: number;
+}
+
+// ── [롱폼] 모듈 3 — 브리지(세그먼트 사이 1개) ─────────────────────────────────
+export interface LongformBridge {
+  afterSegment: number; // 이 전역 세그먼트 인덱스(0-based) 뒤에 놓인다.
+  emphasis: string; // 방점 — 직전 세그먼트의 고리를 반만 닫는 한 문장
+  elevation: string; // 승격 — title_promise 의 큰 고리에 연결
+  opening: string; // 개방 — 다음 세그먼트의 질문을 연다(답 선공개 금지)
+  isMidpointReopen: boolean; // 중간점 고리 환기(영상당 1회만)
+  imagePrompt?: string; // 진행자 씬 비주얼(영문)
+}
+
+// ── [롱폼] 모듈 2~4 — 대본 패키지(오프닝·세그먼트 순서·브리지·엔딩) ──────────
+export interface LongformScriptPackage {
+  titleUsed: string;
+  titlePromise: string;
+  segmentOrder: { order: number; segmentId?: string; title: string; rationale: string }[];
+  orderNote?: string; // 사용자 지정 순서에 대한 유지율 우려(한 번만)
+  opening: {
+    blockAHook: string; // 제목 호응 훅(10초 이내, 2문장 이내)
+    blockBRoadmapLanding: string; // 로드맵 + 착지(15초 이내)
+    estSeconds: number;
+    imagePromptA?: string;
+    imagePromptB?: string;
+  };
+  bridges: LongformBridge[];
+  ending: {
+    partAClose: string; // 고리 닫기 — 전체에서 유일한 폐쇄 지점
+    partBLanding: string; // 계좌 착지
+    partCStandard: string; // 구독 전환(롱폼 표준 문구)
+    endscreenVideo: string; // 엔드스크린 추천 대상(구성 쇼츠 중 최강 실적작)
+    estSeconds: number;
+    imagePromptA?: string;
+    imagePromptB?: string;
+    imagePromptC?: string;
+  };
+  screening: Record<string, string>; // 제목호응·고리일치·조기폐쇄·25초규칙·척추검수·20초검수
+  generatedAt: number;
+}
+
+// ── [롱폼] 모듈 5 — 썸네일 ────────────────────────────────────────────────────
+export interface LongformThumbnailVariant {
+  composition: string; // 구도 변형 설명(한국어)
+  prompt: string; // 이미지 생성 프롬프트(영문, 텍스트 없는 이미지)
+  imageUrl?: string; // 글씨 없는 원본
+  fileUrl?: string; // 글씨 얹은 시안(1280x720 jpg)
+  previewUrl?: string; // 168px 축소 검증본
+  strokePx?: number; // 168px 기준 글자 획 두께 추정(2px 미만이면 재합성)
+}
+
+export interface LongformThumbnailPackage {
+  textUsed: string; // 모듈 1의 thumbnail_text
+  variants: LongformThumbnailVariant[];
+  selected?: string; // 사용자 확정 파일 URL
+  screening: Record<string, string>;
+  generatedAt: number;
+}
+
 // ── [롱폼] 섹션 — 2~3 세그먼트씩 묶어 "부분 합성"한 중간본 ─────────────────────
 // 10편+ 롱폼을 한 워커 잡에서 몰아 합성하면 디스크·메모리가 위험(각 잡이 세그먼트를
 // 전부 다운로드). 그래서 세그먼트를 2~3개씩 섹션으로 나눠 섹션마다 별도 합성 잡으로
@@ -216,8 +300,16 @@ export interface Project {
   // [롱폼] 진행자(호스트) 프로젝트 id — 오프닝·연결·마무리 호스트 씬을 담은 별도 프로젝트.
   // Studio 에서 세그먼트처럼 씬별 편집. 합성 때 슬롯대로 세그먼트와 교차.
   hostProjectId?: string;
-  // [롱폼] 열린 고리(Open Loop) 오프닝 — 자동 생성된 오프닝 스크립트 + 고리 명세 + 챕터 가이드.
+  // [롱폼] 열린 고리(Open Loop) 오프닝 — 모듈 2가 만든 오프닝을 구조 검수(longformReview)가
+  // 읽을 수 있게 미러링한 형태. 원천은 longformScript.
   opening?: LongformOpening;
+  // [롱폼] 모듈 1 — 제목 패키지(검색어·후보·추천·title_promise·사용자 확정).
+  longformTitle?: LongformTitlePackage;
+  // [롱폼] 모듈 2~4 — 대본 패키지(오프닝 2블록·세그먼트 순서·브리지·엔딩 3파트 + 검수).
+  // 진행자 프로젝트 씬(hostSlot)은 이 패키지에서 만들어진다.
+  longformScript?: LongformScriptPackage;
+  // [롱폼] 모듈 5 — 썸네일 시안 3종 + 168px 검증본.
+  thumbnail?: LongformThumbnailPackage;
   // [롱폼] 섹션 — 세그먼트를 2~3개씩 묶은 부분 합성 단위. 있으면 합성을 섹션별 잡으로 쪼갠 뒤
   // 최종 join(섹션 영상 이어붙이기)을 한다. 없으면 기존 단일 runLongformConcat 경로.
   sections?: LongformSection[];
