@@ -11,6 +11,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
     "@fal-ai/client": "^1.6.0",
+    "@napi-rs/canvas": "^1.0.2",
     "@upstash/redis": "^1.37.0",
     "@vercel/blob": "^2.3.3",
     "bcryptjs": "^3.0.3",

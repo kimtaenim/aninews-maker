@@ -47,14 +47,6 @@ export default async function ProjectStudioPage({
           finalVideoUrl: host.finalVideoUrl,
         }
       : null;
-    const lfTitleLog = await getTitleLog(id);
-    const lfInitialTitles = lfTitleLog
-      ? {
-          candidates: lfTitleLog.candidates,
-          recommendedIndex: lfTitleLog.recommendedIndex,
-          seoKeywords: lfTitleLog.seoKeywords,
-        }
-      : null;
     return (
       <LongformStudio
         project={{
@@ -66,8 +58,9 @@ export default async function ProjectStudioPage({
         }}
         segments={segments}
         hostProject={hostProject}
-        initialOpening={project.opening ?? null}
-        initialTitles={lfInitialTitles}
+        initialTitle={project.longformTitle ?? null}
+        initialScript={project.longformScript ?? null}
+        initialThumbnail={project.thumbnail ?? null}
       />
     );
   }

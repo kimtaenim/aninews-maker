@@ -430,6 +430,40 @@ export async function generatePortrait(args: {
   return { url, costUsd };
 }
 
+// [롱폼 모듈 5] 썸네일 배경 1장 생성 — 글씨는 절대 그리지 않는다(한글 렌더링 신뢰 불가,
+// 문구는 후처리로 얹는다). 채널 일관성을 위해 마스코트 정의 + 레퍼런스(있으면 img2img)를 쓴다.
+// 크기는 유튜브 썸네일 규격 1280x720(둘 다 16의 배수 — gpt-image-2 요구).
+export async function generateThumbnailImage(args: {
+  projectId: string;
+  prompt: string; // 구도·감정·배경 분리가 담긴 영문 프롬프트
+  quality?: ImageQuality;
+}): Promise<{ bytes: Buffer; costUsd: number }> {
+  const { projectId, prompt, quality = "medium" } = args;
+  const client = getOpenAI();
+  const cfg = eyecatchConfig as { description?: string; referenceImageUrl?: string };
+  const full =
+    `${cfg.description ?? ""}\n\n${prompt}\n\n` +
+    "ABSOLUTELY NO TEXT, letters, numbers, logos, or watermarks anywhere in the image — " +
+    "the caption is composited afterwards. Leave the bottom-right corner visually quiet " +
+    "(YouTube overlays the duration badge there). Avoid pure white and pure black backgrounds.";
+  const ref = cfg.referenceImageUrl?.trim();
+  const result = ref
+    ? await client.images.edit({
+        model: IMAGE_MODEL,
+        image: await fetchRefFile(ref, "썸네일 참조"),
+        prompt: full,
+        size: "1280x720",
+        quality,
+        n: 1,
+      })
+    : await client.images.generate({ model: IMAGE_MODEL, prompt: full, size: "1280x720", quality, n: 1 });
+  const b64 = result.data?.[0]?.b64_json;
+  if (!b64) throw new Error("썸네일 이미지 생성 실패 — 응답에 이미지가 없어요");
+  const costUsd = openaiImageCostUsd(IMAGE_MODEL, quality, 1);
+  await recordCost({ projectId, vendor: "openai", model: IMAGE_MODEL, costUsd, meta: { kind: "thumbnail", quality } });
+  return { bytes: Buffer.from(b64, "base64"), costUsd };
+}
+
 // [롱폼] 아이캐치(송곳니 안경 미소녀 마스코트 + 구독 버튼) 1장 생성 — config/eyecatch.json 의
 // description(캐릭터 정체성) + eyecatchPrompt(구독 버튼 장면)로 16:9 생성. referenceImageUrl 이
 // 등록돼 있으면 img2img 로 더 단단히 고정. 롱폼당 1장 만들어 세그먼트 사이마다 재사용한다.

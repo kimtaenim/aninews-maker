@@ -8,7 +8,17 @@
 import { getAnthropic, MODELS } from "./anthropic";
 import { anthropicCostUsd, recordCost } from "./cost";
 import { LONGFORM_REVIEW_SYSTEM_PROMPT } from "./longformReviewPrompt";
-import principles from "../config/longform-structure-principles.json";
+import allPrinciples from "../config/longform-principles.json";
+
+// 구조 검수는 롱폼 원칙 파일의 "열린 고리" 관련 섹션만 본다(단일 원천 = longform-principles.json).
+const principles = {
+  channel: allPrinciples.channel,
+  structure_loop: allPrinciples.structure_loop,
+  opening: allPrinciples.opening,
+  bridge: allPrinciples.bridge,
+  ending: allPrinciples.ending,
+  style: allPrinciples.style,
+};
 
 export interface LongformReviewInput {
   topic: string;

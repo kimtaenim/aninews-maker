@@ -3,7 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import type { LongformOpening, LongformSection } from "@/lib/types";
+import type {
+  LongformScriptPackage,
+  LongformSection,
+  LongformThumbnailPackage,
+  LongformTitlePackage,
+} from "@/lib/types";
 import type { LongformReviewResult } from "@/lib/longformReview";
 
 interface SegInfo {
@@ -21,15 +26,16 @@ interface HostProject {
   finalVideoUrl?: string;
 }
 
-// 롱폼 전용 화면 — 세그먼트(16:9로 재합성한 숏폼) 완성 현황을 보여주고,
-// 전부 완성되면 "롱폼 합성"(세그먼트 완성본 + 진행자 씬 이어붙이기)을 돌린다.
+// 롱폼 전용 화면 — 제작 파이프라인(모듈 1 제목 → 2~4 대본 → 5 썸네일)과 세그먼트 완성
+// 현황을 보여주고, 전부 완성되면 섹션별 부분 합성 → 최종 이어붙이기를 돌린다.
 // 세그먼트 재생성은 각 세그먼트 프로젝트(스튜디오)에서 하고, 여기선 상태만 모아 본다.
 export default function LongformStudio({
   project,
   segments,
   hostProject,
-  initialOpening,
-  initialTitles,
+  initialTitle,
+  initialScript,
+  initialThumbnail,
 }: {
   project: {
     id: string;
@@ -40,25 +46,19 @@ export default function LongformStudio({
   };
   segments: SegInfo[];
   hostProject: HostProject | null;
-  initialOpening: LongformOpening | null;
-  initialTitles: {
-    candidates: Array<{ title: string; structure?: string; rationale?: string; banned?: string[] }>;
-    recommendedIndex: number;
-    seoKeywords: string[];
-  } | null;
+  initialTitle: LongformTitlePackage | null;
+  initialScript: LongformScriptPackage | null;
+  initialThumbnail: LongformThumbnailPackage | null;
 }) {
   const router = useRouter();
 
-  // 롱폼 제목 자동 생성
+  // ── [모듈 1] 롱폼 제목 — 검색 5원칙. 확정(title_promise)해야 모듈 2~5가 돈다.
   const [lfTitle, setLfTitle] = useState(project.title);
-  const [titleCands, setTitleCands] = useState<
-    Array<{ title: string; structure?: string; rationale?: string; banned?: string[] }> | null
-  >(initialTitles?.candidates ?? null);
-  const [titleRec, setTitleRec] = useState(initialTitles?.recommendedIndex ?? 0);
-  const [titleSeo, setTitleSeo] = useState<string[]>(initialTitles?.seoKeywords ?? []);
+  const [titlePkg, setTitlePkg] = useState<LongformTitlePackage | null>(initialTitle);
   const [titleBusy, setTitleBusy] = useState(false);
   const [titleErr, setTitleErr] = useState("");
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  const confirmedTitle = titlePkg?.finalTitle ?? "";
 
   async function genLongTitle() {
     setTitleBusy(true);
@@ -71,27 +71,31 @@ export default function LongformStudio({
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok || !d.ok) throw new Error(d.error || "제목 생성 실패");
-      setTitleCands(d.candidates ?? []);
-      setTitleRec(typeof d.recommended_index === "number" ? d.recommended_index : 0);
-      setTitleSeo(Array.isArray(d.seo_keywords) ? d.seo_keywords : []);
+      setTitlePkg(d.title as LongformTitlePackage);
     } catch (e) {
       setTitleErr(e instanceof Error ? e.message : "제목 생성 실패");
     } finally {
       setTitleBusy(false);
     }
   }
-  async function applyLongTitle(t: string) {
+
+  // 제목 확정 — 여기서 title_promise 가 고정되고 모듈 2~5의 기준점이 된다.
+  async function confirmLongTitle(t: string, thumbnailText: string) {
     const v = t.trim();
-    if (!v || v === lfTitle) return;
+    if (!v) return;
+    setTitleErr("");
     try {
-      await fetch("/api/project/title", {
+      const r = await fetch("/api/longform/title", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ projectId: project.id, title: v }),
+        body: JSON.stringify({ projectId: project.id, confirm: { title: v, thumbnailText } }),
       });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) throw new Error(d.error || "확정 실패");
+      setTitlePkg(d.title as LongformTitlePackage);
       setLfTitle(v);
-    } catch {
-      /* 무시 */
+    } catch (e) {
+      setTitleErr(e instanceof Error ? e.message : "확정 실패");
     }
   }
   async function copyLongTitle(t: string, i: number) {
@@ -167,51 +171,134 @@ export default function LongformStudio({
   const [hostBusy, setHostBusy] = useState(false);
   const [hostErr, setHostErr] = useState("");
 
-  // 열린 고리 오프닝
-  const [opening, setOpening] = useState<LongformOpening | null>(initialOpening);
-  const [openScript, setOpenScript] = useState((initialOpening?.script ?? []).join("\n"));
-  const [openBusy, setOpenBusy] = useState(false);
-  const [openSaveBusy, setOpenSaveBusy] = useState(false);
-  const [openErr, setOpenErr] = useState("");
+  // ── [모듈 2~4] 대본 트랙 — 오프닝(2블록) · 세그먼트 순서 + 브리지 · 엔딩(3파트).
+  const [script, setScript] = useState<LongformScriptPackage | null>(initialScript);
+  const [scriptBusy, setScriptBusy] = useState(false);
+  const [scriptSaveBusy, setScriptSaveBusy] = useState(false);
+  const [scriptErr, setScriptErr] = useState("");
+  const [scriptViolations, setScriptViolations] = useState<string[]>([]);
+  const [fixedOrder, setFixedOrder] = useState(false);
+  const [edit, setEdit] = useState<{ a: string; b: string; pa: string; pb: string; bridges: string[] } | null>(
+    initialScript
+      ? {
+          a: initialScript.opening.blockAHook,
+          b: initialScript.opening.blockBRoadmapLanding,
+          pa: initialScript.ending.partAClose,
+          pb: initialScript.ending.partBLanding,
+          bridges: initialScript.bridges.map((x) => [x.emphasis, x.elevation, x.opening].join("\n")),
+        }
+      : null
+  );
 
-  async function genOpening() {
-    setOpenBusy(true);
-    setOpenErr("");
+  function loadEdit(p: LongformScriptPackage) {
+    setEdit({
+      a: p.opening.blockAHook,
+      b: p.opening.blockBRoadmapLanding,
+      pa: p.ending.partAClose,
+      pb: p.ending.partBLanding,
+      bridges: p.bridges.map((x) => [x.emphasis, x.elevation, x.opening].join("\n")),
+    });
+  }
+
+  async function genScript() {
+    setScriptBusy(true);
+    setScriptErr("");
+    setScriptViolations([]);
     try {
-      const r = await fetch("/api/longform/opening", {
+      const r = await fetch("/api/longform/script", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId: project.id, fixedOrder }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) throw new Error(d.error || "대본 생성 실패");
+      const pkg = d.script as LongformScriptPackage;
+      setScript(pkg);
+      loadEdit(pkg);
+      setScriptViolations(Array.isArray(d.violations) ? d.violations : []);
+      if (d.orderApplied) router.refresh(); // 순서가 바뀌었으면 세그먼트 목록 다시 읽기
+    } catch (e) {
+      setScriptErr(e instanceof Error ? e.message : "대본 생성 실패");
+    } finally {
+      setScriptBusy(false);
+    }
+  }
+
+  // 수정 저장 — 지적된 블록만 잘게 고친다(전체 되뒤집기 없음).
+  async function saveScript() {
+    if (!script || !edit) return;
+    setScriptSaveBusy(true);
+    setScriptErr("");
+    try {
+      const bridges = script.bridges.map((b, i) => {
+        const [emphasis = "", elevation = "", ...rest] = (edit.bridges[i] ?? "").split("\n");
+        return {
+          afterSegment: b.afterSegment,
+          emphasis: emphasis.trim(),
+          elevation: elevation.trim(),
+          opening: rest.join(" ").trim(),
+        };
+      });
+      const r = await fetch("/api/longform/script", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          projectId: project.id,
+          edit: {
+            blockAHook: edit.a,
+            blockBRoadmapLanding: edit.b,
+            partAClose: edit.pa,
+            partBLanding: edit.pb,
+            bridges,
+          },
+        }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) throw new Error(d.error || "저장 실패");
+      setScript(d.script as LongformScriptPackage);
+      setScriptViolations(Array.isArray(d.violations) ? d.violations : []);
+    } catch (e) {
+      setScriptErr(e instanceof Error ? e.message : "저장 실패");
+    } finally {
+      setScriptSaveBusy(false);
+    }
+  }
+
+  // ── [모듈 5] 썸네일 — 시안 3종 + 168px 축소 검증본.
+  const [thumb, setThumb] = useState<LongformThumbnailPackage | null>(initialThumbnail);
+  const [thumbBusy, setThumbBusy] = useState(false);
+  const [thumbErr, setThumbErr] = useState("");
+
+  async function genThumbnail() {
+    setThumbBusy(true);
+    setThumbErr("");
+    try {
+      const r = await fetch("/api/longform/thumbnail", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ projectId: project.id }),
       });
       const d = await r.json().catch(() => ({}));
-      if (!r.ok || !d.ok) throw new Error(d.error || "오프닝 생성 실패");
-      setOpening(d.opening);
-      setOpenScript((d.opening?.script ?? []).join("\n"));
+      if (!r.ok || !d.ok) throw new Error(d.error || "썸네일 생성 실패");
+      setThumb(d.thumbnail as LongformThumbnailPackage);
     } catch (e) {
-      setOpenErr(e instanceof Error ? e.message : "오프닝 생성 실패");
+      setThumbErr(e instanceof Error ? e.message : "썸네일 생성 실패");
     } finally {
-      setOpenBusy(false);
+      setThumbBusy(false);
     }
   }
 
-  async function saveOpening() {
-    const script = openScript.split("\n").map((l) => l.trim()).filter(Boolean);
-    if (script.length === 0) return;
-    setOpenSaveBusy(true);
-    setOpenErr("");
+  async function selectThumbnail(fileUrl: string) {
     try {
-      const r = await fetch("/api/longform/opening", {
+      const r = await fetch("/api/longform/thumbnail", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ projectId: project.id, script }),
+        body: JSON.stringify({ projectId: project.id, selected: fileUrl }),
       });
       const d = await r.json().catch(() => ({}));
-      if (!r.ok || !d.ok) throw new Error(d.error || "저장 실패");
-      setOpening(d.opening);
-    } catch (e) {
-      setOpenErr(e instanceof Error ? e.message : "저장 실패");
-    } finally {
-      setOpenSaveBusy(false);
+      if (r.ok && d.ok) setThumb(d.thumbnail as LongformThumbnailPackage);
+    } catch {
+      /* 무시 */
     }
   }
 
@@ -420,36 +507,47 @@ export default function LongformStudio({
         순서대로 이어붙이고 사이·마지막에 진행자가 이어주고 구독을 유도합니다.
       </p>
 
-      {/* 롱폼 제목 자동 생성 */}
+      {/* [모듈 1] 롱폼 제목 — 검색 5원칙 */}
       <div className="mt-4 rounded-xl border border-accent/40 bg-accent/5 p-3">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold">✨ 롱폼 제목</h2>
+          <h2 className="text-sm font-semibold">① 제목 (검색 5원칙)</h2>
           <button
             onClick={genLongTitle}
             disabled={titleBusy}
             className="shrink-0 text-xs rounded-lg border border-accent px-3 py-1.5 text-accent hover:bg-accent/10 disabled:opacity-40"
           >
-            {titleBusy ? "생성 중…" : titleCands ? "다시 생성" : "제목 생성"}
+            {titleBusy ? "생성 중…" : titlePkg ? "다시 생성" : "제목 생성"}
           </button>
         </div>
         <p className="mt-1 text-[11px] text-zinc-500">
-          세그먼트·오프닝을 모아 6원칙으로 제목 후보를 만듭니다. [적용]으로 롱폼 제목 지정, [📋 복사]로 클립보드.
+          검색어 후보 → 주 검색어 + 묶음 가치 + 괴리 꼬리로 후보 5개. <b>제목을 확정해야</b> 다음 모듈(대본·썸네일)이
+          돌아갑니다 — 제목이 바뀌면 이후가 전부 바뀌니까요.
         </p>
         {titleErr && <p className="mt-2 text-[11px] text-red-600">{titleErr}</p>}
-        {titleCands && titleCands.length > 0 && (
+        {titlePkg && (
           <>
+            <div className="mt-2 rounded-lg border border-accent/30 bg-white/50 dark:bg-zinc-950/50 p-2 text-[11px]">
+              <p>
+                <span className="font-semibold text-accent">주 검색어:</span> {titlePkg.primaryKeyword}
+                {titlePkg.secondaryKeyword ? ` · 보조: ${titlePkg.secondaryKeyword}` : ""}
+              </p>
+              {titlePkg.keywordRationale && <p className="mt-0.5 text-zinc-500">↳ {titlePkg.keywordRationale}</p>}
+              {titlePkg.keywordCandidates.length > 0 && (
+                <p className="mt-0.5 text-zinc-500">후보: {titlePkg.keywordCandidates.join(" · ")}</p>
+              )}
+            </div>
             <ul className="mt-2 grid gap-2">
-              {titleCands.map((c, i) => {
-                const selected = lfTitle === c.title;
+              {titlePkg.candidates.map((c, i) => {
+                const isConfirmed = confirmedTitle === c.title;
                 return (
                   <li
                     key={i}
-                    className={`rounded-lg border p-2 ${selected ? "border-accent bg-accent/10" : "border-zinc-200 dark:border-zinc-800"}`}
+                    className={`rounded-lg border p-2 ${isConfirmed ? "border-accent bg-accent/10" : "border-zinc-200 dark:border-zinc-800"}`}
                   >
                     <div className="flex items-start gap-2">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                          {i === titleRec && (
+                          {i === titlePkg.recommendedIndex && (
                             <span className="shrink-0 rounded bg-accent px-1 py-0.5 text-[9px] font-bold text-white">
                               추천
                             </span>
@@ -457,10 +555,9 @@ export default function LongformStudio({
                           <span className="text-sm font-medium">{c.title}</span>
                         </div>
                         <div className="mt-0.5 text-[10px] text-zinc-500">
-                          {c.structure ? `[${c.structure}] ` : ""}
-                          {c.rationale}
-                          {c.banned && c.banned.length > 0 && (
-                            <span className="text-red-500"> · ⚠ {c.banned.join(", ")}</span>
+                          썸네일 문구: <b>{c.thumbnailText}</b>
+                          {c.violations && c.violations.length > 0 && (
+                            <span className="text-red-500"> · ⚠ {c.violations.join(", ")}</span>
                           )}
                         </div>
                       </div>
@@ -474,12 +571,12 @@ export default function LongformStudio({
                         </button>
                         <button
                           type="button"
-                          onClick={() => applyLongTitle(c.title)}
+                          onClick={() => confirmLongTitle(c.title, c.thumbnailText)}
                           className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${
-                            selected ? "bg-accent/20 text-accent" : "bg-accent text-white hover:bg-accent-strong"
+                            isConfirmed ? "bg-accent/20 text-accent" : "bg-accent text-white hover:bg-accent-strong"
                           }`}
                         >
-                          {selected ? "✓ 적용됨" : "적용"}
+                          {isConfirmed ? "✓ 확정됨" : "확정"}
                         </button>
                       </div>
                     </div>
@@ -487,10 +584,27 @@ export default function LongformStudio({
                 );
               })}
             </ul>
-            {titleSeo.length > 0 && (
+            {titlePkg.recommendation && (
               <p className="mt-1 text-[10px] text-zinc-500">
-                <span className="font-semibold">설명란 키워드:</span> {titleSeo.join(" · ")}
+                <span className="font-semibold">추천:</span> {titlePkg.recommendation}
               </p>
+            )}
+            {titlePkg.titlePromise && (
+              <p className="mt-1 text-[11px]">
+                <span className="font-semibold text-accent">title_promise:</span> {titlePkg.titlePromise}
+              </p>
+            )}
+            {titlePkg.rejected.length > 0 && (
+              <details className="mt-1">
+                <summary className="cursor-pointer text-[10px] text-zinc-500">탈락 후보 {titlePkg.rejected.length}개</summary>
+                <ul className="mt-1 grid gap-0.5 text-[10px] text-zinc-500">
+                  {titlePkg.rejected.map((r, i) => (
+                    <li key={i}>
+                      「{r.title}」 — {r.reason}
+                    </li>
+                  ))}
+                </ul>
+              </details>
             )}
           </>
         )}
@@ -662,16 +776,17 @@ export default function LongformStudio({
           <h2 className="text-sm font-semibold">진행자</h2>
           <button
             onClick={genHostScript}
-            disabled={hostBusy}
+            disabled={hostBusy || !script}
             className="shrink-0 text-xs rounded-lg border border-accent px-3 py-1.5 text-accent hover:bg-accent/10 disabled:opacity-40"
           >
-            {hostBusy ? "생성 중…" : hostProject ? "대본 다시 생성" : "진행자 대본 생성"}
+            {hostBusy ? "생성 중…" : hostProject ? "씬 다시 만들기" : "진행자 씬 만들기"}
           </button>
         </div>
         <p className="mt-1 text-[11px] text-zinc-500">
-          안경 미소녀 + 사족로봇이 세그먼트를 소개·연결·마무리합니다. 대본 생성 뒤 <b>진행자 편집</b>에서
-          세그먼트처럼 씬별로 이미지·영상·음성을 만드세요(오프닝 첫 씬 = 캐릭터 확정).
+          ②③④ 대본을 진행자 씬으로 펼칩니다 — 오프닝 2씬 · 브리지 {script?.bridges.length ?? 0}씬 · 엔딩 3씬.
+          그 뒤 <b>진행자 편집</b>에서 씬별로 이미지·영상·음성을 만드세요(오프닝 첫 씬 = 캐릭터 확정).
         </p>
+        {!script && <p className="mt-2 text-[11px] text-amber-600">먼저 ②③④ 대본을 생성해주세요.</p>}
         {hostErr && <p className="mt-2 text-[11px] text-red-600">{hostErr}</p>}
         {hostProject ? (
           <div className="mt-2 flex items-center gap-3 rounded-lg border border-zinc-200 dark:border-zinc-800 p-2">
@@ -699,68 +814,230 @@ export default function LongformStudio({
         )}
       </div>
 
-      {/* 열린 고리 오프닝 */}
+      {/* [모듈 2~4] 대본 — 오프닝 2블록 · 세그먼트 순서 + 브리지 · 엔딩 3파트 */}
       <div className="mt-4 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold">🎣 오프닝 (열린 고리)</h2>
+          <h2 className="text-sm font-semibold">②③④ 대본 (오프닝·브리지·엔딩)</h2>
           <button
-            onClick={genOpening}
-            disabled={openBusy}
+            onClick={genScript}
+            disabled={scriptBusy || !confirmedTitle}
             className="shrink-0 text-xs rounded-lg border border-accent px-3 py-1.5 text-accent hover:bg-accent/10 disabled:opacity-40"
           >
-            {openBusy ? "생성 중…" : opening ? "다시 생성" : "오프닝 생성"}
+            {scriptBusy ? "생성 중…" : script ? "다시 생성" : "대본 생성"}
           </button>
         </div>
         <p className="mt-1 text-[11px] text-zinc-500">
-          시청자가 &lsquo;아직 답을 못 들었다&rsquo;며 끝까지 보게 만드는 오프닝. 세그먼트를 챕터로 읽어 Claude가 작성.
+          오프닝(25초 이내 2블록) · 세그먼트 순서 설계 + 브리지(방점·승격·개방) · 엔딩(고리 닫기·계좌 착지·구독)을 한 번에.
+          전체 고리는 <b>엔딩 파트 A 한 곳</b>에서만 닫힙니다.
         </p>
-        {openErr && <p className="mt-2 text-[11px] text-red-600">{openErr} — 확정은 그대로 진행됩니다.</p>}
-        {opening && (
-          <div className="mt-2 grid gap-2">
+        {!confirmedTitle && (
+          <p className="mt-2 text-[11px] text-amber-600">먼저 ① 제목을 확정해주세요 — title_promise 가 기준점이에요.</p>
+        )}
+        <label className="mt-2 flex items-center gap-1.5 text-[11px] text-zinc-500">
+          <input type="checkbox" checked={fixedOrder} onChange={(e) => setFixedOrder(e.target.checked)} />
+          현재 세그먼트 순서 고정(순서 제안 안 받기)
+        </label>
+        {scriptErr && <p className="mt-2 text-[11px] text-red-600">{scriptErr}</p>}
+        {scriptViolations.length > 0 && (
+          <ul className="mt-2 grid list-disc gap-0.5 pl-4 text-[10px] text-amber-600">
+            {scriptViolations.map((v, i) => (
+              <li key={i}>{v}</li>
+            ))}
+          </ul>
+        )}
+        {script && edit && (
+          <div className="mt-2 grid gap-3">
+            {/* 세그먼트 순서 */}
+            <div className="text-[11px]">
+              <p className="font-semibold text-zinc-600 dark:text-zinc-300">세그먼트 순서</p>
+              <ol className="mt-0.5 grid gap-0.5">
+                {script.segmentOrder.map((s) => (
+                  <li key={s.order} className="text-zinc-500">
+                    <b>{s.order}.</b> {s.title}
+                    {s.rationale ? ` — ${s.rationale}` : ""}
+                  </li>
+                ))}
+              </ol>
+              {script.orderNote && <p className="mt-0.5 text-amber-600">↳ {script.orderNote}</p>}
+            </div>
+
+            {/* 오프닝 */}
             <div>
+              <p className="text-[11px] font-semibold text-accent">
+                오프닝 · {script.opening.estSeconds}초 (25초 이내)
+              </p>
               <textarea
-                value={openScript}
-                onChange={(e) => setOpenScript(e.target.value)}
-                rows={Math.max(4, openScript.split("\n").length)}
-                className="w-full rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-2 text-xs leading-relaxed outline-none focus:border-accent"
+                value={edit.a}
+                onChange={(e) => setEdit({ ...edit, a: e.target.value })}
+                rows={2}
+                placeholder="블록 A — 제목 호응 훅"
+                className="mt-1 w-full rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-2 text-xs leading-relaxed outline-none focus:border-accent"
               />
-              <div className="mt-1 flex justify-end">
-                <button
-                  onClick={saveOpening}
-                  disabled={openSaveBusy}
-                  className="text-[11px] rounded-md bg-accent hover:bg-accent-strong text-white px-3 py-1 disabled:opacity-40"
-                >
-                  {openSaveBusy ? "저장 중…" : "오프닝 저장"}
-                </button>
+              <textarea
+                value={edit.b}
+                onChange={(e) => setEdit({ ...edit, b: e.target.value })}
+                rows={3}
+                placeholder="블록 B — 로드맵 + 착지"
+                className="mt-1 w-full rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-2 text-xs leading-relaxed outline-none focus:border-accent"
+              />
+            </div>
+
+            {/* 브리지 */}
+            <div>
+              <p className="text-[11px] font-semibold text-accent">브리지 {script.bridges.length}개 (방점 / 승격 / 개방 — 줄바꿈 구분)</p>
+              <div className="mt-1 grid gap-2">
+                {script.bridges.map((b, i) => (
+                  <div key={i}>
+                    <p className="text-[10px] text-zinc-500">
+                      세그 {b.afterSegment + 1} 뒤{b.isMidpointReopen ? " · 🔁 중간점 고리 환기" : ""}
+                    </p>
+                    <textarea
+                      value={edit.bridges[i] ?? ""}
+                      onChange={(e) => {
+                        const next = [...edit.bridges];
+                        next[i] = e.target.value;
+                        setEdit({ ...edit, bridges: next });
+                      }}
+                      rows={3}
+                      className="mt-0.5 w-full rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-2 text-xs leading-relaxed outline-none focus:border-accent"
+                    />
+                  </div>
+                ))}
               </div>
             </div>
-            <div className="rounded-lg bg-accent/5 border border-accent/30 p-2 text-[11px]">
-              <p>
-                <span className="font-semibold text-accent">연 질문:</span> {opening.openLoop.question}
+
+            {/* 엔딩 */}
+            <div>
+              <p className="text-[11px] font-semibold text-accent">엔딩 · {script.ending.estSeconds}초 (25초 이내)</p>
+              <textarea
+                value={edit.pa}
+                onChange={(e) => setEdit({ ...edit, pa: e.target.value })}
+                rows={2}
+                placeholder="파트 A — 고리 닫기(구체로)"
+                className="mt-1 w-full rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-2 text-xs leading-relaxed outline-none focus:border-accent"
+              />
+              <textarea
+                value={edit.pb}
+                onChange={(e) => setEdit({ ...edit, pb: e.target.value })}
+                rows={2}
+                placeholder="파트 B — 계좌 착지(중립 톤)"
+                className="mt-1 w-full rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-2 text-xs leading-relaxed outline-none focus:border-accent"
+              />
+              <p className="mt-1 rounded-lg bg-zinc-100 dark:bg-zinc-900 p-2 text-[11px] text-zinc-500">
+                파트 C(표준 구독 문구): {script.ending.partCStandard}
               </p>
-              <p className="mt-0.5">
-                <span className="font-semibold text-accent">닫는 곳:</span> 이 질문은{" "}
-                <b>{opening.openLoop.closesAt}</b>에서 닫으세요.
-                {opening.openLoop.closingLineHint ? ` (힌트: ${opening.openLoop.closingLineHint})` : ""}
-              </p>
-              {opening.selfCheck.midpointExitCost && (
-                <p className="mt-0.5 text-zinc-500">중간 이탈 손해: {opening.selfCheck.midpointExitCost}</p>
-              )}
-              {opening.selfCheck.roadmapLeak && (
-                <p className="mt-0.5 text-red-500">⚠ 로드맵(목차) 노출 위험 — 다시 생성 권장</p>
+              {script.ending.endscreenVideo && (
+                <p className="mt-1 text-[10px] text-zinc-500">
+                  엔드스크린 추천: <b>{script.ending.endscreenVideo}</b> (파트 C 낭독 중 8초)
+                </p>
               )}
             </div>
-            {opening.chapterBridges.length > 0 && (
-              <div className="text-[11px]">
-                <p className="font-semibold text-zinc-600 dark:text-zinc-300">챕터 연결 가이드</p>
+
+            <div className="flex justify-end">
+              <button
+                onClick={saveScript}
+                disabled={scriptSaveBusy}
+                className="text-[11px] rounded-md bg-accent hover:bg-accent-strong text-white px-3 py-1 disabled:opacity-40"
+              >
+                {scriptSaveBusy ? "저장 중…" : "대본 저장"}
+              </button>
+            </div>
+
+            {Object.keys(script.screening).length > 0 && (
+              <div className="rounded-lg bg-accent/5 border border-accent/30 p-2 text-[10px]">
+                <p className="font-semibold text-accent">검수</p>
                 <ul className="mt-0.5 grid gap-0.5">
-                  {opening.chapterBridges.map((b, i) => (
-                    <li key={i} className="text-zinc-500">
-                      <b>C{b.chapter}</b> [{b.role}] {b.bridgeHint}
+                  {Object.entries(script.screening).map(([k, v]) => (
+                    <li key={k} className={/탈락/.test(v) ? "text-red-600" : "text-zinc-500"}>
+                      <b>{k}</b> — {v}
                     </li>
                   ))}
                 </ul>
               </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* [모듈 5] 썸네일 */}
+      <div className="mt-4 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold">⑤ 썸네일</h2>
+          <button
+            onClick={genThumbnail}
+            disabled={thumbBusy || !confirmedTitle}
+            className="shrink-0 text-xs rounded-lg border border-accent px-3 py-1.5 text-accent hover:bg-accent/10 disabled:opacity-40"
+          >
+            {thumbBusy ? "생성 중…" : thumb ? "다시 생성" : "썸네일 생성"}
+          </button>
+        </div>
+        <p className="mt-1 text-[11px] text-zinc-500">
+          구도 3종으로 감정 실린 캐릭터 이미지를 만들고, 모듈 ①의 썸네일 문구를 후처리로 얹습니다(1280×720 JPG).
+          168px 축소본으로 소형 판독을 검증해요.
+        </p>
+        {!confirmedTitle && <p className="mt-2 text-[11px] text-amber-600">먼저 ① 제목을 확정해주세요.</p>}
+        {thumbErr && <p className="mt-2 text-[11px] text-red-600">{thumbErr}</p>}
+        {thumb && (
+          <div className="mt-2 grid gap-2">
+            <p className="text-[11px]">
+              <span className="font-semibold text-accent">글씨:</span> {thumb.textUsed}
+            </p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              {thumb.variants.map((v, i) => (
+                <div
+                  key={i}
+                  className={`rounded-lg border p-1.5 ${thumb.selected && thumb.selected === v.fileUrl ? "border-accent bg-accent/10" : "border-zinc-200 dark:border-zinc-800"}`}
+                >
+                  {v.fileUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={v.fileUrl} alt={`시안 ${i + 1}`} className="w-full rounded aspect-[16/9] object-cover" />
+                  ) : (
+                    <div className="aspect-[16/9] w-full rounded bg-zinc-100 dark:bg-zinc-900" />
+                  )}
+                  <p className="mt-1 text-[10px] text-zinc-500 line-clamp-2">{v.composition}</p>
+                  <div className="mt-1 flex items-center gap-1.5">
+                    {v.previewUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={v.previewUrl} alt="168px 검증본" width={84} className="rounded border border-zinc-300 dark:border-zinc-700" />
+                    )}
+                    <div className="flex flex-col gap-1">
+                      {v.fileUrl && (
+                        <a
+                          href={v.fileUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 text-[10px] hover:bg-zinc-100 dark:hover:bg-zinc-900"
+                        >
+                          ⬇ 원본
+                        </a>
+                      )}
+                      {v.fileUrl && (
+                        <button
+                          onClick={() => selectThumbnail(v.fileUrl!)}
+                          className="rounded-md bg-accent px-2 py-0.5 text-[10px] font-medium text-white hover:bg-accent-strong"
+                        >
+                          {thumb.selected === v.fileUrl ? "✓ 선택됨" : "선택"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {typeof v.strokePx === "number" && v.strokePx < 2 && (
+                    <p className="mt-1 text-[10px] text-amber-600">⚠ 168px에서 획이 얇아요({v.strokePx}px)</p>
+                  )}
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] text-zinc-500">
+              업로드할 때 유튜브 스튜디오 <b>테스트 및 비교</b>에 시안 3종을 걸어 시청 데이터로 승자를 고르세요(원칙 7).
+            </p>
+            {Object.keys(thumb.screening).length > 0 && (
+              <ul className="grid gap-0.5 text-[10px] text-zinc-500">
+                {Object.entries(thumb.screening).map(([k, v]) => (
+                  <li key={k} className={/탈락/.test(v) ? "text-red-600" : ""}>
+                    <b>{k}</b> — {v}
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
         )}
