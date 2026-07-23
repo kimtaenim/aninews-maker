@@ -9,22 +9,12 @@ import {
 import type { Project } from "@/lib/types";
 import ProjectCard from "@/components/ProjectCard";
 import driveConfig from "@/config/drive.json";
+import { searchTerms, matchesQuery, isLongform } from "@/lib/projectSearch";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic"; // 항상 최신 목록(Redis)
 
-// 롱폼(세그먼트 참조 가로 프로젝트) 여부 — 일반 라이브러리에서 제외(롱폼 탭에서 관리).
-function isLongform(p: Project): boolean {
-  return p.format === "long" && Array.isArray(p.sourceProjectIds) && p.sourceProjectIds.length > 0;
-}
-
-// 제목 + 씬 나레이션(=스크립트)을 합친 검색 대상. 키워드(공백 분리)가 모두
-// 들어있는 프로젝트만 매칭(단순 부분일치, 대소문자 무시).
-function matchesQuery(p: Project, terms: string[]): boolean {
-  if (terms.length === 0) return true;
-  const hay = (p.title + " " + p.scenes.map((s) => s.narration).join(" ")).toLowerCase();
-  return terms.every((t) => hay.includes(t));
-}
+// 검색·분류 규칙은 lib/projectSearch.ts 공용(롱폼 묶기 검색과 같은 규칙을 쓰기 위해).
 
 export default async function LibraryPage({
   searchParams,
@@ -33,7 +23,7 @@ export default async function LibraryPage({
 }) {
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
-  const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const terms = searchTerms(q);
   // 페이지네이션: ?page=(1부터) & ?n=(페이지 크기, 기본 60 — "더 보기"가 +60씩 키움).
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
   const size = Math.min(300, Math.max(60, parseInt(sp.n ?? "60", 10) || 60));
