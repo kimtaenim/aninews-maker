@@ -610,8 +610,16 @@ export default function LongformStudio({
         )}
       </div>
 
-      {/* 전체 구조 검수(열린 고리) */}
+      {/* 전체 구조 검수(열린 고리) + 최종 조립 출력 */}
       <div className="mt-2 flex flex-wrap items-center gap-2">
+        <a
+          href={`/api/longform/package?projectId=${encodeURIComponent(project.id)}`}
+          target="_blank"
+          rel="noreferrer"
+          className="text-xs rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-1.5 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-900"
+        >
+          📦 제작 패키지 JSON
+        </a>
         <button
           onClick={genReview}
           disabled={rvBusy}

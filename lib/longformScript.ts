@@ -1,4 +1,4 @@
-// ============================================================================
+﻿// ============================================================================
 // [롱폼 모듈 2~4] 대본 트랙 생성 — 오프닝(2블록) · 세그먼트 순서 + 브리지 · 엔딩(3파트).
 // ----------------------------------------------------------------------------
 // 셋을 한 번에 생성한다 — 고리 일치(오프닝이 연 질문 = 엔딩이 닫는 질문)를 지키려면
@@ -189,7 +189,7 @@ export async function generateLongformScript(args: {
   let screen = pkg ? screenScript(pkg, input.constituents.length) : null;
   if (!pkg || (screen && screen.violations.length > 0)) {
     const note = pkg
-      ? `앞선 대본에서 원칙 위반이 잡혔다: ${screen!.violations.join("; ")}. 지적된 부분만 고쳐 전체 JSON 을 다시 출력하라. 특히 25초 규칙은 글자 수로 맞춰라(4.5자/초).`
+      ? `앞선 대본에서 원칙 위반이 잡혔다: ${screen!.violations.join("; ")}. 지적된 부분만 고쳐 전체 JSON 을 다시 출력하라. 특히 25초 규칙은 글자 수로 맞춰라(5.4자/초 = 4.5×1.2배).`
       : "JSON 형식이 어긋났다. 지정된 JSON 만 정확히 다시 출력하라.";
     const retry = await call(note);
     const retryScreen = retry ? screenScript(retry, input.constituents.length) : null;
@@ -213,3 +213,4 @@ export async function generateLongformScript(args: {
   });
   return { pkg, violations: screen.violations, costUsd: totalCost };
 }
+

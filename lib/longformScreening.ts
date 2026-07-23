@@ -7,8 +7,9 @@
 
 import type { LongformScriptPackage } from "./types";
 
-// 한국어 TTS ≈ 4.5자/초 (lib/scenes.ts 와 동일 기준). clamp 없이 실제 추정치를 쓴다.
-const CHARS_PER_SEC = 4.5;
+// 한국어 TTS ≈ 4.5자/초(lib/scenes.ts 기준)에 보이스오버 기본 속도 1.2배를 곱한 값.
+// 프로젝트 기본 voiceSpeed 가 1.2(lib/projectStore.ts)라 실제 화면 시간은 이 속도로 계산한다.
+const CHARS_PER_SEC = 4.5 * 1.2;
 export function speakSeconds(...texts: string[]): number {
   const len = texts.map((t) => (t ?? "").trim().length).reduce((a, b) => a + b, 0);
   return Math.round((len / CHARS_PER_SEC) * 10) / 10;
@@ -66,7 +67,11 @@ export function screenScript(pkg: LongformScriptPackage, segmentCount: number): 
   pkg.bridges.forEach((b, i) => {
     scanBans(`브리지 ${i + 1}`, `${b.emphasis} ${b.elevation} ${b.opening}`, v);
     if (EMPTY_ELEVATION.test(b.elevation)) v.push(`브리지 ${i + 1}: 승격이 빈 말("시작에 불과" 류)`);
-    if (speakSeconds(b.emphasis, b.elevation, b.opening) > 14) v.push(`브리지 ${i + 1}: 3문장 분량 초과`);
+    // 브리지는 3역할 = 3문장 이내. 문장 수로 보고(길이는 폭주 가드로만).
+    const joined = `${b.emphasis} ${b.elevation} ${b.opening}`;
+    const sentences = (joined.match(/[.!?]/g)?.length ?? 0) + (/[^.!?\s]\s*$/.test(joined) ? 1 : 0);
+    if (sentences > 3) v.push(`브리지 ${i + 1}: 3문장 초과(${sentences}문장)`);
+    if (speakSeconds(joined) > 18) v.push(`브리지 ${i + 1}: 분량 과다(${speakSeconds(joined)}초)`);
   });
 
   const computed: Record<string, string> = {
