@@ -86,8 +86,25 @@ check("시점 표현 잡힘", bad.violations.some((v) => v.includes("시점 표�
 
 console.log("\n제목 검사");
 check("시점 표현 탈락", titleViolations("2026년 로봇 관련주 3대 총정리", "로봇 관련주").some((v) => v.includes("시점")));
-check("묶음 가치 없음 탈락", titleViolations("로봇 관련주 이야기", "로봇 관련주").some((v) => v.includes("묶음")));
-check("정상 통과", titleViolations("휴머노이드 관련주 3대 대결 총정리, 승자는 따로", "휴머노이드 관련주").length === 0);
+check("묶음 표시어 없어도 통과", titleViolations("로봇 관련주 이야기", "로봇 관련주").length === 0);
+// 실사례(2026-07-23) — 모델이 "총정리 4편"·"4종 총정리"를 뱉었다. 묶음 표시어는 전부 금지.
+check(
+  "'4종 총정리' 탈락",
+  titleViolations("메모리 반도체 관련주 4종 총정리 — HBM·헬륨 쇼크 수혜주", "메모리 반도체 관련주").length > 0,
+  titleViolations("메모리 반도체 관련주 4종 총정리 — HBM·헬륨 쇼크 수혜주", "메모리 반도체 관련주")
+);
+check("'총정리 4편' 탈락", titleViolations("메모리 반도체 관련주 총정리 4편 — HBM·헬륨 쇼크", "메모리 반도체 관련주").length > 0);
+check("'몰아보기' 탈락", titleViolations("반도체 관련주 몰아보기 — 진짜 수혜주는 따로", "반도체 관련주").length > 0);
+check("'3가지' 탈락", titleViolations("반도체 관련주 3가지 — 진짜 수혜주는 따로", "반도체 관련주").length > 0);
+check(
+  "묶음 표시어 없는 제목 통과",
+  titleViolations("메모리 반도체 관련주, 헬륨 한 방울에 값이 흔들린 이유", "메모리 반도체 관련주").length === 0,
+  titleViolations("메모리 반도체 관련주, 헬륨 한 방울에 값이 흔들린 이유", "메모리 반도체 관련주")
+);
+check(
+  "주 검색어가 앞 30자에 없으면 탈락",
+  titleViolations("헬륨 한 방울에 값이 흔들린 진짜 이유와 그 배경을 짚어보는 메모리 반도체 관련주", "메모리 반도체 관련주").length > 0
+);
 check("썸네일 7자 초과 탈락", thumbnailTextViolations("여덟자가넘는문구", "제목").length > 0);
 check("썸네일 제목 중복 탈락", thumbnailTextViolations("승자는", "승자는 따로 있다").some((v) => v.includes("중복")));
 

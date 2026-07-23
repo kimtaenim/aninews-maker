@@ -12,33 +12,32 @@ const TIME_PATTERNS: { re: RegExp; label: string }[] = [
   { re: /최근|요즘|올해|작년|내년|지금\s*당장|이번\s*(주|달|분기)|현재/, label: "시점어" },
 ];
 
-// 원칙 2 — 묶음 가치(숫자 우선). 하나라도 있으면 통과.
-const BUNDLE_PATTERNS: RegExp[] = [
-  /총정리/,
-  /몰아보기/,
-  /모아보기/,
-  /한\s?번에/,
-  /한\s?방에/,
-  /\d+\s*(대|가지|개|종|편|선)/,
-  /TOP\s*\d+/i,
+// 묶음 표시어 금지(2026-07-23 사용자 지정) — "총정리·몰아보기·N편·N종·N가지" 류는
+// 시청자에게 아무 가치가 없고 한국어로도 어색하다("총정리 4편"). 제목은 검색어 + 괴리로만 민다.
+// (지시서 원안은 이 중 1개를 '필수'로 뒀으나, 실제 산출물을 보고 사용자가 뒤집었다.)
+const BUNDLE_PATTERNS: { re: RegExp; label: string }[] = [
+  { re: /총정리/, label: "총정리" },
+  { re: /몰아보기|모아보기/, label: "몰아보기" },
+  { re: /한\s?방에/, label: "한 방에" },
+  { re: /\d+\s*(편|종|가지|개|선)(?![월일년])/, label: "개수 세기" },
+  { re: /TOP\s*\d+/i, label: "TOP N" },
 ];
 
-export const TITLE_HEAD_CHARS = 30; // 검색 결과에서 잘리지 않는 앞부분
-
-export function hasBundleValue(title: string): boolean {
-  return BUNDLE_PATTERNS.some((re) => re.test(title));
+export function bundleHits(title: string): string[] {
+  return BUNDLE_PATTERNS.filter((p) => p.re.test(title)).map((p) => p.label);
 }
+
+export const TITLE_HEAD_CHARS = 30; // 검색 결과에서 잘리지 않는 앞부분
 
 export function timeExpressions(title: string): string[] {
   return TIME_PATTERNS.filter((p) => p.re.test(title)).map((p) => p.label);
 }
 
-// 앞 30자 안에 주 검색어와 묶음 가치가 다 들어갔는가.
+// 앞 30자(검색 결과에서 안 잘리는 구간) 안에 주 검색어가 들어갔는가.
 export function headOk(title: string, primaryKeyword: string): boolean {
-  const head = title.slice(0, TITLE_HEAD_CHARS);
   const kw = (primaryKeyword ?? "").trim();
-  const kwOk = kw.length === 0 || head.replace(/\s/g, "").includes(kw.replace(/\s/g, ""));
-  return kwOk && hasBundleValue(head);
+  if (kw.length === 0) return true;
+  return title.slice(0, TITLE_HEAD_CHARS).replace(/\s/g, "").includes(kw.replace(/\s/g, ""));
 }
 
 // 후보 하나에 대한 위반 목록(빈 배열이면 깨끗).
@@ -48,8 +47,9 @@ export function titleViolations(title: string, primaryKeyword: string): string[]
   if (!t) return ["빈 제목"];
   const times = timeExpressions(t);
   if (times.length) out.push(`시점 표현(${times.join("·")})`);
-  if (!hasBundleValue(t)) out.push("묶음 가치 없음(총정리·몰아보기·숫자 중 1개 필수)");
-  else if (!headOk(t, primaryKeyword)) out.push(`앞 ${TITLE_HEAD_CHARS}자 안에 주 검색어+묶음 가치 미포함`);
+  const hits = bundleHits(t);
+  if (hits.length) out.push(`묶음 표시어(${hits.join("·")}) — 쓰지 말 것`);
+  if (!headOk(t, primaryKeyword)) out.push(`앞 ${TITLE_HEAD_CHARS}자 안에 주 검색어 없음`);
   if (/~/.test(t)) out.push("물결표(~)");
   return out;
 }
