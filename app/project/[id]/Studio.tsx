@@ -21,6 +21,7 @@ import { resolveLang, otherLanguages } from "@/lib/languages";
 import Spinner from "@/components/Spinner";
 import ScenePreview from "./ScenePreview";
 import type { ScriptReviewResult } from "@/lib/scriptReview";
+import { LOOP_ALIGN_PROMPT, LOOP_ALIGN_LABEL, CRITIQUE_LABEL } from "@/lib/scriptButtons";
 import SceneVideoThumb, { useActiveRow } from "./SceneVideoThumb";
 import CaptionControls from "./CaptionControls";
 import { EMOTIONS } from "@/lib/emotions";
@@ -2066,8 +2067,9 @@ export default function Studio({
   }
 
   // 2단계 스크립트 대화: 씬 나레이션을 대화로 수정. 서버가 새 씬 배열을 돌려주면 반영.
-  async function sendScriptChat() {
-    const msg = scriptChatInput.trim();
+  // overrideMsg 를 주면 입력창 대신 그 프롬프트로 실행한다(고정 프롬프트 버튼용).
+  async function sendScriptChat(overrideMsg?: string) {
+    const msg = (overrideMsg ?? scriptChatInput).trim();
     if (!msg || busy !== null) return;
     setError(null);
     setBusy("script-chat");
@@ -2080,9 +2082,26 @@ export default function Studio({
       });
       applySavedScenes(data.scenes as Scene[]); // project.scenes + 편집 버퍼 동기화
       setScriptChat(data.chat as typeof scriptChat);
-      setScriptChatInput("");
+      if (!overrideMsg) setScriptChatInput("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "스크립트 대화 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // 비판 검수 — 웹 검색으로 반대편 사실을 찾아 2부 리포트를 대화 로그에 남긴다(씬은 안 바꿈).
+  // 반영은 사용자가 동의(A/B·씬 지정)해서 아래 스크립트 대화로 요청하면 그때 처리.
+  async function runCritique() {
+    if (busy !== null) return;
+    setError(null);
+    setBusy("script-critique");
+    try {
+      await flushScenes();
+      const data = await call("/api/script/critique", { projectId: project.id });
+      setScriptChat(data.chat as typeof scriptChat);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "비판 검수 실패");
     } finally {
       setBusy(null);
     }
@@ -3210,7 +3229,7 @@ export default function Studio({
                 />
                 <button
                   type="button"
-                  onClick={sendScriptChat}
+                  onClick={() => sendScriptChat()}
                   disabled={busy !== null || !scriptChatInput.trim()}
                   className="shrink-0 rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white text-sm font-medium px-4"
                 >
@@ -3249,6 +3268,28 @@ export default function Studio({
                   className="shrink-0 rounded-xl border border-accent px-4 py-3 sm:py-0 text-sm font-medium text-accent hover:bg-accent/10 disabled:opacity-40 transition-colors"
                 >
                   {reviewBusy ? "다듬는 중…" : "✍️ 대본 다듬기"}
+                </button>
+              )}
+              {project.mode !== "cliche" && (
+                <button
+                  type="button"
+                  onClick={() => sendScriptChat(LOOP_ALIGN_PROMPT)}
+                  disabled={busy !== null || reviewBusy}
+                  title="내용은 그대로 두고, 열린 고리 순서로 정렬 + 각 씬을 더 간결하게 (씬 개수 불변)"
+                  className="shrink-0 rounded-xl border border-accent px-4 py-3 sm:py-0 text-sm font-medium text-accent hover:bg-accent/10 disabled:opacity-40 transition-colors"
+                >
+                  {busy === "script-chat" ? "정렬 중…" : `🔗 ${LOOP_ALIGN_LABEL}`}
+                </button>
+              )}
+              {project.mode !== "cliche" && (
+                <button
+                  type="button"
+                  onClick={() => runCritique()}
+                  disabled={busy !== null || reviewBusy}
+                  title="웹 검색으로 반대편 사실을 찾아 일방적 대본을 검수 — 리포트만 내고 동의 전엔 안 고침"
+                  className="shrink-0 rounded-xl border border-amber-500 px-4 py-3 sm:py-0 text-sm font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 disabled:opacity-40 transition-colors"
+                >
+                  {busy === "script-critique" ? "검색·검수 중…" : `🔎 ${CRITIQUE_LABEL}`}
                 </button>
               )}
               {project.mode !== "cliche" && (

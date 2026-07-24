@@ -36,3 +36,5 @@ next-env.d.ts
 # 로컬 dev 이미지 폴백 (Blob 토큰 없을 때)
 /public/generated
 scripts/out/
+scripts/out-critique.txt
+scripts/out/
