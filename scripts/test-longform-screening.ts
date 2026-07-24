@@ -15,32 +15,32 @@ function pkg(over: Partial<LongformScriptPackage> = {}): LongformScriptPackage {
     titleUsed: "휴머노이드 관련주 3대 대결 총정리, 승자는 따로 있었다",
     titlePromise: "가장 센 쪽이 이기지 않는다",
     segmentOrder: [],
+    // 진행자 구간 예산(2026-07-25): 오프닝 5~7초 · 브리지 3~5초 · 엔딩 10초 이내.
     opening: {
-      blockAHook: "로봇개 두 마리가 붙었는데, 이긴 쪽이 아니라 붙인 쪽이 돈을 벌었어요.",
-      blockBRoadmapLanding:
-        "오늘 세 판을 봅니다. 첫 판은 누가 이겼는지보다 왜 붙였는지가 이상해요. 끝까지 보시면 이 판에서 돈 버는 한국 회사가 보입니다.",
+      blockAHook: "이긴 쪽이 돈을 못 벌었어요.", // ≈2.6초
+      blockBRoadmapLanding: "세 판 보고 답 찾습니다.", // ≈2.2초
       estSeconds: 0,
     },
     bridges: [
       {
         afterSegment: 0,
-        emphasis: "이긴 건 로봇이 아니라 부품사였어요.",
-        elevation: "그러면 전체 판의 승자도 선수가 아닐 수 있죠.",
-        opening: "다음 판은 미국과 중국인데, 여기선 누가 부품을 대고 있을까요?",
+        emphasis: "승자는 부품사.",
+        elevation: "답은 아직요.",
+        opening: "다음은 미중전.",
         isMidpointReopen: true,
       },
       {
         afterSegment: 1,
-        emphasis: "두 나라 다 같은 곳에서 감속기를 사 갔습니다.",
-        elevation: "처음 질문이 점점 한 방향을 가리키네요.",
-        opening: "마지막 판은 전시장인데, 왜 팔리지도 않는 로봇을 계속 만들까요?",
+        emphasis: "둘 다 같은 데서.",
+        elevation: "방향이 보이죠.",
+        opening: "끝은 전시장.",
         isMidpointReopen: false,
       },
     ],
     ending: {
-      partAClose: "승자는 싸운 쪽이 아니라 감속기를 판 회사였어요.",
-      partBLanding: "답은 부품일까요? 단, 수주가 한 곳에 쏠릴 때는 다시 계산해 보시고요.",
-      partCStandard: "아침저녁 쇼츠로 이런 이야기를 매일 올립니다. 구독해두시면 다음 이야기로 찾아뵐게요.",
+      partAClose: "답은 감속기를 판 회사였어요.", // ≈2.6초
+      partBLanding: "수주가 쏠리면 다시 보세요.", // ≈2.4초
+      partCStandard: "이런 이야기 매일 올려요. 구독해두세요.", // ≈3.5초
       endscreenVideo: "로봇개 대결편",
       estSeconds: 0,
     },
@@ -51,19 +51,24 @@ function pkg(over: Partial<LongformScriptPackage> = {}): LongformScriptPackage {
 }
 
 console.log("낭독 길이 추정");
-check("25초 예산 안(오프닝)", speakSeconds(pkg().opening.blockAHook, pkg().opening.blockBRoadmapLanding) <= 25, speakSeconds(pkg().opening.blockAHook, pkg().opening.blockBRoadmapLanding));
+const openSec = speakSeconds(pkg().opening.blockAHook, pkg().opening.blockBRoadmapLanding);
+const endSec = speakSeconds(pkg().ending.partAClose, pkg().ending.partBLanding, pkg().ending.partCStandard);
+const brSec = speakSeconds(pkg().bridges[0].emphasis, pkg().bridges[0].elevation, pkg().bridges[0].opening);
+check("오프닝 7초 이내", openSec <= 7, openSec);
+check("브리지 5초 이내", brSec <= 5, brSec);
+check("엔딩 10초 이내", endSec <= 10, endSec);
 
 console.log("\n정상 대본 — 위반 없음");
 const ok = screenScript(pkg(), 3);
 check("위반 0", ok.violations.length === 0, ok.violations);
 check("중간점 1회 통과", ok.computed["중간점환기"].includes("통과"));
 
-console.log("\n25초 초과 오프닝");
+console.log("\n오프닝 예산 초과");
 const long = screenScript(
   pkg({ opening: { ...pkg().opening, blockAHook: "가".repeat(200) } }),
   3
 );
-check("25초 초과 잡힘", long.violations.some((v) => v.includes("25초 초과")), long.violations);
+check("오프닝 초과 잡힘", long.violations.some((v) => v.includes("7초 초과")), long.violations);
 
 console.log("\n중간점 환기 2회");
 const mid = screenScript(

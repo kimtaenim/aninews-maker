@@ -15,8 +15,12 @@ export function speakSeconds(...texts: string[]): number {
   return Math.round((len / CHARS_PER_SEC) * 10) / 10;
 }
 
-export const OPENING_BUDGET = 25;
-export const ENDING_BUDGET = 25;
+// 진행자 구간 예산(2026-07-25 사용자 지정 — 이전 25/25초에서 대폭 단축).
+// 시청자는 세그먼트를 보러 왔지 진행자를 보러 온 게 아니다. 진행자는 짧게 끊고 넘긴다.
+//   오프닝 5~7초 · 연결(브리지) 3~5초 · 엔딩 10초 이내.
+export const OPENING_BUDGET = 7;
+export const ENDING_BUDGET = 10;
+export const BRIDGE_BUDGET = 5;
 
 // 전 모듈 공통 금지 표현(config common_bans / style.ban 의 기계 검사 가능한 부분).
 const BAN_PATTERNS: { re: RegExp; label: string }[] = [
@@ -48,13 +52,13 @@ export function screenScript(pkg: LongformScriptPackage, segmentCount: number): 
   const openingSeconds = speakSeconds(pkg.opening.blockAHook, pkg.opening.blockBRoadmapLanding);
   const endingSeconds = speakSeconds(pkg.ending.partAClose, pkg.ending.partBLanding, pkg.ending.partCStandard);
 
-  if (openingSeconds > OPENING_BUDGET) v.push(`오프닝 ${openingSeconds}초 — 25초 초과`);
-  if (endingSeconds > ENDING_BUDGET) v.push(`엔딩 ${endingSeconds}초 — 25초 초과`);
-  if (speakSeconds(pkg.opening.blockAHook) > 10) v.push("오프닝 블록 A 10초 초과");
-  if ((pkg.opening.blockAHook.match(/[.!?]/g)?.length ?? 0) > 2) v.push("오프닝 블록 A 2문장 초과");
-  if (speakSeconds(pkg.opening.blockBRoadmapLanding) > 15) v.push("오프닝 블록 B 15초 초과");
-  if (speakSeconds(pkg.ending.partAClose) > 10) v.push("엔딩 파트 A 10초 초과");
-  if (speakSeconds(pkg.ending.partBLanding) > 10) v.push("엔딩 파트 B 10초 초과");
+  if (openingSeconds > OPENING_BUDGET) v.push(`오프닝 ${openingSeconds}초 — ${OPENING_BUDGET}초 초과`);
+  if (endingSeconds > ENDING_BUDGET) v.push(`엔딩 ${endingSeconds}초 — ${ENDING_BUDGET}초 초과`);
+  // 오프닝은 두 블록 합쳐 5~7초라 블록당 한 문장씩이 한계다.
+  if ((pkg.opening.blockAHook.match(/[.!?]/g)?.length ?? 0) > 1) v.push("오프닝 블록 A 1문장 초과");
+  if ((pkg.opening.blockBRoadmapLanding.match(/[.!?]/g)?.length ?? 0) > 1) v.push("오프닝 블록 B 1문장 초과");
+  if (speakSeconds(pkg.ending.partAClose) > 4) v.push("엔딩 파트 A 4초 초과");
+  if (speakSeconds(pkg.ending.partBLanding) > 3) v.push("엔딩 파트 B 3초 초과");
 
   const gaps = Math.max(0, segmentCount - 1);
   if (pkg.bridges.length !== gaps) v.push(`브리지 ${pkg.bridges.length}개 — 세그먼트 사이(${gaps}개)와 불일치`);
@@ -67,16 +71,20 @@ export function screenScript(pkg: LongformScriptPackage, segmentCount: number): 
   pkg.bridges.forEach((b, i) => {
     scanBans(`브리지 ${i + 1}`, `${b.emphasis} ${b.elevation} ${b.opening}`, v);
     if (EMPTY_ELEVATION.test(b.elevation)) v.push(`브리지 ${i + 1}: 승격이 빈 말("시작에 불과" 류)`);
-    // 브리지는 3역할 = 3문장 이내. 문장 수로 보고(길이는 폭주 가드로만).
+    // 브리지는 3~5초 — 3역할을 짧게 압축한다(역할당 반 문장 수준).
     const joined = `${b.emphasis} ${b.elevation} ${b.opening}`;
-    const sentences = (joined.match(/[.!?]/g)?.length ?? 0) + (/[^.!?\s]\s*$/.test(joined) ? 1 : 0);
-    if (sentences > 3) v.push(`브리지 ${i + 1}: 3문장 초과(${sentences}문장)`);
-    if (speakSeconds(joined) > 18) v.push(`브리지 ${i + 1}: 분량 과다(${speakSeconds(joined)}초)`);
+    const sec = speakSeconds(joined);
+    if (sec > BRIDGE_BUDGET) v.push(`브리지 ${i + 1}: ${sec}초 — ${BRIDGE_BUDGET}초 초과`);
   });
+  const bridgeMax = pkg.bridges.length
+    ? Math.max(...pkg.bridges.map((b) => speakSeconds(b.emphasis, b.elevation, b.opening)))
+    : 0;
 
   const computed: Record<string, string> = {
-    "25초규칙": `오프닝 ${openingSeconds}초 · 엔딩 ${endingSeconds}초 — ${
-      openingSeconds <= OPENING_BUDGET && endingSeconds <= ENDING_BUDGET ? "통과" : "탈락"
+    진행자길이: `오프닝 ${openingSeconds}초(≤${OPENING_BUDGET}) · 연결 최대 ${bridgeMax}초(≤${BRIDGE_BUDGET}) · 엔딩 ${endingSeconds}초(≤${ENDING_BUDGET}) — ${
+      openingSeconds <= OPENING_BUDGET && endingSeconds <= ENDING_BUDGET && bridgeMax <= BRIDGE_BUDGET
+        ? "통과"
+        : "탈락"
     }`,
     중간점환기: midpoints === 1 ? "통과 — 1회" : `${midpoints}회 — ${gaps >= 2 ? "탈락" : "해당 없음"}`,
     브리지수: pkg.bridges.length === gaps ? `통과 — ${gaps}개` : `탈락 — ${pkg.bridges.length}/${gaps}`,

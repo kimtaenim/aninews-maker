@@ -26,7 +26,9 @@ type Msg = {
 type MsgParam = { role: "user" | "assistant"; content: unknown };
 
 // 최신 모델(Opus 4.8)은 web_search_20260209(동적 필터링). 별도 베타 헤더 불필요.
-const WEB_SEARCH_TOOL = { type: "web_search_20260209", name: "web_search", max_uses: 5 };
+// 검증 항목이 대본 하나에 여러 개다(현재형 주장·숫자·반대편 사실 축 5개+). 5회로는
+// 한도가 먼저 소진돼 "검증 보류"만 나온다 — 실측 후 20회로 상향(2026-07-25).
+const WEB_SEARCH_TOOL = { type: "web_search_20260209", name: "web_search", max_uses: 20 };
 
 export interface CritiqueResult {
   report: string; // 2부 리포트(그대로 표시)

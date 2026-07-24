@@ -11,6 +11,12 @@ import type {
   LongformTitleReview,
 } from "@/lib/types";
 import type { LongformReviewResult } from "@/lib/longformReview";
+import { speakSeconds } from "@/lib/longformScreening";
+
+// 브리지 낭독 길이(초) — 타임라인에 진행자 구간 길이를 그대로 보여주기 위해.
+function bridgeSeconds(b: { emphasis: string; elevation: string; opening: string }): number {
+  return speakSeconds(b.emphasis, b.elevation, b.opening);
+}
 
 interface SegInfo {
   id: string;
@@ -1255,60 +1261,121 @@ export default function LongformStudio({
         )}
       </div>
 
-      {/* 세그먼트 현황 */}
+      {/* 재생 순서 타임라인 — 오프닝 → 세그1 → 연결1/2 → 세그2 → … → 마지막 세그 → 엔딩.
+          실제 영상이 나가는 순서 그대로 보여준다(세그먼트 목록만 따로 보면 순서가 안 보임). */}
       <div className="mt-5 flex items-center justify-between">
-        <h2 className="text-sm font-semibold">세그먼트 ({readyCount}/{segs.length} 완성)</h2>
+        <h2 className="text-sm font-semibold">재생 순서 ({readyCount}/{segs.length} 세그먼트 완성)</h2>
+        {script && (
+          <span className="text-[10px] text-zinc-500">
+            진행자 오프닝 {script.opening.estSeconds}s · 엔딩 {script.ending.estSeconds}s
+          </span>
+        )}
       </div>
-      <ol className="mt-2 grid gap-2">
-        {segs.map((s, i) => (
-          <li
-            key={s.id}
-            className="flex items-center gap-2 rounded-xl border border-zinc-200 dark:border-zinc-800 p-2"
-          >
-            {/* 순서 변경 ↑↓ */}
-            <div className="flex flex-col shrink-0">
-              <button
-                onClick={() => moveSeg(i, -1)}
-                disabled={i === 0 || reordering}
-                aria-label="위로"
-                className="leading-none text-[10px] text-zinc-500 hover:text-accent disabled:opacity-30"
-              >
-                ▲
-              </button>
-              <button
-                onClick={() => moveSeg(i, 1)}
-                disabled={i === segs.length - 1 || reordering}
-                aria-label="아래로"
-                className="leading-none text-[10px] text-zinc-500 hover:text-accent disabled:opacity-30"
-              >
-                ▼
-              </button>
-            </div>
-            <span className="shrink-0 w-4 text-center text-xs font-bold text-zinc-400">{i + 1}</span>
-            <div className="h-10 w-16 shrink-0 overflow-hidden rounded bg-zinc-100 dark:bg-zinc-900">
-              {s.keyframeUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={s.keyframeUrl} alt={s.title} className="h-full w-full object-cover" />
-              ) : null}
-            </div>
-            <span className="flex-1 text-xs line-clamp-2">{s.title}</span>
-            <span
-              className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                s.finalVideoUrl
-                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                  : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
-              }`}
-            >
-              {s.finalVideoUrl ? "완성" : "미완성"}
-            </span>
-            <Link
-              href={`/project/${s.id}`}
-              className="shrink-0 text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-900"
-            >
-              편집
-            </Link>
-          </li>
-        ))}
+      <ol className="mt-2 grid gap-1.5">
+        {/* 오프닝 */}
+        <li className="flex items-center gap-2 rounded-xl border border-accent/40 bg-accent/5 p-2">
+          <span className="shrink-0 rounded bg-accent px-1.5 py-0.5 text-[9px] font-bold text-white">
+            오프닝
+          </span>
+          <span className="flex-1 text-[11px] line-clamp-2 text-zinc-600 dark:text-zinc-300">
+            {script ? `${script.opening.blockAHook} ${script.opening.blockBRoadmapLanding}` : "대본 미생성"}
+          </span>
+          {script && (
+            <span className="shrink-0 text-[10px] text-zinc-500">{script.opening.estSeconds}s</span>
+          )}
+        </li>
+
+        {segs.map((s, i) => {
+          const bridge = script?.bridges.find((b) => b.afterSegment === i);
+          const isLast = i === segs.length - 1;
+          return (
+            <li key={s.id} className="grid gap-1.5">
+              {/* 세그먼트 */}
+              <div className="flex items-center gap-2 rounded-xl border border-zinc-200 dark:border-zinc-800 p-2">
+                <div className="flex flex-col shrink-0">
+                  <button
+                    onClick={() => moveSeg(i, -1)}
+                    disabled={i === 0 || reordering}
+                    aria-label="위로"
+                    className="leading-none text-[10px] text-zinc-500 hover:text-accent disabled:opacity-30"
+                  >
+                    ▲
+                  </button>
+                  <button
+                    onClick={() => moveSeg(i, 1)}
+                    disabled={isLast || reordering}
+                    aria-label="아래로"
+                    className="leading-none text-[10px] text-zinc-500 hover:text-accent disabled:opacity-30"
+                  >
+                    ▼
+                  </button>
+                </div>
+                <span className="shrink-0 rounded bg-zinc-200 dark:bg-zinc-800 px-1.5 py-0.5 text-[9px] font-bold text-zinc-600 dark:text-zinc-300">
+                  세그 {i + 1}
+                </span>
+                <div className="h-10 w-16 shrink-0 overflow-hidden rounded bg-zinc-100 dark:bg-zinc-900">
+                  {s.keyframeUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={s.keyframeUrl} alt={s.title} className="h-full w-full object-cover" />
+                  ) : null}
+                </div>
+                <span className="flex-1 text-xs line-clamp-2">{s.title}</span>
+                <span
+                  className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                    s.finalVideoUrl
+                      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                      : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                  }`}
+                >
+                  {s.finalVideoUrl ? "완성" : "미완성"}
+                </span>
+                <Link
+                  href={`/project/${s.id}`}
+                  className="shrink-0 text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+                >
+                  편집
+                </Link>
+              </div>
+
+              {/* 연결 i/i+1 — 마지막 세그먼트 뒤엔 연결이 없다(엔딩으로 간다) */}
+              {!isLast && (
+                <div className="ml-6 flex items-center gap-2 rounded-lg border border-dashed border-accent/40 bg-accent/[0.03] px-2 py-1.5">
+                  <span className="shrink-0 rounded bg-accent/15 px-1.5 py-0.5 text-[9px] font-bold text-accent">
+                    연결 {i + 1}/{i + 2}
+                  </span>
+                  <span className="flex-1 text-[11px] line-clamp-1 text-zinc-600 dark:text-zinc-300">
+                    {bridge
+                      ? [bridge.emphasis, bridge.elevation, bridge.opening].filter(Boolean).join(" ")
+                      : "대본 미생성"}
+                  </span>
+                  {bridge?.isMidpointReopen && (
+                    <span className="shrink-0 text-[9px] text-accent">🔁 고리 환기</span>
+                  )}
+                  {bridge && (
+                    <span className="shrink-0 text-[10px] text-zinc-500">
+                      {bridgeSeconds(bridge)}s
+                    </span>
+                  )}
+                </div>
+              )}
+            </li>
+          );
+        })}
+
+        {/* 엔딩 */}
+        <li className="flex items-center gap-2 rounded-xl border border-accent/40 bg-accent/5 p-2">
+          <span className="shrink-0 rounded bg-accent px-1.5 py-0.5 text-[9px] font-bold text-white">
+            엔딩
+          </span>
+          <span className="flex-1 text-[11px] line-clamp-2 text-zinc-600 dark:text-zinc-300">
+            {script
+              ? `${script.ending.partAClose} ${script.ending.partBLanding} ${script.ending.partCStandard}`
+              : "대본 미생성"}
+          </span>
+          {script && (
+            <span className="shrink-0 text-[10px] text-zinc-500">{script.ending.estSeconds}s</span>
+          )}
+        </li>
       </ol>
 
       {/* 합성 — 섹션이 있으면 섹션별 부분 합성 + 최종 이어붙이기, 없으면 레거시 단일 합성 */}
