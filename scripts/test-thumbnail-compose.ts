@@ -11,7 +11,7 @@ async function main() {
   await mkdir(outDir, { recursive: true });
 
   // 레이아웃 단위 확인
-  const cases = ["왜 붙였나", "이상해요", "로봇개 전쟁"];
+  const cases = ["왜 붙였나", "이상해요", "로봇개 전쟁", "가스가 반도체를"];
   for (const c of cases) {
     const l = layoutText(c);
     console.log(`"${c}" → ${l.lines.length}줄 ${JSON.stringify(l.sizes)} · 168px 획 ${strokeAt168(l.sizes[0])}px`);
@@ -25,8 +25,11 @@ async function main() {
   bctx.fillRect(0, 0, THUMB_W, THUMB_H);
   const bg = bgCanvas.toBuffer("image/png");
 
-  for (const side of ["left", "right"] as const) {
-    const r = await composeThumbnail({ background: bg, text: "왜 붙였나", side });
+  for (const [side, text] of [
+    ["left", "왜 붙였나"],
+    ["right", "가스가 반도체를"],
+  ] as const) {
+    const r = await composeThumbnail({ background: bg, text, side });
     await writeFile(join(outDir, `thumb-${side}.jpg`), r.jpg);
     await writeFile(join(outDir, `thumb-${side}-168.jpg`), r.preview);
     console.log(

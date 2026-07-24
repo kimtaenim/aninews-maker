@@ -105,11 +105,18 @@ check(
   "주 검색어가 앞 30자에 없으면 탈락",
   titleViolations("헬륨 한 방울에 값이 흔들린 진짜 이유와 그 배경을 짚어보는 메모리 반도체 관련주", "메모리 반도체 관련주").length > 0
 );
-check("썸네일 7자 초과 탈락", thumbnailTextViolations("여덟자가넘는문구", "제목").length > 0);
 check("썸네일 제목 중복 탈락", thumbnailTextViolations("승자는", "승자는 따로 있다").some((v) => v.includes("중복")));
+// 글자 수 규칙 없음 — 판정은 168px 판독뿐.
+check("8자여도 읽히면 통과", thumbnailTextViolations("가스가 반도체를", "제목").length === 0, thumbnailTextViolations("가스가 반도체를", "제목"));
+check(
+  "길어서 안 읽히면 탈락",
+  thumbnailTextViolations("헬륨 공급 대란이 만든 진짜 수혜주는 따로 있다", "제목").some((v) => v.includes("168px")),
+  thumbnailTextViolations("헬륨 공급 대란이 만든 진짜 수혜주는 따로 있다", "제목")
+);
 
 console.log("\n썸네일 레이아웃");
 check("2덩어리 → 2줄", layoutText("왜 붙였나").lines.length === 2);
+check("공백 없는 긴 문구도 2줄로 쪼갬", layoutText("헬륨쇼크수혜주").lines.length === 2, layoutText("헬륨쇼크수혜주").lines);
 check("168px 획 2px 이상", strokeAt168(layoutText("이상해요").sizes[0]) >= 2, strokeAt168(layoutText("이상해요").sizes[0]));
 
 console.log(fail === 0 ? "\n✅ 전부 통과" : `\n❌ ${fail}개 실패`);

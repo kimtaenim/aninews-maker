@@ -5,6 +5,8 @@
 // 판정 가능한 것"만 검사한다: 시점 표현·묶음 가치 누락·앞 30자 규칙·썸네일 문구 길이.
 // ============================================================================
 
+import { readableAt168 } from "./thumbnailLayout";
+
 // 원칙 4 — 시점 표현(검색 유입은 수개월 뒤에도 온다).
 const TIME_PATTERNS: { re: RegExp; label: string }[] = [
   { re: /20\d{2}\s*년?/, label: "연도" },
@@ -54,12 +56,15 @@ export function titleViolations(title: string, primaryKeyword: string): string[]
   return out;
 }
 
-// 썸네일 문구 — 7자 이내(공백 제외), 제목과 비중복.
+// 썸네일 문구 — 글자 수 제한은 두지 않는다. 진짜 상한은 "모바일 검색 결과 폭(168px)에서
+// 읽히는가"뿐이라, 실제 배치 계산(lib/thumbnailLayout.ts)으로 판정한다. 길면 글자가 작아지고,
+// 획이 2px 밑으로 내려가는 지점부터 안 읽힌다.
 export function thumbnailTextViolations(text: string, title: string): string[] {
   const out: string[] = [];
   const t = (text ?? "").trim();
   if (!t) return ["썸네일 문구 없음"];
-  if (t.replace(/\s/g, "").length > 7) out.push("썸네일 문구 7자 초과");
+  const r = readableAt168(t);
+  if (!r.ok) out.push(`168px에서 안 읽힘(획 ${r.strokePx}px) — 더 짧게`);
   if (title.includes(t)) out.push("썸네일 문구가 제목과 중복");
   return out;
 }

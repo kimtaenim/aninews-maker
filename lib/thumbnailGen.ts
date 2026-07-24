@@ -150,7 +150,7 @@ export async function buildThumbnails(args: {
     };
     try {
       const { bytes } = await generateThumbnailImage({ projectId, prompt: p.prompt });
-      const { jpg, preview, strokePx } = await composeThumbnail({
+      const { jpg, preview, strokePx, readable } = await composeThumbnail({
         background: bytes,
         text: thumbnailText,
         side: p.subjectSide === "left" ? "right" : "left", // 글씨는 피사체 반대편
@@ -158,7 +158,14 @@ export async function buildThumbnails(args: {
       const raw = await uploadAsset(`project/${projectId}/thumb-${stamp}-${i}-raw.png`, bytes, "image/png");
       const file = await uploadAsset(`project/${projectId}/thumb-${stamp}-${i}.jpg`, jpg, "image/jpeg");
       const prev = await uploadAsset(`project/${projectId}/thumb-${stamp}-${i}-168.jpg`, preview, "image/jpeg");
-      variants.push({ ...base, imageUrl: raw.url, fileUrl: file.url, previewUrl: prev.url, strokePx });
+      variants.push({
+        ...base,
+        imageUrl: raw.url,
+        fileUrl: file.url,
+        previewUrl: prev.url,
+        strokePx,
+        ...(readable ? {} : { composition: `${base.composition} · ⚠ 문구가 168px에서 안 읽힘` }),
+      });
     } catch (e) {
       errors.push(`시안 ${i + 1}: ${e instanceof Error ? e.message : "실패"}`);
       variants.push(base);

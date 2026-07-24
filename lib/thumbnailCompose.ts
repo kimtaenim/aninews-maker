@@ -5,19 +5,18 @@
 //  · 렌더러: @napi-rs/canvas — 워커 자막(worker/subtitle-image.mjs)과 같은 엔진·같은 폰트.
 //    (next/og 도 되지만 sharp 를 같이 쓰면 libvips 가 Next 내장 sharp 와 충돌한다.)
 //  · 위치: 좌상 또는 우상(원칙 6 — 우하단은 유튜브 재생시간 자리라 비운다).
-//  · 크기: 글자 블록이 가로의 45~55%를 차지하게 자동 계산하되, 168px 축소본에서 획이
-//    2px 이상 남도록 하한(≈128px)을 둔다(원칙 3 · 소형 판독).
+//  · 크기·줄나눔: lib/thumbnailLayout.ts(순수 계산). 문구가 길면 글자가 작아지고,
+//    168px 축소본에서 획이 2px 밑으로 내려가면 "안 읽힘"으로 표시된다(글자 수 제한 없음).
 //  · 출력: 1280x720 JPG(2MB 이하) + 168px 축소 검증본(실제 리샘플).
 // ============================================================================
 
 import { createCanvas, loadImage, GlobalFonts } from "@napi-rs/canvas";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { layoutText, strokeAt168, THUMB_W, THUMB_H, PREVIEW_W, PREVIEW_H } from "./thumbnailLayout";
 
-export const THUMB_W = 1280;
-export const THUMB_H = 720;
-export const PREVIEW_W = 168;
-export const PREVIEW_H = Math.round((THUMB_H / THUMB_W) * PREVIEW_W); // 95
+export { layoutText, strokeAt168, THUMB_W, THUMB_H, PREVIEW_W, PREVIEW_H };
+export type { TextLayout } from "./thumbnailLayout";
 export const MAX_BYTES = 2 * 1024 * 1024;
 
 // Black Han Sans — 굵은 한글 디스플레이체(워커 자막에서 쓰는 것과 동일 자산).
@@ -30,34 +29,12 @@ function ensureFont(): void {
   fontReady = true;
 }
 
-// Black Han Sans 의 획(스템) 두께 ≈ 0.12em. 168px 축소 시 남는 두께를 추정한다.
-const STEM_RATIO = 0.12;
-export function strokeAt168(fontSize: number): number {
-  return Math.round(fontSize * STEM_RATIO * (PREVIEW_W / THUMB_W) * 100) / 100;
-}
-
-export interface TextLayout {
-  lines: string[]; // 1~2줄(2덩어리면 두 줄, 핵심 단어가 윗줄)
-  sizes: number[]; // 줄별 글자 크기
-}
-
-// 7자 이내 문구를 최대 2덩어리로 나눠 배치. 윗줄이 핵심 단어 — 더 크게.
-export function layoutText(text: string): TextLayout {
-  const chunks = (text ?? "").trim().split(/\s+/).filter(Boolean).slice(0, 2);
-  if (chunks.length === 0) return { lines: [""], sizes: [160] };
-  const maxChars = Math.max(...chunks.map((c) => c.length));
-  // 글자 블록이 가로의 약 50%(640px)를 차지하도록. 소형 판독 하한 128px.
-  const base = Math.round(Math.min(260, Math.max(128, 640 / Math.max(1, maxChars))));
-  return chunks.length === 2
-    ? { lines: chunks, sizes: [base, Math.round(base * 0.78)] }
-    : { lines: chunks, sizes: [base] };
-}
-
 export interface ComposeResult {
   jpg: Buffer;
   preview: Buffer;
   fontSize: number;
   strokePx: number;
+  readable: boolean; // 168px 축소본에서 읽히는가(문구가 길면 false)
 }
 
 // 배경 PNG + 문구 → 시안 JPG + 168px 검증본.
@@ -127,5 +104,11 @@ export async function composeThumbnail(args: {
   pctx.drawImage(canvas, 0, 0, PREVIEW_W, PREVIEW_H);
   const preview = pv.toBuffer("image/jpeg", 85);
 
-  return { jpg, preview, fontSize: layout.sizes[0], strokePx: strokeAt168(layout.sizes[0]) };
+  return {
+    jpg,
+    preview,
+    fontSize: layout.sizes[0],
+    strokePx: layout.strokePx,
+    readable: layout.readable,
+  };
 }
