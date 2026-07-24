@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProject, getProjectsBulk, saveProject } from "@/lib/projectStore";
-import { generateLongformTitles, type LongformConstituent, type LongformTitleInput } from "@/lib/longformTitleGen";
+import {
+  generateLongformTitles,
+  reviewLongformTitle,
+  type LongformConstituent,
+  type LongformTitleInput,
+} from "@/lib/longformTitleGen";
 import type { LongformTitlePackage } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -10,11 +15,14 @@ export const maxDuration = 90;
 // title_promise 가 모듈 2~5 전부의 기준점이라, 여기서 멈추고 사용자 확정을 받는다.
 //   POST { projectId, constituents?, coreTopic?, viewerPayoff?, targetKeywords? }
 //        → 생성 → { ok, title: LongformTitlePackage }
+//   POST { projectId, review: "직접 쓴 제목" }
+//        → 그 제목을 원칙으로 진단 → { ok, review } (원문은 안 바꾼다. 확정은 별도)
 //   POST { projectId, confirm: { title, thumbnailText?, titlePromise? } }
 //        → 사용자 확정(프로젝트 제목도 갱신) → { ok, title }
 export async function POST(req: NextRequest) {
   let body: {
     projectId?: string;
+    review?: string;
     confirm?: { title?: string; thumbnailText?: string; titlePromise?: string };
     constituents?: Array<{ title?: string; topic?: string; performance?: string; segmentId?: string }>;
     coreTopic?: string;
@@ -33,19 +41,101 @@ export async function POST(req: NextRequest) {
   const longform = await getProject(projectId);
   if (!longform) return NextResponse.json({ ok: false, error: "프로젝트 없음" }, { status: 404 });
 
-  // ── 확정 모드 — 사용자가 고른 제목을 패키지에 박고 프로젝트 제목도 바꾼다.
+  // ── 검증 모드 — 직접 쓴 제목을 원칙으로 진단만 한다(원문·확정 상태는 안 건드림).
+  if (typeof body.review === "string") {
+    const title = body.review.trim();
+    if (!title) return NextResponse.json({ ok: false, error: "검증할 제목을 입력해주세요" }, { status: 400 });
+    try {
+      // 본편 구성 요약 — "본편이 약속을 주는가" 판정 근거.
+      const segIds = longform.sourceProjectIds ?? [];
+      let context = "";
+      if (segIds.length) {
+        const segs = await getProjectsBulk(segIds);
+        const byId = new Map(segs.map((s) => [s.id, s]));
+        context = segIds
+          .map((id, i) => {
+            const s = byId.get(id);
+            if (!s) return "";
+            const summ = (s.scenes ?? []).map((sc) => sc.narration).filter(Boolean).join(" ").slice(0, 200);
+            return `${i + 1}. ${s.title} — ${summ}`;
+          })
+          .filter(Boolean)
+          .join("\n");
+      }
+      const review = await reviewLongformTitle({ projectId, title, context: context || undefined });
+      // 검증 결과는 패키지에 남긴다(리로드해도 보이게). 확정은 사용자가 따로 누른다.
+      const fresh = (await getProject(projectId)) ?? longform;
+      const pkg = fresh.longformTitle;
+      fresh.longformTitle = pkg
+        ? { ...pkg, review }
+        : {
+            keywordCandidates: [],
+            primaryKeyword: review.primaryKeyword,
+            secondaryKeyword: "",
+            keywordRationale: review.keywordRationale,
+            candidates: [],
+            rejected: [],
+            recommendation: "",
+            recommendedIndex: 0,
+            titlePromise: "",
+            review,
+            generatedAt: Date.now(),
+          };
+      fresh.updatedAt = Date.now();
+      await saveProject(fresh);
+      return NextResponse.json({ ok: true, review, title: fresh.longformTitle });
+    } catch (e) {
+      return NextResponse.json(
+        { ok: false, error: e instanceof Error ? e.message : "제목 검증 실패" },
+        { status: 500 }
+      );
+    }
+  }
+
+  // ── 확정 모드 — 고른(또는 직접 쓴) 제목을 패키지에 박고 프로젝트 제목도 바꾼다.
   if (body.confirm) {
     const title = (body.confirm.title ?? "").trim();
     if (!title) return NextResponse.json({ ok: false, error: "확정할 제목이 필요해요" }, { status: 400 });
     const fresh = (await getProject(projectId)) ?? longform;
     const pkg = fresh.longformTitle;
-    if (!pkg) return NextResponse.json({ ok: false, error: "먼저 제목을 생성해주세요" }, { status: 422 });
-    const picked = pkg.candidates.find((c) => c.title === title);
+    const picked = pkg?.candidates.find((c) => c.title === title);
+    // title_promise 는 이후 전 모듈의 기준점 — 후보/검증 결과/기존 값 순으로 찾는다.
+    const promise =
+      (body.confirm.titlePromise ?? "").trim() ||
+      (pkg?.review?.title === title ? pkg.review.titlePromise : "") ||
+      (picked ? pkg?.titlePromise ?? "" : "") ||
+      pkg?.titlePromise ||
+      "";
+    const thumbText =
+      (body.confirm.thumbnailText ?? "").trim() ||
+      picked?.thumbnailText ||
+      (pkg?.review?.title === title ? pkg.review.thumbnailText : "") ||
+      pkg?.finalThumbnailText ||
+      "";
+    if (!promise) {
+      return NextResponse.json(
+        { ok: false, error: "title_promise 가 없어요 — 제목을 검증하거나 생성해서 약속한 괴리를 먼저 뽑아주세요" },
+        { status: 422 }
+      );
+    }
+    // 생성 없이 직접 쓴 제목만으로 확정하는 경우 — 빈 패키지를 만들어 준다.
+    const base: LongformTitlePackage = pkg ?? {
+      keywordCandidates: [],
+      primaryKeyword: "",
+      secondaryKeyword: "",
+      keywordRationale: "",
+      candidates: [],
+      rejected: [],
+      recommendation: "",
+      recommendedIndex: 0,
+      titlePromise: "",
+      generatedAt: Date.now(),
+    };
     fresh.longformTitle = {
-      ...pkg,
+      ...base,
       finalTitle: title,
-      finalThumbnailText: (body.confirm.thumbnailText ?? picked?.thumbnailText ?? pkg.finalThumbnailText ?? "").trim(),
-      titlePromise: (body.confirm.titlePromise ?? pkg.titlePromise ?? "").trim(),
+      finalThumbnailText: thumbText,
+      titlePromise: promise,
       confirmedAt: Date.now(),
     };
     fresh.title = title;

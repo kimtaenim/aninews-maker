@@ -186,6 +186,24 @@ export interface LongformTitleCandidate {
   violations?: string[]; // 코드 검사(시점 표현·30자·묶음가치)로 잡힌 것
 }
 
+// 운영자가 직접 쓴 제목을 원칙으로 검증한 결과(생성 후보와 별개 — 원문을 존중해 진단만).
+export interface LongformTitleReview {
+  title: string; // 검증한 원문
+  verdict: "pass" | "revise";
+  principlesCheck: Record<string, boolean>;
+  screening: Record<string, boolean>;
+  violations: string[]; // 코드 검사(시점 표현·묶음 표시어·앞 30자·썸네일 판독)
+  issues: string[]; // 모델 진단
+  strengths: string[];
+  primaryKeyword: string;
+  keywordRationale: string;
+  alternatives: { title: string; why: string }[];
+  thumbnailText: string;
+  titlePromise: string;
+  summary: string;
+  reviewedAt: number;
+}
+
 export interface LongformTitlePackage {
   keywordCandidates: string[]; // 검색어 후보 5~8
   primaryKeyword: string;
@@ -200,6 +218,8 @@ export interface LongformTitlePackage {
   finalTitle?: string;
   finalThumbnailText?: string;
   confirmedAt?: number;
+  // 직접 쓴 제목 검증 결과(마지막 1건). 생성 후보와 무관하게 남는다.
+  review?: LongformTitleReview;
   generatedAt: number;
 }
 

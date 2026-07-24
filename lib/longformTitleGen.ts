@@ -8,10 +8,13 @@
 
 import { getAnthropic, MODELS } from "./anthropic";
 import { anthropicCostUsd, recordCost } from "./cost";
-import { LONGFORM_TITLE_SYSTEM_PROMPT } from "./longformTitlePrompt";
+import {
+  LONGFORM_TITLE_SYSTEM_PROMPT,
+  LONGFORM_TITLE_REVIEW_SYSTEM_PROMPT,
+} from "./longformTitlePrompt";
 import { titleViolations, thumbnailTextViolations } from "./longformTitleCheck";
 import principles from "../config/longform-principles.json";
-import type { LongformTitleCandidate, LongformTitlePackage } from "./types";
+import type { LongformTitleCandidate, LongformTitlePackage, LongformTitleReview } from "./types";
 
 export interface LongformConstituent {
   title: string; // 쇼츠 원제목
@@ -147,7 +150,7 @@ export async function generateLongformTitles(args: {
           .join("; ")
       : "";
     const note = result
-      ? `앞선 후보에서 원칙 위반이 잡혔다: ${bad}. 위반을 모두 없애고 후보 5개를 다시 조립하라. 특히 앞 30자 안에 주 검색어와 묶음 가치를 모두 넣고, 시점 표현은 절대 쓰지 마라.`
+      ? `앞선 후보에서 원칙 위반이 잡혔다: ${bad}. 위반을 모두 없애고 후보 5개를 다시 조립하라. 앞 30자 안에 주 검색어를 넣고, 시점 표현과 묶음 표시어(총정리·몰아보기·N편·N가지 등)는 절대 쓰지 마라.`
       : "JSON 형식이 어긋났다. 지정된 JSON 만 정확히 다시 출력하라.";
     const retry = await call(note);
     if (retry && dirtyCount(retry) < dirtyCount(result)) result = retry;
@@ -162,4 +165,96 @@ export async function generateLongformTitles(args: {
     meta: { kind: "longform-title" },
   });
   return { ...result, generatedAt: Date.now() };
+}
+
+// ── 직접 쓴 제목 검증 ────────────────────────────────────────────────────────
+// 운영자가 쓴 제목을 원칙으로 진단한다. 코드 검사(기계적 위반)와 모델 진단(판단이 필요한
+// 부분)을 합쳐 돌려준다. 원문을 갈아엎지 않고, 대안은 참고용으로만 최대 2개.
+export async function reviewLongformTitle(args: {
+  projectId: string;
+  title: string;
+  context?: string; // 구성(세그먼트) 요약 — 있으면 "본편이 약속을 주는가" 판정에 쓴다
+}): Promise<LongformTitleReview> {
+  const { projectId, context } = args;
+  const title = (args.title ?? "").trim();
+  if (!title) throw new Error("검증할 제목을 입력해주세요");
+
+  const client = getAnthropic();
+  const system = LONGFORM_TITLE_REVIEW_SYSTEM_PROMPT.replace(
+    "{{PRINCIPLES}}",
+    JSON.stringify(
+      { title: principles.title, channel: principles.channel, common_bans: principles.common_bans },
+      null,
+      2
+    )
+  );
+  const user = [`[검증할 제목]\n${title}`, context ? `\n[본편 구성]\n${context}` : ""]
+    .filter(Boolean)
+    .join("\n");
+
+  const r = await client.messages.create({
+    model: MODELS.sonnet,
+    max_tokens: 2000,
+    system,
+    messages: [{ role: "user", content: user }],
+  });
+  const blocks = r.content.filter((b: { type: string }) => b.type === "text") as Array<{ type: "text"; text: string }>;
+  const raw = blocks.map((b) => b.text).join("").trim();
+  await recordCost({
+    projectId,
+    vendor: "anthropic",
+    model: MODELS.sonnet,
+    costUsd: anthropicCostUsd({
+      inputTokens: r.usage.input_tokens,
+      outputTokens: r.usage.output_tokens,
+      cacheReadTokens: r.usage.cache_read_input_tokens ?? undefined,
+      cacheWriteTokens: r.usage.cache_creation_input_tokens ?? undefined,
+      model: MODELS.sonnet,
+    }),
+    meta: { kind: "longform-title-review" },
+  });
+
+  const m = raw.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error("제목 검증 실패 — 응답에서 JSON 을 못 찾았어요");
+  let j: Json;
+  try {
+    j = JSON.parse(m[0]) as Json;
+  } catch {
+    throw new Error("제목 검증 JSON 파싱 실패");
+  }
+
+  const strList = (v: unknown): string[] =>
+    (Array.isArray(v) ? v : []).filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((x) => x.trim());
+
+  const primaryKeyword = str(j.primary_keyword);
+  const thumbnailText = str(j.thumbnail_text);
+  // 코드 검사 — 모델 판단과 별개로 기계적으로 잡히는 것.
+  const violations = [
+    ...titleViolations(title, primaryKeyword),
+    ...(thumbnailText ? thumbnailTextViolations(thumbnailText, title) : []),
+  ];
+
+  return {
+    title,
+    // 코드 검사에 걸린 게 있으면 모델이 pass 라 해도 revise 다(기계 판정 우선).
+    verdict: violations.length > 0 || str(j.verdict) === "revise" ? "revise" : "pass",
+    principlesCheck: boolMap(j.principles_check),
+    screening: boolMap(j.screening),
+    violations,
+    issues: strList(j.issues),
+    strengths: strList(j.strengths),
+    primaryKeyword,
+    keywordRationale: str(j.keyword_rationale),
+    alternatives: (Array.isArray(j.alternatives) ? j.alternatives : [])
+      .map((a) => {
+        const o = (a ?? {}) as Json;
+        return { title: str(o.title), why: str(o.why) };
+      })
+      .filter((a) => a.title.length > 0)
+      .slice(0, 2),
+    thumbnailText,
+    titlePromise: str(j.title_promise),
+    summary: str(j.summary),
+    reviewedAt: Date.now(),
+  };
 }

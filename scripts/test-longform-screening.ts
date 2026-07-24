@@ -95,7 +95,12 @@ check(
 );
 check("'총정리 4편' 탈락", titleViolations("메모리 반도체 관련주 총정리 4편 — HBM·헬륨 쇼크", "메모리 반도체 관련주").length > 0);
 check("'몰아보기' 탈락", titleViolations("반도체 관련주 몰아보기 — 진짜 수혜주는 따로", "반도체 관련주").length > 0);
-check("'3가지' 탈락", titleViolations("반도체 관련주 3가지 — 진짜 수혜주는 따로", "반도체 관련주").length > 0);
+// 실제 소재 수량("신제품 300개")은 편수 세기가 아니다 — 오탐 방지.
+check(
+  "'신제품 300개'는 통과",
+  titleViolations("3M 관련주, 신제품 300개의 비밀은 실패한 접착제였다", "3M 관련주").length === 0,
+  titleViolations("3M 관련주, 신제품 300개의 비밀은 실패한 접착제였다", "3M 관련주")
+);
 check(
   "묶음 표시어 없는 제목 통과",
   titleViolations("메모리 반도체 관련주, 헬륨 한 방울에 값이 흔들린 이유", "메모리 반도체 관련주").length === 0,

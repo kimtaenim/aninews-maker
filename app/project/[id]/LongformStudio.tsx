@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type {
@@ -8,6 +8,7 @@ import type {
   LongformSection,
   LongformThumbnailPackage,
   LongformTitlePackage,
+  LongformTitleReview,
 } from "@/lib/types";
 import type { LongformReviewResult } from "@/lib/longformReview";
 
@@ -52,6 +53,36 @@ export default function LongformStudio({
 }) {
   const router = useRouter();
 
+  // ── 누적 비용 — 롱폼 자신(제목·대본·썸네일) + 세그먼트 전부 + 진행자 합산.
+  // 무거운 이미지·영상·음성 비용은 세그먼트 쪽에 기록되므로 합산해야 실제 제작비가 나온다.
+  const [cost, setCost] = useState<{
+    totalKrw: string;
+    own?: string;
+    segments?: string;
+    segCount?: number;
+    host?: string;
+  } | null>(null);
+  const refreshCost = useCallback(async () => {
+    try {
+      const r = await fetch(`/api/cost?projectId=${encodeURIComponent(project.id)}&includeSegments=1`);
+      const d = await r.json();
+      if (typeof d.totalKrw === "string") {
+        setCost({
+          totalKrw: d.totalKrw,
+          own: d.breakdown?.own?.krw,
+          segments: d.breakdown?.segments?.krw,
+          segCount: d.breakdown?.segments?.count,
+          host: d.breakdown?.host?.krw,
+        });
+      }
+    } catch {
+      /* 비용 조회 실패는 무시 */
+    }
+  }, [project.id]);
+  useEffect(() => {
+    refreshCost();
+  }, [refreshCost]);
+
   // ── [모듈 1] 롱폼 제목 — 검색 5원칙. 확정(title_promise)해야 모듈 2~5가 돈다.
   const [lfTitle, setLfTitle] = useState(project.title);
   const [titlePkg, setTitlePkg] = useState<LongformTitlePackage | null>(initialTitle);
@@ -72,6 +103,7 @@ export default function LongformStudio({
       const d = await r.json().catch(() => ({}));
       if (!r.ok || !d.ok) throw new Error(d.error || "제목 생성 실패");
       setTitlePkg(d.title as LongformTitlePackage);
+      refreshCost();
     } catch (e) {
       setTitleErr(e instanceof Error ? e.message : "제목 생성 실패");
     } finally {
@@ -80,7 +112,7 @@ export default function LongformStudio({
   }
 
   // 제목 확정 — 여기서 title_promise 가 고정되고 모듈 2~5의 기준점이 된다.
-  async function confirmLongTitle(t: string, thumbnailText: string) {
+  async function confirmLongTitle(t: string, thumbnailText: string, titlePromise?: string) {
     const v = t.trim();
     if (!v) return;
     setTitleErr("");
@@ -88,14 +120,47 @@ export default function LongformStudio({
       const r = await fetch("/api/longform/title", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ projectId: project.id, confirm: { title: v, thumbnailText } }),
+        body: JSON.stringify({
+          projectId: project.id,
+          confirm: { title: v, thumbnailText, ...(titlePromise ? { titlePromise } : {}) },
+        }),
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok || !d.ok) throw new Error(d.error || "확정 실패");
       setTitlePkg(d.title as LongformTitlePackage);
       setLfTitle(v);
+      refreshCost();
     } catch (e) {
       setTitleErr(e instanceof Error ? e.message : "확정 실패");
+    }
+  }
+
+  // 직접 쓴 제목 검증 — 원칙으로 진단만 받는다(확정은 따로).
+  const [ownTitle, setOwnTitle] = useState("");
+  const [review, setReview] = useState<LongformTitleReview | null>(initialTitle?.review ?? null);
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewErr, setReviewErr] = useState("");
+
+  async function reviewOwnTitle() {
+    const v = ownTitle.trim();
+    if (!v) return;
+    setReviewBusy(true);
+    setReviewErr("");
+    try {
+      const r = await fetch("/api/longform/title", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId: project.id, review: v }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) throw new Error(d.error || "검증 실패");
+      setReview(d.review as LongformTitleReview);
+      if (d.title) setTitlePkg(d.title as LongformTitlePackage);
+      refreshCost();
+    } catch (e) {
+      setReviewErr(e instanceof Error ? e.message : "검증 실패");
+    } finally {
+      setReviewBusy(false);
     }
   }
   async function copyLongTitle(t: string, i: number) {
@@ -216,6 +281,7 @@ export default function LongformStudio({
       setScript(pkg);
       loadEdit(pkg);
       setScriptViolations(Array.isArray(d.violations) ? d.violations : []);
+      refreshCost();
       if (d.orderApplied) router.refresh(); // 순서가 바뀌었으면 세그먼트 목록 다시 읽기
     } catch (e) {
       setScriptErr(e instanceof Error ? e.message : "대본 생성 실패");
@@ -281,6 +347,7 @@ export default function LongformStudio({
       const d = await r.json().catch(() => ({}));
       if (!r.ok || !d.ok) throw new Error(d.error || "썸네일 생성 실패");
       setThumb(d.thumbnail as LongformThumbnailPackage);
+      refreshCost();
     } catch (e) {
       setThumbErr(e instanceof Error ? e.message : "썸네일 생성 실패");
     } finally {
@@ -409,8 +476,11 @@ export default function LongformStudio({
         setError(d.error || "합성 실패");
         setComposing(false);
       }
-      // 섹션 부분 합성·최종 join 모두 끝났으면 폴링 종료.
-      if (!anySecGen && !joinActive && timer.current) clearInterval(timer.current);
+      // 섹션 부분 합성·최종 join 모두 끝났으면 폴링 종료(끝났을 때 비용도 한 번 갱신).
+      if (!anySecGen && !joinActive && timer.current) {
+        clearInterval(timer.current);
+        refreshCost();
+      }
     } catch {
       /* 일시 오류는 다음 폴링에서 회복 */
     }
@@ -608,6 +678,140 @@ export default function LongformStudio({
             )}
           </>
         )}
+
+        {/* 직접 쓴 제목 검증 — 생성 없이도 쓸 수 있다. */}
+        <div className="mt-3 border-t border-accent/20 pt-3">
+          <p className="text-xs font-semibold">직접 쓴 제목 검증</p>
+          <p className="mt-0.5 text-[11px] text-zinc-500">
+            내가 쓴 제목을 원칙으로 진단받습니다. 원문은 안 바뀌고, 통과하면 그대로 확정할 수 있어요.
+          </p>
+          <div className="mt-1.5 flex gap-2">
+            <input
+              type="text"
+              value={ownTitle}
+              onChange={(e) => setOwnTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") reviewOwnTitle();
+              }}
+              placeholder="예: 메모리 반도체 관련주, 헬륨 한 방울에 값이 흔들린 이유"
+              className="flex-1 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2.5 py-1.5 text-xs outline-none focus:border-accent"
+            />
+            <button
+              onClick={reviewOwnTitle}
+              disabled={reviewBusy || !ownTitle.trim()}
+              className="shrink-0 rounded-lg border border-accent px-3 py-1.5 text-xs text-accent hover:bg-accent/10 disabled:opacity-40"
+            >
+              {reviewBusy ? "검증 중…" : "검증"}
+            </button>
+          </div>
+          {reviewErr && <p className="mt-1.5 text-[11px] text-red-600">{reviewErr}</p>}
+
+          {review && (
+            <div className="mt-2 rounded-lg border border-zinc-200 dark:border-zinc-800 p-2 text-[11px]">
+              <div className="flex items-start justify-between gap-2">
+                <p className="min-w-0 flex-1 font-medium">「{review.title}」</p>
+                <span
+                  className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                    review.verdict === "pass"
+                      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                      : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                  }`}
+                >
+                  {review.verdict === "pass" ? "통과" : "보완 필요"}
+                </span>
+              </div>
+              {review.summary && <p className="mt-1 text-zinc-600 dark:text-zinc-300">{review.summary}</p>}
+
+              {review.violations.length > 0 && (
+                <ul className="mt-1.5 grid list-disc gap-0.5 pl-4 text-red-600">
+                  {review.violations.map((v, i) => (
+                    <li key={i}>{v}</li>
+                  ))}
+                </ul>
+              )}
+              {review.issues.length > 0 && (
+                <ul className="mt-1 grid list-disc gap-0.5 pl-4 text-amber-600">
+                  {review.issues.map((v, i) => (
+                    <li key={i}>{v}</li>
+                  ))}
+                </ul>
+              )}
+              {review.strengths.length > 0 && (
+                <ul className="mt-1 grid list-disc gap-0.5 pl-4 text-emerald-600 dark:text-emerald-400">
+                  {review.strengths.map((v, i) => (
+                    <li key={i}>{v}</li>
+                  ))}
+                </ul>
+              )}
+
+              <ul className="mt-1.5 flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] text-zinc-500">
+                {Object.entries({ ...review.principlesCheck, ...review.screening }).map(([k, v]) => (
+                  <li key={k} className={v ? "" : "text-red-500"}>
+                    {v ? "✓" : "✗"} {k.replace(/_/g, " ")}
+                  </li>
+                ))}
+              </ul>
+
+              {review.primaryKeyword && (
+                <p className="mt-1.5 text-zinc-500">
+                  <span className="font-semibold">주 검색어:</span> {review.primaryKeyword}
+                  {review.keywordRationale ? ` — ${review.keywordRationale}` : ""}
+                </p>
+              )}
+              {review.titlePromise && (
+                <p className="mt-0.5">
+                  <span className="font-semibold text-accent">title_promise:</span> {review.titlePromise}
+                </p>
+              )}
+              {review.thumbnailText && (
+                <p className="mt-0.5 text-zinc-500">
+                  <span className="font-semibold">썸네일 문구 제안:</span> {review.thumbnailText}
+                </p>
+              )}
+
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => confirmLongTitle(review.title, review.thumbnailText, review.titlePromise)}
+                  disabled={!review.titlePromise}
+                  className={`rounded-md px-2.5 py-1 text-[11px] font-medium ${
+                    confirmedTitle === review.title
+                      ? "bg-accent/20 text-accent"
+                      : "bg-accent text-white hover:bg-accent-strong disabled:opacity-40"
+                  }`}
+                >
+                  {confirmedTitle === review.title ? "✓ 확정됨" : "이 제목으로 확정"}
+                </button>
+                {!review.titlePromise && (
+                  <span className="text-[10px] text-amber-600">
+                    이 제목이 약속하는 게 없어요 — 괴리를 넣어 다시 써보세요.
+                  </span>
+                )}
+              </div>
+
+              {review.alternatives.length > 0 && (
+                <div className="mt-2 border-t border-zinc-200 dark:border-zinc-800 pt-1.5">
+                  <p className="text-[10px] font-semibold text-zinc-500">참고 대안</p>
+                  <ul className="mt-1 grid gap-1">
+                    {review.alternatives.map((a, i) => (
+                      <li key={i} className="flex items-start gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p>{a.title}</p>
+                          {a.why && <p className="text-[10px] text-zinc-500">↳ {a.why}</p>}
+                        </div>
+                        <button
+                          onClick={() => setOwnTitle(a.title)}
+                          className="shrink-0 rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 text-[10px] hover:bg-zinc-100 dark:hover:bg-zinc-900"
+                        >
+                          입력창에
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 전체 구조 검수(열린 고리) + 최종 조립 출력 */}
@@ -1234,6 +1438,23 @@ export default function LongformStudio({
           </a>
         </div>
       )}
+
+      {/* 고정 푸터에 가리지 않게 여백 */}
+      <div className="h-16" />
+
+      {/* 롱폼 제작 비용 — 롱폼 자신 + 세그먼트 전부 + 진행자 합산(숏폼 Studio 와 같은 위치). */}
+      <div className="fixed bottom-0 inset-x-0 z-40 border-t border-zinc-200/70 dark:border-zinc-800/70 bg-white/90 dark:bg-black/80 backdrop-blur px-4 py-2.5">
+        <p className="md:max-w-2xl md:mx-auto text-center text-xs text-zinc-600 dark:text-zinc-300">
+          롱폼 제작 비용 <span className="font-semibold text-accent">{cost?.totalKrw ?? "₩0"}</span>
+          {cost?.segments && (
+            <span className="ml-1.5 text-[10px] text-zinc-500">
+              (세그먼트 {cost.segCount ?? 0}편 {cost.segments}
+              {cost.host ? ` · 진행자 ${cost.host}` : ""}
+              {cost.own ? ` · 대본·썸네일 ${cost.own}` : ""})
+            </span>
+          )}
+        </p>
+      </div>
     </main>
   );
 }
