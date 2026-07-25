@@ -2859,21 +2859,26 @@ export default function Studio({
                 {critique.verdict}
               </p>
             )}
-            <div className="mt-3 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setCritiqueSel(new Set(critique.fixes.map((f) => f.id)))}
-                className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-2.5 py-1 text-[11px] hover:bg-zinc-50 dark:hover:bg-zinc-900"
-              >
-                전체 선택
-              </button>
-              <button
-                type="button"
-                onClick={() => setCritiqueSel(new Set())}
-                className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-2.5 py-1 text-[11px] hover:bg-zinc-50 dark:hover:bg-zinc-900"
-              >
-                전체 해제
-              </button>
+            {/* A안(씬 수정)·B안(반전 씬 추가)은 보통 둘 중 하나를 고르는 것이라 한 번에 잡히게. */}
+            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+              {(
+                [
+                  ["전체 선택", () => new Set(critique.fixes.map((f) => f.id))],
+                  ["A안만", () => new Set(critique.fixes.filter((f) => f.plan === "A").map((f) => f.id))],
+                  ["B안만", () => new Set(critique.fixes.filter((f) => f.plan === "B").map((f) => f.id))],
+                  ["높음만", () => new Set(critique.fixes.filter((f) => f.severity === "high").map((f) => f.id))],
+                  ["전체 해제", () => new Set<string>()],
+                ] as [string, () => Set<string>][]
+              ).map(([label, make]) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => setCritiqueSel(make())}
+                  className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-2.5 py-1 text-[11px] hover:bg-zinc-50 dark:hover:bg-zinc-900"
+                >
+                  {label}
+                </button>
+              ))}
               <span className="ml-auto text-[11px] text-zinc-400">
                 {critiqueSel.size}/{critique.fixes.length} 선택
               </span>
@@ -2980,9 +2985,15 @@ export default function Studio({
                 닫기
               </button>
             </div>
-            <p className="mt-2 text-[11px] text-zinc-400">
-              리포트 전문은 아래 “스크립트 다듬기” 대화 로그에 남아 있어요.
-            </p>
+            {/* 전문은 접어 둔다 — 펼치고 싶을 때만. 기본으로 펼쳐 두면 예전처럼 글 덩어리가 된다. */}
+            <details className="mt-3 rounded-lg border border-zinc-200 dark:border-zinc-800">
+              <summary className="cursor-pointer select-none px-3 py-2 text-[11px] text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">
+                📄 검수 리포트 전문 보기 (근거·판정 이유)
+              </summary>
+              <pre className="max-h-72 overflow-y-auto whitespace-pre-wrap break-words border-t border-zinc-200 dark:border-zinc-800 px-3 py-2 text-[11px] leading-relaxed text-zinc-600 dark:text-zinc-300">
+                {critique.report}
+              </pre>
+            </details>
           </div>
         </div>
       )}

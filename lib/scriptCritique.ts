@@ -56,7 +56,7 @@ export interface CritiqueResult {
 
 // 리포트(자연어) → 반영 항목 배열. 검색이 도는 1차 호출에 JSON 까지 시키면 서버 도구
 // 루프와 섞여 형식이 깨지므로, 도구 없는 2차 호출로 분리해 옮겨 적기만 시킨다.
-const EXTRACT_INSTRUCTION = `위 검수 리포트를 그대로 옮겨 적어 JSON 으로만 답해라. 새로운 판단·새 제안을 만들지 말고, 리포트에 이미 있는 내용만 항목으로 쪼개라.
+export const EXTRACT_INSTRUCTION = `위 검수 리포트를 그대로 옮겨 적어 JSON 으로만 답해라. 새로운 판단·새 제안을 만들지 말고, 리포트에 이미 있는 내용만 항목으로 쪼개라.
 
 {"verdict":"각도 유지/전환 권고 한 줄","fixes":[{"kind":"edit"|"insert","plan":"A"|"B","scene":정수(1-based),"severity":"high"|"mid"|"low","issue":"문제 한 줄","grade":"공식|보도|관찰|추측","original":"원문 문장(insert 면 빈 문자열)","revised":"반영할 나레이션 전문","sources":["url"],"image":"keep"|"regen"}]}
 
@@ -67,7 +67,7 @@ const EXTRACT_INSTRUCTION = `위 검수 리포트를 그대로 옮겨 적어 JSO
 - 리포트에 근거 URL 이 있으면 sources 에 담아라. 없으면 생략.
 - JSON 외 다른 텍스트를 쓰지 마라.`;
 
-function parseFixes(raw: string): { fixes: CritiqueFix[]; verdict: string } {
+export function parseFixes(raw: string): { fixes: CritiqueFix[]; verdict: string } {
   const m = raw.match(/\{[\s\S]*\}/);
   if (!m) return { fixes: [], verdict: "" };
   let obj: { verdict?: unknown; fixes?: unknown };

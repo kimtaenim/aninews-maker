@@ -40,14 +40,19 @@ export async function POST(req: NextRequest) {
     // 체크박스로 고를 반영 목록은 따로 저장 — 새로고침해도 살아 있어야 한다(지문 포함).
     await saveCritiqueLog(projectId, { report, fixes, verdict, searched }, narrations);
 
-    // 리포트 전문도 스크립트 대화 로그에 남긴다(이력·근거 확인용). 씬은 안 건드린다.
+    // 대화 로그에는 한 줄 요약만 남긴다. 리포트 전문을 여기 쏟으면 화면이 글 덩어리가 되고
+    // (사용자가 고치라고 한 바로 그 문제), 전문은 critique 로그에 있어 모달에서 펼쳐 본다.
     // 저장 직전 fresh 재읽기 — 검수가 수 분 걸려 그동안 다른 편집이 들어왔을 수 있다.
     const fresh = (await getProject(projectId)) ?? project;
     const now = Date.now();
-    const header = searched ? "🔎 비판 검수 (웹 검색 확인)" : "⚠️ 비판 검수 (웹 검색이 돌지 않음 — 검증 신뢰도 낮음)";
+    const header = searched ? "🔎 비판 검수 완료" : "⚠️ 비판 검수 완료 (웹 검색이 돌지 않음 — 신뢰도 낮음)";
+    const summary =
+      fixes.length > 0
+        ? `${header} — 반영안 ${fixes.length}건을 체크박스로 정리했어요. 위 “체크해서 반영하기”에서 고르세요.`
+        : `${header} — 반영할 항목은 없어요. 리포트 전문은 검수 결과 창에서 볼 수 있어요.`;
     fresh.steps.script.chat.push(
       { role: "user", text: "[비판 검수 실행]", ts: now },
-      { role: "assistant", text: `${header}\n\n${report}`, ts: now }
+      { role: "assistant", text: summary, ts: now }
     );
     fresh.steps.script.updatedAt = now;
     fresh.updatedAt = now;
