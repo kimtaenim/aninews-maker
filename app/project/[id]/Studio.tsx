@@ -3496,32 +3496,35 @@ export default function Studio({
 
             {/* 승인(다음 단계) + 스크립트 전체 복사. 복사는 1씬~마지막씬 나레이션을 클립보드로
                 (클로드 등에서 직접 검토·다듬기 용). */}
-            <div className="mt-3 flex flex-col sm:flex-row sm:items-stretch gap-2">
-              {!scriptApproved ? (
-                <button
-                  type="button"
-                  onClick={() => doApprove()}
-                  disabled={busy !== null || reviewBusy}
-                  className="flex-1 rounded-xl bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-semibold py-3 transition-colors"
-                >
-                  {busy === "approve-script" ? (
-                    <Busy>승인 중…</Busy>
-                  ) : (
-                    "✓ 스크립트 승인하고 키프레임 단계로 →"
-                  )}
-                </button>
-              ) : (
-                <p className="flex-1 self-center text-xs text-accent font-medium">
-                  ✓ 스크립트 승인됨 — 아래 키프레임 단계로 진행하세요.
-                </p>
-              )}
+            {/* 승인은 다음 단계로 가는 주 동작이라 한 줄을 통째로 쓴다. 보조 도구(다듬기·검수·
+                제목·복사)는 아래 행에 모아 감싸기 — 한 줄에 다 밀어넣으면 좁은 화면에서
+                버튼이 글자 한 자 폭으로 찌그러져 세로로 흐른다. */}
+            {!scriptApproved ? (
+              <button
+                type="button"
+                onClick={() => doApprove()}
+                disabled={busy !== null || reviewBusy}
+                className="mt-3 w-full rounded-xl bg-accent hover:bg-accent-strong disabled:opacity-40 text-white font-semibold py-3 transition-colors"
+              >
+                {busy === "approve-script" ? (
+                  <Busy>승인 중…</Busy>
+                ) : (
+                  "✓ 스크립트 승인하고 키프레임 단계로 →"
+                )}
+              </button>
+            ) : (
+              <p className="mt-3 rounded-xl border border-accent/30 bg-accent/5 px-4 py-2.5 text-xs font-medium text-accent">
+                ✓ 스크립트 승인됨 — 아래 키프레임 단계로 진행하세요.
+              </p>
+            )}
+            <div className="mt-2 flex flex-wrap gap-2">
               {project.mode !== "cliche" && !scriptApproved && (
                 <button
                   type="button"
                   onClick={() => runReview()}
                   disabled={busy !== null || reviewBusy}
                   title="열린 고리 구조로 대본 다듬기 — 진단·수정안을 미리 보고 고친 뒤 승인하세요 (승인은 안 함)"
-                  className="shrink-0 rounded-xl border border-accent px-4 py-3 sm:py-0 text-sm font-medium text-accent hover:bg-accent/10 disabled:opacity-40 transition-colors"
+                  className="whitespace-nowrap rounded-lg border border-accent px-3 py-2 text-sm font-medium text-accent hover:bg-accent/10 disabled:opacity-40 transition-colors"
                 >
                   {reviewBusy ? "다듬는 중…" : "✍️ 대본 다듬기"}
                 </button>
@@ -3532,7 +3535,7 @@ export default function Studio({
                   onClick={() => sendScriptChat(LOOP_ALIGN_PROMPT)}
                   disabled={busy !== null || reviewBusy}
                   title="내용은 그대로 두고, 열린 고리 순서로 정렬 + 각 씬을 더 간결하게 (씬 개수 불변)"
-                  className="shrink-0 rounded-xl border border-accent px-4 py-3 sm:py-0 text-sm font-medium text-accent hover:bg-accent/10 disabled:opacity-40 transition-colors"
+                  className="whitespace-nowrap rounded-lg border border-accent px-3 py-2 text-sm font-medium text-accent hover:bg-accent/10 disabled:opacity-40 transition-colors"
                 >
                   {busy === "script-chat" ? "정렬 중…" : `🔗 ${LOOP_ALIGN_LABEL}`}
                 </button>
@@ -3543,7 +3546,7 @@ export default function Studio({
                   onClick={() => runCritique()}
                   disabled={busy !== null || reviewBusy}
                   title="웹 검색으로 반대편 사실을 찾아 일방적 대본을 검수 — 리포트만 내고 동의 전엔 안 고침"
-                  className="shrink-0 rounded-xl border border-amber-500 px-4 py-3 sm:py-0 text-sm font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 disabled:opacity-40 transition-colors"
+                  className="whitespace-nowrap rounded-lg border border-amber-500 px-3 py-2 text-sm font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 disabled:opacity-40 transition-colors"
                 >
                   {busy === "script-critique" ? "검색·검수 중…" : `🔎 ${CRITIQUE_LABEL}`}
                 </button>
@@ -3565,7 +3568,7 @@ export default function Studio({
                   }}
                   disabled={titleGenBusy}
                   title="확정 대본으로 제목 후보 생성(맨 위 ✨ 추천 제목에 표시)"
-                  className="shrink-0 rounded-xl border border-accent px-4 py-3 sm:py-0 text-sm font-medium text-accent hover:bg-accent/10 disabled:opacity-40 transition-colors"
+                  className="whitespace-nowrap rounded-lg border border-accent px-3 py-2 text-sm font-medium text-accent hover:bg-accent/10 disabled:opacity-40 transition-colors"
                 >
                   {titleGenBusy ? "생성 중…" : "✨ 제목 생성"}
                 </button>
@@ -3574,7 +3577,7 @@ export default function Studio({
                 type="button"
                 onClick={copyScript}
                 title="1씬부터 마지막 씬까지 스크립트를 클립보드에 복사 — 클로드 등에 붙여넣어 검토·다듬기"
-                className="shrink-0 rounded-xl border border-zinc-300 dark:border-zinc-700 px-4 py-3 sm:py-0 text-sm font-medium hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+                className="whitespace-nowrap rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-2 text-sm font-medium hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
               >
                 {copiedScript ? "✓ 복사됨" : "📋 스크립트 복사"}
               </button>
