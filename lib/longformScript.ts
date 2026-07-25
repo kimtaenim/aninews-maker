@@ -9,7 +9,7 @@
 import { getAnthropic, MODELS } from "./anthropic";
 import { anthropicCostUsd, recordCost } from "./cost";
 import { LONGFORM_SCRIPT_SYSTEM_PROMPT } from "./longformScriptPrompt";
-import { screenScript } from "./longformScreening";
+import { screenScript, type ScriptScreenResult } from "./longformScreening";
 import principles from "../config/longform-principles.json";
 import eyecatchConfig from "../config/eyecatch.json";
 import type { LongformBridge, LongformScriptPackage } from "./types";
@@ -185,11 +185,36 @@ export async function generateLongformScript(args: {
     return parse(blocks.map((b) => b.text).join("").trim(), input);
   };
 
+  // 진행자 길이 예산은 모델이 자주 무시한다(실측: 오프닝 15초·브리지 18초). 그래서
+  // 길이 위반이 남아 있으면 "현재 글자 수 → 목표 글자 수"를 숫자로 못박아 최대 2회 더 조인다.
+  const overLengthNote = (p: LongformScriptPackage, s: ScriptScreenResult): string => {
+    const chars = (...t: string[]) => t.map((x) => (x ?? "").trim().length).reduce((a, b) => a + b, 0);
+    const lines: string[] = [
+      `앞선 대본이 진행자 길이 예산을 넘겼다: ${s.violations.join("; ")}.`,
+      "진행자 구간은 무조건 짧아야 한다. 아래 목표 글자 수(공백 포함)에 맞춰 문장을 잘라라.",
+      "내용을 지키려 하지 말고 길이를 지켜라 — 핵심 한 조각만 남기고 나머지는 버린다.",
+      `· 오프닝 블록 A: 현재 ${chars(p.opening.blockAHook)}자 → 목표 18자 이하(한 문장)`,
+      `· 오프닝 블록 B: 현재 ${chars(p.opening.blockBRoadmapLanding)}자 → 목표 20자 이하(한 문장)`,
+    ];
+    p.bridges.forEach((b, i) => {
+      lines.push(
+        `· 브리지 ${i + 1}: 현재 ${chars(b.emphasis, b.elevation, b.opening)}자 → 방점·승격·개방 합쳐 27자 이하`
+      );
+    });
+    lines.push(`· 엔딩 파트 A: 현재 ${chars(p.ending.partAClose)}자 → 목표 21자 이하`);
+    lines.push(`· 엔딩 파트 B: 현재 ${chars(p.ending.partBLanding)}자 → 목표 16자 이하`);
+    lines.push("파트 C(구독 표준 문구)는 고정이니 건드리지 마라. 전체 JSON 을 다시 출력하라.");
+    return lines.join("\n");
+  };
+
   let pkg = await call();
   let screen = pkg ? screenScript(pkg, input.constituents.length) : null;
-  if (!pkg || (screen && screen.violations.length > 0)) {
-    const note = pkg
-      ? `앞선 대본에서 원칙 위반이 잡혔다: ${screen!.violations.join("; ")}. 지적된 부분만 고쳐 전체 JSON 을 다시 출력하라. 특히 25초 규칙은 글자 수로 맞춰라(5.4자/초 = 4.5×1.2배).`
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (pkg && screen && screen.violations.length === 0) break;
+    const note = pkg && screen
+      ? screen.violations.some((v) => /초 초과|문장 초과/.test(v))
+        ? overLengthNote(pkg, screen)
+        : `앞선 대본에서 원칙 위반이 잡혔다: ${screen.violations.join("; ")}. 지적된 부분만 고쳐 전체 JSON 을 다시 출력하라.`
       : "JSON 형식이 어긋났다. 지정된 JSON 만 정확히 다시 출력하라.";
     const retry = await call(note);
     const retryScreen = retry ? screenScript(retry, input.constituents.length) : null;

@@ -405,6 +405,23 @@ export default function LongformStudio({
   // [롱폼] 섹션(2~3세그 부분 합성 단위) 로컬 상태 — 폴링으로 갱신.
   const [secList, setSecList] = useState<LongformSection[]>(project.sections ?? []);
 
+  // ★ 서버가 새 prop 을 내려주면 로컬 상태에 반영한다.
+  // useState(initial) 는 최초 1회만 쓰이므로, router.refresh() 로 서버 컴포넌트가 다시
+  // 그려져도 여기 상태는 옛 값 그대로였다 — "생성했는데 화면에 안 뜬다"의 원인.
+  // (대본 생성이 순서를 재배치하거나, 진행자 씬을 새로 만들었을 때 특히 티가 났다.)
+  useEffect(() => {
+    setSegs(segments);
+  }, [segments]);
+  useEffect(() => {
+    setSecList(project.sections ?? []);
+  }, [project.sections]);
+  useEffect(() => {
+    setFinalUrl(project.finalVideoUrl);
+  }, [project.finalVideoUrl]);
+  useEffect(() => {
+    setLfTitle(project.title);
+  }, [project.title]);
+
   const readyCount = segs.filter((s) => s.finalVideoUrl).length;
   const allReady = segs.length > 0 && readyCount === segs.length;
   const hasSections = secList.length > 0;
