@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
     제목호응: s?.screening["제목호응"] ?? "미생성",
     고리일치: s?.screening["고리일치"] ?? "미생성",
     조기폐쇄: s?.screening["조기폐쇄"] ?? "미생성",
-    "25초규칙": screen?.computed["25초규칙"] ?? "미생성",
+    진행자길이: screen?.computed["진행자길이"] ?? "미생성",
     척추검수: s?.screening["척추검수"] ?? "미생성",
     "20초검수": s?.screening["20초검수"] ?? "미생성",
     썸네일검수: th

@@ -9,6 +9,13 @@ import { getAnthropic, MODELS } from "./anthropic";
 import { anthropicCostUsd, recordCost } from "./cost";
 import { TITLE_SYSTEM_PROMPT } from "./titlePrompt";
 import { violatesBanned } from "./titleBanned";
+import principles from "../config/title-principles.json";
+
+// 원칙은 config/title-principles.json 단일 원천 — 검수기(titleReview)도 같은 파일을 읽는다.
+// 프롬프트에 원칙을 하드코딩하면 사본이 갈라져 생성기 결과를 검수기가 탈락시킨다.
+export function buildTitleSystem(): string {
+  return TITLE_SYSTEM_PROMPT.replace("{{PRINCIPLES}}", JSON.stringify(principles, null, 2));
+}
 
 export interface TitleCandidate {
   title: string;
@@ -96,7 +103,7 @@ export async function generateTitles(args: {
     const r = await client.messages.create({
       model: MODELS.sonnet,
       max_tokens: 1500,
-      system: TITLE_SYSTEM_PROMPT,
+      system: buildTitleSystem(),
       messages: [{ role: "user", content: user }],
     });
     const textBlocks = r.content.filter(
