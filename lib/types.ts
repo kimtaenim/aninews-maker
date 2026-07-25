@@ -358,11 +358,8 @@ export interface Project {
   lang?: string; // 이 프로젝트 나레이션 언어. 원본(한국어)은 비움, 다국어판은 en/es/ja/vi.
   sourceProjectId?: string; // 다국어판이면 원본 프로젝트 id (라이브러리 그룹·검색용).
   ownerEmail?: string; // 만든 사람(로그인 이메일). 비면 관리자(ADMIN_EMAIL) 소유로 본다.
-  category?: string; // [레거시] 업로드 파일명용 분야. 지금은 uploadKeyword 사용.
-  uploadKeyword?: string; // 업로드 파일명용 영어 한 단어 키워드(Claude 가 내용 보고 작명, 첫 업로드 시 저장).
-  driveLink?: string; // Drive 업로드된 파일 보기 링크.
-  driveFileName?: string; // 마지막 업로드 파일명(날짜-번호-분야-언어). UI 표시·번호 확인용.
-  driveUploadedUrl?: string; // 업로드 당시의 finalVideoUrl — 이게 현재 값과 다르면(재합성) 다시 업로드 버튼.
+  // (드라이브 업로드 관련 필드 category·uploadKeyword·driveLink·driveFileName·
+  //  driveUploadedUrl 은 기능과 함께 제거됨. 옛 프로젝트에 남아 있어도 읽는 곳이 없다.)
   createdAt: number;
   updatedAt: number;
 }

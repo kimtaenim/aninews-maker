@@ -71,10 +71,20 @@ export function screenScript(pkg: LongformScriptPackage, segmentCount: number): 
   pkg.bridges.forEach((b, i) => {
     scanBans(`브리지 ${i + 1}`, `${b.emphasis} ${b.elevation} ${b.opening}`, v);
     if (EMPTY_ELEVATION.test(b.elevation)) v.push(`브리지 ${i + 1}: 승격이 빈 말("시작에 불과" 류)`);
-    // 브리지는 3~5초 — 3역할을 짧게 압축한다(역할당 반 문장 수준).
+    // 브리지는 3~5초 — 3역할을 짧게 압축한다(역할당 상한: 방점 10자·승격 8자·개방 10자).
+    // 합계만 보면 모델이 한 역할에 몰아 쓰므로 역할별로도 잡는다.
     const joined = `${b.emphasis} ${b.elevation} ${b.opening}`;
     const sec = speakSeconds(joined);
     if (sec > BRIDGE_BUDGET) v.push(`브리지 ${i + 1}: ${sec}초 — ${BRIDGE_BUDGET}초 초과`);
+    const cap: [string, string, number][] = [
+      ["방점", b.emphasis, 10],
+      ["승격", b.elevation, 8],
+      ["개방", b.opening, 10],
+    ];
+    for (const [role, text, max] of cap) {
+      const n = (text ?? "").trim().length;
+      if (n > max) v.push(`브리지 ${i + 1} ${role}: ${n}자 — ${max}자 초과`);
+    }
   });
   const bridgeMax = pkg.bridges.length
     ? Math.max(...pkg.bridges.map((b) => speakSeconds(b.emphasis, b.elevation, b.opening)))

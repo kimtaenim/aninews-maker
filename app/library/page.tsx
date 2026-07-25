@@ -47,13 +47,11 @@ export default async function LibraryPage({
   const pageHref = (p: number, n = size) =>
     `/library?${[p > 1 ? `page=${p}` : "", n !== 60 ? `n=${n}` : ""].filter(Boolean).join("&")}`.replace(/\?$/, "");
 
-  // 드라이브 업로드 완료(재합성 안 됨)는 뒤로, 아직 안 올린 것·재업로드 필요한 것은 앞으로.
-  const isUploaded = (p: Project) => !!p.driveLink && p.driveUploadedUrl === p.finalVideoUrl;
   // 롱폼·세그먼트는 일반 라이브러리에서 제외(롱폼 탭에서 폴더로 관리).
+  // 정렬은 최신순 그대로 — 드라이브 업로드 기능을 없애서 "업로드 완료본 뒤로"는 사라졌다.
   const shown = projects
     .filter((p) => matchesQuery(p, terms))
-    .filter((p) => !isLongform(p) && !p.longformId)
-    .sort((a, b) => Number(isUploaded(a)) - Number(isUploaded(b)));
+    .filter((p) => !isLongform(p) && !p.longformId);
 
   return (
     <main className="px-4 py-8 md:max-w-2xl md:mx-auto">

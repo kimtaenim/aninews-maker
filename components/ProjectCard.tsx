@@ -1,6 +1,5 @@
 import Link from "next/link";
 import DeleteButton from "@/app/library/DeleteButton";
-import DriveUploadButton from "@/app/library/DriveUploadButton";
 import { STEP_ORDER, type Project } from "@/lib/types";
 import { getLang } from "@/lib/languages";
 import { ADMIN_EMAIL } from "@/lib/auth";
@@ -62,14 +61,6 @@ export default function ProjectCard({ p }: { p: Project }) {
           </p>
         </div>
       </Link>
-      {p.finalVideoUrl && (
-        <DriveUploadButton
-          projectId={p.id}
-          driveLink={p.driveLink}
-          fileName={p.driveFileName}
-          uploaded={!!p.driveLink && p.driveUploadedUrl === p.finalVideoUrl}
-        />
-      )}
     </li>
   );
 }

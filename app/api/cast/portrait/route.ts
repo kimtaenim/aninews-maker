@@ -20,6 +20,7 @@ export async function POST(req: NextRequest) {
     archetype?: string;
     description?: string;
     uploadUrl?: string;
+    quality?: string; // "low" | "medium"(기본) | "high"
   };
   try {
     body = await req.json();
@@ -54,6 +55,8 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    const quality =
+      body.quality === "low" || body.quality === "high" ? body.quality : undefined;
     const { url, costUsd } = await generatePortrait({
       blobPrefix: projectId ? `project/${projectId}` : `casting/${draftId}`,
       projectId: projectId || undefined,
@@ -62,6 +65,7 @@ export async function POST(req: NextRequest) {
       archetype: archetype || undefined,
       description: description || undefined,
       faceImageUrl: uploadUrl || undefined,
+      ...(quality ? { quality } : {}),
     });
     return NextResponse.json({ ok: true, url, cost: formatKrw(costUsd) });
   } catch (e) {
