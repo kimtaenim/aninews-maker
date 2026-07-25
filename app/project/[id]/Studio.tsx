@@ -21,6 +21,7 @@ import { resolveLang, otherLanguages } from "@/lib/languages";
 import Spinner from "@/components/Spinner";
 import ScenePreview from "./ScenePreview";
 import type { ScriptReviewResult } from "@/lib/scriptReview";
+import type { CritiqueFix } from "@/lib/scriptCritique";
 import { LOOP_ALIGN_PROMPT, LOOP_ALIGN_LABEL, CRITIQUE_LABEL } from "@/lib/scriptButtons";
 import SceneVideoThumb, { useActiveRow } from "./SceneVideoThumb";
 import CaptionControls from "./CaptionControls";
@@ -199,6 +200,7 @@ export default function Studio({
   tts,
   initialTitles,
   initialReview,
+  initialCritique,
 }: {
   project: Project;
   styleProfiles: { id: string; label: string }[];
@@ -214,6 +216,13 @@ export default function Studio({
     seoKeywords: string[];
   } | null;
   initialReview?: { result: ScriptReviewResult } | null;
+  initialCritique?: {
+    report: string;
+    fixes: CritiqueFix[];
+    verdict: string;
+    searched: boolean;
+    applied?: { ids: string[] };
+  } | null;
 }) {
   const [project, setProject] = useState<Project>(initial);
   // 롱폼(가로 16:9) 프로젝트면 이미지·미리보기 종횡비를 가로로. 없으면 세로 9:16(기존).
@@ -545,6 +554,20 @@ export default function Studio({
   // 위반이면 reviewData 만 심어두고 모달은 자동으로 안 띄운다('결과 다시 보기'로 복원).
   const [reviewPassed, setReviewPassed] = useState(!!initialReview?.result.pass);
   const [reviewData, setReviewData] = useState<ScriptReviewResult | null>(initialReview?.result ?? null);
+  // 비판 검수 — 리포트 전문은 대화 로그에, 반영안은 체크박스 목록으로(글 나열로는 반영이 불편).
+  const [critique, setCritique] = useState<{
+    report: string;
+    fixes: CritiqueFix[];
+    verdict: string;
+    searched: boolean;
+  } | null>(initialCritique ?? null);
+  const [critiqueOpen, setCritiqueOpen] = useState(false);
+  const [critiqueSel, setCritiqueSel] = useState<Set<string>>(
+    new Set((initialCritique?.fixes ?? []).map((f) => f.id))
+  );
+  const [critiqueApplied, setCritiqueApplied] = useState<Set<string>>(
+    new Set(initialCritique?.applied?.ids ?? [])
+  );
   const [reviewStage, setReviewStage] = useState<null | "consent" | "revise">(null);
   const [selectedRev, setSelectedRev] = useState<Set<number>>(new Set());
   async function saveTitle() {
@@ -2090,8 +2113,8 @@ export default function Studio({
     }
   }
 
-  // 비판 검수 — 웹 검색으로 반대편 사실을 찾아 2부 리포트를 대화 로그에 남긴다(씬은 안 바꿈).
-  // 반영은 사용자가 동의(A/B·씬 지정)해서 아래 스크립트 대화로 요청하면 그때 처리.
+  // 비판 검수 — 웹 검색으로 반대편 사실을 찾아 리포트를 낸다(씬은 안 바꿈).
+  // 리포트 전문은 대화 로그에, 반영안은 체크박스 목록으로. 반영은 사용자가 고른 것만.
   async function runCritique() {
     if (busy !== null) return;
     setError(null);
@@ -2100,10 +2123,93 @@ export default function Studio({
       await flushScenes();
       const data = await call("/api/script/critique", { projectId: project.id });
       setScriptChat(data.chat as typeof scriptChat);
+      const fixes = (data.fixes ?? []) as CritiqueFix[];
+      setCritique({
+        report: data.report as string,
+        fixes,
+        verdict: (data.verdict as string) ?? "",
+        searched: !!data.searched,
+      });
+      // 기본은 전부 체크(시사인 봇과 동일) — 빼고 싶은 것만 풀면 된다.
+      setCritiqueSel(new Set(fixes.map((f) => f.id)));
+      setCritiqueApplied(new Set());
+      if (fixes.length > 0) setCritiqueOpen(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "비판 검수 실패");
     } finally {
       setBusy(null);
+    }
+  }
+
+  // 체크한 항목만 대본에 반영. 두 가지가 섞여 있다:
+  //   edit   — 그 씬의 나레이션을 교체
+  //   insert — 그 씬 "뒤"에 새 씬을 추가(반전 씬)
+  // 삽입은 반드시 씬 번호 내림차순으로 처리한다 — 앞에서부터 넣으면 뒤 항목의 씬 번호가
+  // 밀려 엉뚱한 자리에 들어간다. 마지막 씬(마무리 표준 문구)은 건드리지 않는다.
+  async function applyCritique() {
+    if (!critique) return;
+    const picked = critique.fixes.filter((f) => critiqueSel.has(f.id) && !critiqueApplied.has(f.id));
+    if (picked.length === 0) return;
+    const lastNum = scenesRef.current.length; // 1-based 마지막 씬 = 마무리(잠금)
+
+    let next = scenesRef.current.map((s) => ({ ...s }));
+    // 같은 씬을 고치는 edit 가 여럿이면 먼저 온 것만 — 뒤엣것이 앞엣것을 덮어쓰는 걸 막는다.
+    const editedScenes = new Set<number>();
+    for (const f of picked) {
+      if (f.kind !== "edit") continue;
+      if (f.scene > lastNum || f.scene === lastNum) continue; // 마무리 잠금
+      if (editedScenes.has(f.scene)) continue;
+      editedScenes.add(f.scene);
+      next[f.scene - 1] = { ...next[f.scene - 1], narration: f.revised };
+    }
+    for (const f of [...picked].filter((f) => f.kind === "insert").sort((a, b) => b.scene - a.scene)) {
+      const at = Math.min(f.scene, lastNum - 1); // 마무리 앞까지만 삽입
+      if (at < 0) continue;
+      next = [
+        ...next.slice(0, at),
+        { narration: f.revised, imagePrompt: "", motion: "", durationSec: estimateDuration(f.revised) },
+        ...next.slice(at),
+      ];
+    }
+
+    // 미디어 배열(project.scenes)도 같은 길이·순서로 맞춘다 — 편집 그리드와 저장 라우트가
+    // 두 배열을 index 로 묶으므로 어긋나면 이미지·음성이 엉뚱한 씬에 붙는다.
+    const media: Scene[] = next.map((s, idx) => {
+      const prev = project.scenes[idx];
+      const same = prev && (prev.narration ?? "").trim() === (s.narration ?? "").trim();
+      return same
+        ? { ...prev, index: idx, narration: s.narration ?? "" }
+        : {
+            index: idx,
+            narration: s.narration ?? "",
+            imagePrompt: "",
+            motion: "",
+            durationSec: s.durationSec ?? estimateDuration(s.narration ?? ""),
+            status: "generated" as const,
+          };
+    });
+
+    try {
+      const r = await fetch("/api/script/scenes", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId: project.id, scenes: media }),
+      });
+      const data = await r.json();
+      if (!r.ok || !data.ok) throw new Error(data.error || "반영 실패");
+      const saved = data.scenes as Scene[];
+      setProject((p) => ({ ...p, scenes: saved }));
+      setScenes(saved.map(toEdit));
+      setDirty(false);
+      setCritiqueApplied((prev) => new Set([...prev, ...picked.map((f) => f.id)]));
+      fetch("/api/script/critique/applied", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId: project.id, ids: picked.map((f) => f.id) }),
+      }).catch(() => {});
+      setCritiqueOpen(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "반영 실패");
     }
   }
 
@@ -2731,6 +2837,156 @@ export default function Studio({
       )}
 
       {/* 대본 구조 검수 — 별도 버튼이 띄우는 진단·동의 모달(위반 시). 채택해도 승인은 안 함. */}
+      {/* 비판 검수 반영 — 리포트를 항목으로 쪼개 체크박스로 고르고, 고른 것만 대본에 넣는다.
+          카드 전체가 <label> 이라 어디를 눌러도 토글된다. */}
+      {critiqueOpen && critique && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-3"
+          onClick={() => setCritiqueOpen(false)}
+        >
+          <div
+            className="w-full max-w-xl max-h-[85vh] overflow-y-auto rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-4 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-semibold">🔎 비판 검수 — 반영할 항목 선택</h3>
+            {!critique.searched && (
+              <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
+                ⚠ 웹 검색이 돌지 않았어요 — 검증 신뢰도가 낮습니다.
+              </p>
+            )}
+            {critique.verdict && (
+              <p className="mt-2 text-xs leading-relaxed text-zinc-600 dark:text-zinc-300">
+                {critique.verdict}
+              </p>
+            )}
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setCritiqueSel(new Set(critique.fixes.map((f) => f.id)))}
+                className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-2.5 py-1 text-[11px] hover:bg-zinc-50 dark:hover:bg-zinc-900"
+              >
+                전체 선택
+              </button>
+              <button
+                type="button"
+                onClick={() => setCritiqueSel(new Set())}
+                className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-2.5 py-1 text-[11px] hover:bg-zinc-50 dark:hover:bg-zinc-900"
+              >
+                전체 해제
+              </button>
+              <span className="ml-auto text-[11px] text-zinc-400">
+                {critiqueSel.size}/{critique.fixes.length} 선택
+              </span>
+            </div>
+            <ul className="mt-2 grid gap-2">
+              {critique.fixes.map((f) => {
+                const done = critiqueApplied.has(f.id);
+                // 마무리(마지막 씬)는 표준 문구라 잠금 — 다듬기 모달과 같은 규칙.
+                const locked = f.kind === "edit" && f.scene >= scenesRef.current.length;
+                const sevColor =
+                  f.severity === "high"
+                    ? "bg-red-600"
+                    : f.severity === "low"
+                      ? "bg-zinc-400"
+                      : "bg-amber-500";
+                return (
+                  <li key={f.id}>
+                    <label
+                      className={
+                        "flex items-start gap-2 rounded-lg border p-2 transition-colors " +
+                        (done || locked
+                          ? "opacity-50 border-zinc-200 dark:border-zinc-800"
+                          : "border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900 has-[:checked]:border-accent has-[:checked]:bg-accent/5")
+                      }
+                    >
+                      <input
+                        type="checkbox"
+                        disabled={done || locked}
+                        checked={!done && !locked && critiqueSel.has(f.id)}
+                        onChange={(e) =>
+                          setCritiqueSel((prev) => {
+                            const n = new Set(prev);
+                            if (e.target.checked) n.add(f.id);
+                            else n.delete(f.id);
+                            return n;
+                          })
+                        }
+                        className="mt-1"
+                      />
+                      <div className="min-w-0 flex-1 text-[11px]">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium text-white ${sevColor}`}>
+                            {f.severity === "high" ? "높음" : f.severity === "low" ? "낮음" : "보통"}
+                          </span>
+                          <span className="rounded bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 text-[10px]">
+                            {f.kind === "insert" ? `씬 ${f.scene} 뒤에 추가` : `씬 ${f.scene} 수정`}
+                          </span>
+                          <span className="text-[10px] text-zinc-400">{f.plan}안</span>
+                          {f.grade && <span className="text-[10px] text-zinc-400">· {f.grade}</span>}
+                          {f.image && (
+                            <span
+                              className={
+                                "text-[10px] " +
+                                (f.image === "regen" ? "text-amber-600 dark:text-amber-400" : "text-zinc-400")
+                              }
+                            >
+                              · 그림 {f.image === "regen" ? "재생성 필요" : "그대로"}
+                            </span>
+                          )}
+                          {done && <span className="text-[10px] text-emerald-600">· 반영됨</span>}
+                          {locked && <span className="text-[10px] text-zinc-400">· 마무리 잠금</span>}
+                        </div>
+                        {f.issue && <p className="mt-1 text-zinc-500">{f.issue}</p>}
+                        {f.original && (
+                          <p className="mt-1 text-zinc-400 line-through">{f.original}</p>
+                        )}
+                        <p className="mt-0.5 text-zinc-800 dark:text-zinc-100">{f.revised}</p>
+                        {f.sources && f.sources.length > 0 && (
+                          <p className="mt-1 flex flex-wrap gap-1.5">
+                            {f.sources.map((u, k) => (
+                              <a
+                                key={k}
+                                href={u}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-[10px] text-accent underline hover:no-underline"
+                              >
+                                근거{k + 1}
+                              </a>
+                            ))}
+                          </p>
+                        )}
+                      </div>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={applyCritique}
+                disabled={critiqueSel.size === 0}
+                className="flex-1 rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 py-2 text-sm font-medium text-white"
+              >
+                선택 반영 ({critiqueSel.size}건)
+              </button>
+              <button
+                type="button"
+                onClick={() => setCritiqueOpen(false)}
+                className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-2 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-900"
+              >
+                닫기
+              </button>
+            </div>
+            <p className="mt-2 text-[11px] text-zinc-400">
+              리포트 전문은 아래 “스크립트 다듬기” 대화 로그에 남아 있어요.
+            </p>
+          </div>
+        </div>
+      )}
+
       {reviewStage && reviewData && (
         <div
           className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-3"
@@ -3323,6 +3579,24 @@ export default function Studio({
                 {copiedScript ? "✓ 복사됨" : "📋 스크립트 복사"}
               </button>
             </div>
+            {critique && critique.fixes.length > 0 && !critiqueOpen && (
+              <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                🔎 비판 검수 반영안 {critique.fixes.length}건
+                {critiqueApplied.size > 0 ? ` (${critiqueApplied.size}건 반영됨)` : ""}.{" "}
+                <button
+                  type="button"
+                  onClick={() => setCritiqueOpen(true)}
+                  className="font-medium underline hover:no-underline"
+                >
+                  체크해서 반영하기
+                </button>
+              </p>
+            )}
+            {critique && critique.fixes.length === 0 && (
+              <p className="mt-2 text-xs text-zinc-500">
+                🔎 비판 검수 완료 — 반영할 항목이 없어요. 리포트 전문은 아래 대화 로그에 있습니다.
+              </p>
+            )}
             {reviewPassed && !reviewBusy && (
               <p className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">
                 ✓ 다듬을 곳 없어요 — 열린 고리 구조 확인됨

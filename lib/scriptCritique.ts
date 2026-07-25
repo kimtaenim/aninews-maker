@@ -30,10 +30,78 @@ type MsgParam = { role: "user" | "assistant"; content: unknown };
 // 한도가 먼저 소진돼 "검증 보류"만 나온다 — 실측 후 20회로 상향(2026-07-25).
 const WEB_SEARCH_TOOL = { type: "web_search_20260209", name: "web_search", max_uses: 20 };
 
+// 리포트를 체크박스로 고를 수 있게 쪼갠 항목 하나. 글 뭉치를 읽고 손으로 옮기는 대신
+// 항목마다 체크해서 반영한다(사용자 요청 2026-07-25).
+export interface CritiqueFix {
+  id: string;
+  kind: "edit" | "insert"; // 씬 문장 교체 / 그 씬 뒤에 반전 씬 추가
+  plan: "A" | "B"; // 리포트 2부의 A안(씬 수정)·B안(반전 씬 추가) 중 어디서 나왔는지
+  scene: number; // 1-based 씬 번호. insert 면 "이 씬 뒤"에 넣는다.
+  severity: "high" | "mid" | "low";
+  issue: string; // 무엇이 문제인지 한 줄
+  grade?: string; // 공식/보도/관찰/추측
+  original: string; // 원문(교체 대상). insert 면 빈 문자열.
+  revised: string; // 반영할 나레이션 전문
+  sources?: string[]; // 근거 URL
+  image?: "keep" | "regen"; // 기존 그림 그대로 / 재생성 필요
+}
+
 export interface CritiqueResult {
   report: string; // 2부 리포트(그대로 표시)
+  fixes: CritiqueFix[]; // 체크박스로 고를 수 있게 구조화한 반영안
+  verdict: string; // 한 줄 총평(각도 유지/전환/전면 재작성 권고)
   searched: boolean; // 실제로 웹 검색이 돌았는지
   costUsd: number;
+}
+
+// 리포트(자연어) → 반영 항목 배열. 검색이 도는 1차 호출에 JSON 까지 시키면 서버 도구
+// 루프와 섞여 형식이 깨지므로, 도구 없는 2차 호출로 분리해 옮겨 적기만 시킨다.
+const EXTRACT_INSTRUCTION = `위 검수 리포트를 그대로 옮겨 적어 JSON 으로만 답해라. 새로운 판단·새 제안을 만들지 말고, 리포트에 이미 있는 내용만 항목으로 쪼개라.
+
+{"verdict":"각도 유지/전환 권고 한 줄","fixes":[{"kind":"edit"|"insert","plan":"A"|"B","scene":정수(1-based),"severity":"high"|"mid"|"low","issue":"문제 한 줄","grade":"공식|보도|관찰|추측","original":"원문 문장(insert 면 빈 문자열)","revised":"반영할 나레이션 전문","sources":["url"],"image":"keep"|"regen"}]}
+
+규칙:
+- A안(씬 수정)은 kind="edit", B안(반전 씬 추가)은 kind="insert" 로. 둘 다 있으면 둘 다 넣어라.
+- revised 는 그 씬에 그대로 들어갈 나레이션 "전문"이어야 한다(문장 조각·설명문 금지).
+- insert 의 scene 은 새 씬이 들어갈 "앞 씬"의 번호다.
+- 리포트에 근거 URL 이 있으면 sources 에 담아라. 없으면 생략.
+- JSON 외 다른 텍스트를 쓰지 마라.`;
+
+function parseFixes(raw: string): { fixes: CritiqueFix[]; verdict: string } {
+  const m = raw.match(/\{[\s\S]*\}/);
+  if (!m) return { fixes: [], verdict: "" };
+  let obj: { verdict?: unknown; fixes?: unknown };
+  try {
+    obj = JSON.parse(m[0]);
+  } catch {
+    return { fixes: [], verdict: "" };
+  }
+  const list = Array.isArray(obj.fixes) ? obj.fixes : [];
+  const fixes: CritiqueFix[] = [];
+  list.forEach((r, i) => {
+    const f = r as Record<string, unknown>;
+    const revised = String(f.revised ?? "").trim();
+    const scene = Math.trunc(Number(f.scene));
+    // 반영할 문장이 없거나 씬 번호가 없는 항목은 체크해도 할 일이 없다 — 버린다.
+    if (!revised || !Number.isFinite(scene) || scene < 1) return;
+    const sources = Array.isArray(f.sources)
+      ? f.sources.map((s) => String(s)).filter((s) => /^https?:\/\//.test(s))
+      : undefined;
+    fixes.push({
+      id: `${f.kind === "insert" ? "ins" : "ed"}-${scene}-${i}`,
+      kind: f.kind === "insert" ? "insert" : "edit",
+      plan: f.plan === "B" ? "B" : "A",
+      scene,
+      severity: f.severity === "high" || f.severity === "low" ? f.severity : "mid",
+      issue: String(f.issue ?? "").trim(),
+      grade: f.grade ? String(f.grade).trim() : undefined,
+      original: f.kind === "insert" ? "" : String(f.original ?? "").trim(),
+      revised,
+      sources: sources?.length ? sources : undefined,
+      image: f.image === "regen" ? "regen" : f.image === "keep" ? "keep" : undefined,
+    });
+  });
+  return { fixes, verdict: String(obj.verdict ?? "").trim() };
 }
 
 function scriptToNumbered(narrations: string[]): string {
@@ -113,5 +181,42 @@ export async function critiqueScript(args: {
       .join("")
       .trim() || "검수 결과를 받지 못했어요 — 다시 시도해주세요.";
 
-  return { report, searched, costUsd: totalCost };
+  // 2차 호출 — 리포트를 체크박스 항목으로 쪼갠다(도구 없음, 짧고 저렴). 여기서 실패해도
+  // 리포트 자체는 살아 있어야 하므로 조용히 빈 배열로 떨어뜨린다.
+  let fixes: CritiqueFix[] = [];
+  let verdict = "";
+  if (last) {
+    try {
+      const ex = (await client.messages.create({
+        model: MODELS.sonnet,
+        max_tokens: 8000,
+        system: "너는 검수 리포트를 구조화된 JSON 으로 옮겨 적는 변환기다. JSON 만 출력한다.",
+        messages: [
+          { role: "user", content: `[검수 리포트]\n${report}\n\n${EXTRACT_INSTRUCTION}` },
+        ] as never,
+      })) as unknown as Msg;
+      totalCost += anthropicCostUsd({
+        inputTokens: ex.usage.input_tokens,
+        outputTokens: ex.usage.output_tokens,
+        model: MODELS.sonnet,
+      });
+      const parsed = parseFixes(
+        ex.content.filter((b) => b.type === "text").map((b) => b.text ?? "").join("")
+      );
+      fixes = parsed.fixes;
+      verdict = parsed.verdict;
+    } catch {
+      /* 구조화 실패 — 리포트만으로도 쓸 수 있다 */
+    }
+  }
+
+  await recordCost({
+    projectId,
+    vendor: "anthropic",
+    model: MODELS.sonnet,
+    costUsd: 0,
+    meta: { kind: "script-critique-extract", fixes: fixes.length },
+  }).catch(() => {});
+
+  return { report, fixes, verdict, searched, costUsd: totalCost };
 }

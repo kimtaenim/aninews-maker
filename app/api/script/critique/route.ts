@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProject, saveProject } from "@/lib/projectStore";
 import { critiqueScript } from "@/lib/scriptCritique";
+import { saveCritiqueLog } from "@/lib/scriptCritiqueLog";
 
 export const runtime = "nodejs";
 export const maxDuration = 300; // 웹 검색 여러 번 + 긴 리포트 — 넉넉히
@@ -27,14 +28,20 @@ export async function POST(req: NextRequest) {
   // 그림 완성 여부 — 씬 이미지가 하나라도 있으면 완성으로 보고 그림 호환 판정을 켠다.
   const imagesReady = project.scenes.some((s) => !!s.imageUrl);
 
+  const narrations = project.scenes.map((s) => s.narration);
+
   try {
-    const { report, searched } = await critiqueScript({
+    const { report, fixes, verdict, searched } = await critiqueScript({
       projectId,
-      narrations: project.scenes.map((s) => s.narration),
+      narrations,
       imagesReady,
     });
 
-    // 리포트를 스크립트 대화 로그에 남긴다(씬은 변경하지 않음). 저장 직전 fresh 재읽기.
+    // 체크박스로 고를 반영 목록은 따로 저장 — 새로고침해도 살아 있어야 한다(지문 포함).
+    await saveCritiqueLog(projectId, { report, fixes, verdict, searched }, narrations);
+
+    // 리포트 전문도 스크립트 대화 로그에 남긴다(이력·근거 확인용). 씬은 안 건드린다.
+    // 저장 직전 fresh 재읽기 — 검수가 수 분 걸려 그동안 다른 편집이 들어왔을 수 있다.
     const fresh = (await getProject(projectId)) ?? project;
     const now = Date.now();
     const header = searched ? "🔎 비판 검수 (웹 검색 확인)" : "⚠️ 비판 검수 (웹 검색이 돌지 않음 — 검증 신뢰도 낮음)";
@@ -46,7 +53,14 @@ export async function POST(req: NextRequest) {
     fresh.updatedAt = now;
     await saveProject(fresh);
 
-    return NextResponse.json({ ok: true, report, searched, chat: fresh.steps.script.chat });
+    return NextResponse.json({
+      ok: true,
+      report,
+      fixes,
+      verdict,
+      searched,
+      chat: fresh.steps.script.chat,
+    });
   } catch (e) {
     return NextResponse.json(
       { ok: false, error: e instanceof Error ? e.message : "비판 검수 실패" },

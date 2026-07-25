@@ -5,6 +5,7 @@ import { listVideoModels } from "@/lib/videoProvider";
 import { ttsProviderInfo } from "@/lib/tts";
 import { getTitleLog } from "@/lib/titleLog";
 import { getReviewLog } from "@/lib/scriptReviewLog";
+import { getCritiqueLog } from "@/lib/scriptCritiqueLog";
 import { reviewFingerprint } from "@/lib/scriptReview";
 import Studio from "./Studio";
 import LongformStudio from "./LongformStudio";
@@ -86,6 +87,12 @@ export default async function ProjectStudioPage({
   const initialReview =
     reviewLog && reviewLog.fingerprint === curReviewFp ? { result: reviewLog.result } : null;
 
+  // 저장된 비판 검수 — 반영 목록은 씬 번호로 붙으므로, 대본이 바뀌었으면 복원하지 않는다
+  // (번호가 밀려 엉뚱한 씬에 반영되는 사고 방지). stale 이면 그냥 안 띄우고 재검수 유도.
+  const critiqueLog = await getCritiqueLog(id);
+  const initialCritique =
+    critiqueLog && critiqueLog.fingerprint === curReviewFp ? critiqueLog : null;
+
   return (
     <Studio
       project={project}
@@ -94,6 +101,7 @@ export default async function ProjectStudioPage({
       tts={ttsProviderInfo()}
       initialTitles={initialTitles}
       initialReview={initialReview}
+      initialCritique={initialCritique}
     />
   );
 }
