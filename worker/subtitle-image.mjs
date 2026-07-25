@@ -1,7 +1,7 @@
 // 자막 PNG 렌더러 — 미리보기와 같은 디자인(각진 단일 박스, 크기/위치/색/정렬),
 // 줄바꿈은 균형 2줄(필요하면 3줄). 2줄을 넘기면 한 씬의 나레이션을 두 캡션으로
 // 나눠 순차 표시한다(captionsFor). 합성(compose.mjs)과 동일 코드를 쓴다.
-import { createCanvas, GlobalFonts } from "@napi-rs/canvas";
+import { createCanvas, GlobalFonts, loadImage } from "@napi-rs/canvas";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { splitRuns, stripMarks } from "./emphasis.mjs";
@@ -315,6 +315,30 @@ function getCanvas(W, H) {
   const ctx = _canvas.getContext("2d");
   ctx.clearRect(0, 0, W, H); // 이전 렌더 잔상 제거(투명 초기화)
   return { canvas: _canvas, ctx };
+}
+
+// 전체프레임 PNG 여러 장을 한 장으로 미리 합성한다(뒤에 오는 것이 위에 얹힘).
+// 왜: ffmpeg 는 오버레이 이미지를 입력 1개당 매 프레임 다시 디코딩한다. 자막·워터마크·
+// 크레딧을 각각 입력으로 붙이면 입력 개수만큼 풀프레임 디코드가 반복돼 인코딩이 씬 길이의
+// 제곱으로 느려진다(실측 2.5fps → 150초 타임아웃). 미리 한 장으로 합쳐 입력을 1개로 만든다.
+// 캡션 렌더용 _canvas 는 호출자가 쓰는 중일 수 있어 합성 전용 캔버스를 따로 둔다.
+let _mergeCanvas = null;
+export async function mergePngLayers(buffers, opts = {}) {
+  const layers = buffers.filter(Boolean);
+  if (layers.length === 0) return null;
+  if (layers.length === 1) return layers[0];
+  const W = opts.W ?? 1080;
+  const H = opts.H ?? 1920;
+  if (!_mergeCanvas || _mergeCanvas.width !== W || _mergeCanvas.height !== H) {
+    _mergeCanvas = createCanvas(W, H);
+  }
+  const ctx = _mergeCanvas.getContext("2d");
+  ctx.clearRect(0, 0, W, H);
+  for (const buf of layers) {
+    const img = await loadImage(buf);
+    ctx.drawImage(img, 0, 0, W, H);
+  }
+  return await _mergeCanvas.encode("png");
 }
 
 export async function renderCaptionPng(text, sub, opts = {}) {

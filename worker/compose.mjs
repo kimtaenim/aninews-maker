@@ -12,7 +12,44 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { segmentCaptions } from "./captions.mjs";
 import { stripMarks } from "./emphasis.mjs";
-import { renderCaptionPng, renderWatermarkPng, renderCreditPng } from "./subtitle-image.mjs";
+import {
+  renderCaptionPng,
+  renderWatermarkPng,
+  renderCreditPng,
+  mergePngLayers,
+} from "./subtitle-image.mjs";
+
+// 오버레이 타임라인(캡션들 + 정적 레이어)을 concat demuxer 목록 파일 1개로 굽는다.
+// 왜: 예전엔 캡션 1컷 = ffmpeg 입력 1개(-loop 1)였다. -loop 입력은 프레임마다 PNG 를 다시
+// 디코딩하므로 비용이 (씬 길이 × 30fps × 캡션 수)로 길이의 제곱이 됐다 — 실측 2.5fps,
+// 씬 14초에서 150초 타임아웃 절벽. concat 목록이면 입력 1개·오버레이 1단·PNG 디코드는
+// 컷당 1회라 비용이 길이에 선형이 된다. 구간이 0부터 빈틈없이 이어져야 한다(캡션 배분이 그렇다).
+async function writeOverlayConcat(entries, listPath) {
+  if (entries.length === 0) return null;
+  const q = (p) => `file '${p.replace(/'/g, "'\\''")}'`;
+  const lines = ["ffconcat version 1.0"];
+  for (const e of entries) {
+    lines.push(q(e.path), `duration ${e.duration.toFixed(3)}`);
+  }
+  // concat demuxer 는 마지막 항목의 duration 을 무시한다 — 같은 파일을 한 번 더 적어야
+  // 마지막 컷이 제 길이만큼 남는다(공식 문서에 명시된 우회).
+  lines.push(q(entries[entries.length - 1].path));
+  await writeFile(listPath, lines.join("\n"), "utf8");
+  return listPath;
+}
+
+// 캡션 구간 → concat 항목. 마지막 컷은 씬 끝까지 남긴다(예전 enable 이 duration+0.5 였던 것과 동일).
+function overlayEntries(paths, durs, duration) {
+  const out = [];
+  let acc = 0;
+  paths.forEach((p, j) => {
+    const last = j === paths.length - 1;
+    const d = last ? Math.max(durs[j], duration - acc) + 0.5 : durs[j];
+    acc += durs[j];
+    out.push({ path: p, duration: d });
+  });
+  return out;
+}
 
 // 합성 캔버스 해상도는 프로젝트 포맷에 따라 결정(composeProject 안에서). 세로 숏폼
 // 1080x1920, 가로 롱폼 1920x1080. 두 해상도는 픽셀 수가 같아 인코딩 부하도 동일.
@@ -21,43 +58,110 @@ import { renderCaptionPng, renderWatermarkPng, renderCreditPng } from "./subtitl
 // 복구. (인코딩 속도는 워커 인스턴스 상향으로 해결 — FPS 로 억지로 줄이지 않는다.)
 const FPS = 30;
 
-// 기본 타임아웃 150초 — 정상 인코딩은 그 안에 끝난다(v6 검증). 그 이상은 데드락/매달림으로
-// 보고 죽여서 워커를 푼다(600초로 늘렸더니 매달린 잡이 10분씩 워커를 붙잡아 재시작 유발).
+// 지금 돌고 있는 자식 프로세스들 — 상위(index.mjs)의 합성 타임아웃이 이걸 실제로 죽인다.
+// Promise.race 만으로는 진 쪽이 취소되지 않아 버려진 합성이 ffmpeg 를 계속 돌렸고, 다음
+// 잡의 ffmpeg 와 겹쳐 메모리가 두 배가 됐다(OOM 유발 경로).
+const activeChildren = new Set();
+export function abortActiveWork() {
+  let n = 0;
+  for (const p of activeChildren) {
+    try {
+      p.kill("SIGKILL");
+      n++;
+    } catch {}
+  }
+  activeChildren.clear();
+  return n;
+}
+
+// 타임아웃 기본 150초. 씬이 길면 호출자가 길이에 비례해 넉넉히 준다(sceneTimeout).
+// stderr 은 상한을 둬서 무한 누적을 막고, stdout 은 아예 안 연다 — 파이프가 차서
+// 영구 블록되는 "매달림" 경로를 없앤다(ffmpeg 진행 로그는 stderr 로 나온다).
+const ERR_KEEP = 4000;
 function run(cmd, args, timeoutMs = 150000) {
   return new Promise((res, rej) => {
-    const p = spawn(cmd, args);
+    let p;
+    try {
+      p = spawn(cmd, args, { stdio: ["ignore", "ignore", "pipe"] });
+    } catch (e) {
+      rej(e);
+      return;
+    }
+    activeChildren.add(p);
     let err = "";
+    const done = (fn, arg) => {
+      clearTimeout(timer);
+      activeChildren.delete(p);
+      fn(arg);
+    };
     const timer = setTimeout(() => {
       try {
         p.kill("SIGKILL");
       } catch {}
-      rej(
+      done(
+        rej,
         new Error(
           `${cmd} 타임아웃(${Math.round(timeoutMs / 1000)}초) — 매달림. ffmpeg 마지막 출력: ${err.slice(-500)}`
         )
       );
     }, timeoutMs);
-    p.stderr.on("data", (d) => (err += d));
-    p.on("error", (e) => {
-      clearTimeout(timer);
-      rej(e);
+    p.stderr.on("data", (d) => {
+      err += d;
+      if (err.length > ERR_KEEP * 2) err = err.slice(-ERR_KEEP);
     });
-    p.on("close", (c) => {
-      clearTimeout(timer);
-      c === 0 ? res() : rej(new Error(`${cmd} exit ${c}: ${err.slice(-700)}`));
-    });
+    p.on("error", (e) => done(rej, e));
+    p.on("close", (c, sig) =>
+      c === 0
+        ? done(res, undefined)
+        : done(
+            rej,
+            new Error(
+              `${cmd} exit ${c}${sig ? ` (신호 ${sig} — 메모리 부족으로 강제 종료됐을 수 있음)` : ""}: ${err.slice(-700)}`
+            )
+          )
+    );
   });
 }
 
-function probeDuration(file) {
+// 씬 하나에 허용할 ffmpeg 시간 — 길이에 비례(초당 8초, 최소 150초, 최대 8분).
+// 예전엔 150초 고정이라 인코딩이 느려지면 긴 씬이 무조건 절벽에서 죽었다.
+function sceneTimeout(durationSec) {
+  return Math.min(480000, Math.max(150000, Math.round(durationSec * 8000)));
+}
+
+// ffprobe — 'error' 리스너가 없으면 spawn 실패(메모리 부족 시의 ENOMEM/EAGAIN 등)가
+// uncaught exception 이 되어 워커 프로세스를 통째로 죽인다. 타임아웃도 없으면 영원히 pending.
+function probeDuration(file, timeoutMs = 30000) {
   return new Promise((res) => {
-    const p = spawn("ffprobe", [
-      "-v", "error", "-show_entries", "format=duration",
-      "-of", "default=nw=1:nk=1", file,
-    ]);
+    let p;
+    try {
+      p = spawn("ffprobe", [
+        "-v", "error", "-show_entries", "format=duration",
+        "-of", "default=nw=1:nk=1", file,
+      ]);
+    } catch {
+      res(0);
+      return;
+    }
+    activeChildren.add(p);
     let out = "";
+    let settled = false;
+    const finish = (v) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      activeChildren.delete(p);
+      res(v);
+    };
+    const timer = setTimeout(() => {
+      try {
+        p.kill("SIGKILL");
+      } catch {}
+      finish(0);
+    }, timeoutMs);
     p.stdout.on("data", (d) => (out += d));
-    p.on("close", () => res(parseFloat(out.trim()) || 0));
+    p.on("error", () => finish(0));
+    p.on("close", () => finish(parseFloat(out.trim()) || 0));
   });
 }
 
@@ -101,34 +205,20 @@ async function renderHostSceneClip(s, dir, tag, sub, W, H) {
   const capTotal = durs.reduce((a, b) => a + b, 0);
   const duration = capPaths.length ? Math.max(audioLen, capTotal) : audioLen;
   const speed = vd > 0 && duration > vd ? duration / vd : 1;
-  const spans = [];
-  let acc = 0;
-  durs.forEach((d, j) => {
-    const start = acc;
-    acc += d;
-    const end = j === durs.length - 1 ? duration + 0.5 : acc;
-    spans.push([start, end]);
-  });
+  // 자막 오버레이는 concat 목록 1개(씬 루프와 동일 이유 — 캡션당 입력은 길이의 제곱 비용).
+  const ovList = await writeOverlayConcat(
+    overlayEntries(capPaths, durs, duration),
+    join(dir, `${tag}-ov.txt`)
+  );
   const baseF =
     `[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase,` +
     `crop=${W}:${H},setpts=${speed.toFixed(4)}*PTS,fps=${FPS}`;
-  let filter;
-  if (capPaths.length === 0) {
-    filter = `${baseF}[v]`;
-  } else {
-    filter = `${baseF}[bg]`;
-    let prev = "bg";
-    capPaths.forEach((_, k) => {
-      const label = k === capPaths.length - 1 ? "v" : `o${k}`;
-      filter += `;[${prev}][${2 + k}:v]overlay=0:0:enable='between(t,${spans[k][0].toFixed(3)},${spans[k][1].toFixed(3)})'[${label}]`;
-      prev = label;
-    });
-  }
+  const filter = ovList ? `${baseF}[bg];[bg][2:v]overlay=0:0[v]` : `${baseF}[v]`;
   const out = join(dir, `${tag}.mp4`);
   const args = ["-y", "-i", vPath];
   if (aPath) args.push("-i", aPath);
   else args.push("-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100");
-  for (const cp of capPaths) args.push("-loop", "1", "-framerate", String(FPS), "-i", cp);
+  if (ovList) args.push("-f", "concat", "-safe", "0", "-i", ovList);
   args.push(
     "-filter_complex", filter,
     "-map", "[v]", "-map", "1:a",
@@ -137,7 +227,7 @@ async function renderHostSceneClip(s, dir, tag, sub, W, H) {
     "-c:a", "aac", "-b:a", "128k",
     out
   );
-  await run("ffmpeg", args);
+  await run("ffmpeg", args, sceneTimeout(duration));
   return out;
 }
 
@@ -428,22 +518,20 @@ export async function composeProject(projectId, lang, opts = {}) {
       return url;
     }
     if (clean) await log("클린 합성 모드 — 보이스·자막·효과음·워터마크 제외(영상만)");
-    // 워터마크는 모든 씬에 동일하게 들어가므로 한 번만 렌더(전체프레임 투명 PNG).
-    let wmPath = null;
+    // 워터마크·크레딧은 모든 씬에 동일하게 들어가므로 한 번만 렌더(전체프레임 투명 PNG).
+    // 파일이 아니라 버퍼로 들고 있다가 씬마다 캡션 PNG 에 미리 합성한다 — ffmpeg 입력을
+    // 늘리지 않으려고(입력 1개 = 매 프레임 풀프레임 디코드 1회).
+    let wmPng = null;
     if (!clean && project.watermark?.text?.trim()) {
-      const wmPng = await renderWatermarkPng(project.watermark, { W, H });
-      wmPath = join(dir, "watermark.png");
-      await writeFile(wmPath, wmPng);
+      wmPng = await renderWatermarkPng(project.watermark, { W, H });
       await log(`워터마크 "${project.watermark.text}" (${project.watermark.position})`);
     }
     // 제작 크레딧 — 마지막 3씬에만. 워터마크 위치 기준 옆에 1.5배로. (워터마크 유무와 무관)
     const CREDIT_LAST_SCENES = 3; // 크레딧을 노출할 끝 씬 개수
-    let creditPath = null;
+    let creditPng = null;
     const creditName = clean ? "" : (project.credit ?? "").trim();
     if (creditName) {
-      const cPng = await renderCreditPng(creditName, project.watermark ?? { position: "br" }, { W, H });
-      creditPath = join(dir, "credit.png");
-      await writeFile(creditPath, cPng);
+      creditPng = await renderCreditPng(creditName, project.watermark ?? { position: "br" }, { W, H });
       await log(`제작 크레딧 "${creditName}" (마지막 ${CREDIT_LAST_SCENES}씬)`);
     }
 
@@ -485,15 +573,6 @@ export async function composeProject(projectId, lang, opts = {}) {
       const text = s.mood || clean ? "" : (lang === "ko" ? s.narration : dubText || s.narration) ?? "";
       // 긴 나레이션은 캡션 여러 개로 분할(미리보기와 동일 알고리즘) → 씬 안에서 순차 표시.
       const caps = segmentCaptions(text, sub.size);
-      await log(`씬 ${i + 1}: 자막 캡션 ${caps.length}컷 렌더(canvas)…`);
-      // 각 캡션을 미리보기와 같은 디자인의 전체프레임 투명 PNG로 렌더.
-      const capPaths = [];
-      for (let j = 0; j < caps.length; j++) {
-        const png = await renderCaptionPng(caps[j], sub, { W, H, preset: s.captionStyle });
-        const cp = join(dir, `cap${i}_${j}.png`);
-        await writeFile(cp, png);
-        capPaths.push(cp);
-      }
       // 비례 타이밍: 캡션을 글자수에 비례해 음성 길이에 배분(음성이 마스터) → 자막이
       // 말 속도를 따라간다. 너무 짧으면 못 읽으니 캡션당 최소 1.2초 보장. 최소시간 합이
       // 음성보다 길면(짧은 음성에 캡션 多) 그만큼 장면을 늘린다. 미리보기와 동일 공식.
@@ -502,64 +581,52 @@ export async function composeProject(projectId, lang, opts = {}) {
       const wSum = weights.reduce((a, b) => a + b, 0) || 1;
       const durs = weights.map((w) => Math.max(MIN_CAP, (audioLen * w) / wSum));
       const capTotal = durs.reduce((a, b) => a + b, 0);
-      const duration = capPaths.length ? Math.max(audioLen, capTotal) : audioLen;
+      const duration = caps.length ? Math.max(audioLen, capTotal) : audioLen;
       // 음성/자막이 영상보다 길면 영상을 슬로모션으로 늘림(루프 X).
       const speed = vd > 0 && duration > vd ? duration / vd : 1;
-      const spans = [];
-      let acc = 0;
-      durs.forEach((d, j) => {
-        const start = acc;
-        acc += d;
-        const end = j === durs.length - 1 ? duration + 0.5 : acc;
-        spans.push([start, end]);
-      });
+
+      // 정적 레이어(워터마크 + 마지막 N씬 크레딧)는 캡션 PNG 에 미리 합성한다 — 입력을 안 늘리려고.
+      const showCredit = creditPng && i >= scenes.length - CREDIT_LAST_SCENES;
+      const staticPng = await mergePngLayers([wmPng, showCredit ? creditPng : null], { W, H });
+
+      await log(`씬 ${i + 1}: 자막 캡션 ${caps.length}컷 렌더(canvas)…`);
+      // 각 캡션을 미리보기와 같은 디자인의 전체프레임 투명 PNG로 렌더(정적 레이어 합성 포함).
+      const capPaths = [];
+      for (let j = 0; j < caps.length; j++) {
+        const png = await renderCaptionPng(caps[j], sub, { W, H, preset: s.captionStyle });
+        const cp = join(dir, `cap${i}_${j}.png`);
+        await writeFile(cp, await mergePngLayers([png, staticPng], { W, H }));
+        capPaths.push(cp);
+      }
+      // 오버레이 입력은 항상 1개(캡션 concat). 자막 없는 씬(분위기 씬 등)이라도 워터마크·
+      // 크레딧이 있으면 그 한 장을 씬 길이만큼 깔아 같은 경로로 처리한다.
+      let ovEntries = overlayEntries(capPaths, durs, duration);
+      if (ovEntries.length === 0 && staticPng) {
+        const sp = join(dir, `static${i}.png`);
+        await writeFile(sp, staticPng);
+        ovEntries = [{ path: sp, duration: duration + 0.5 }];
+      }
+      const ovList = await writeOverlayConcat(ovEntries, join(dir, `ov${i}.txt`));
 
       // 미리보기(object-cover)와 동일: 9:16 꽉 채우고 가운데 크롭(검은 테두리 없음).
       const base =
         `[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase,` +
         `crop=${W}:${H},setpts=${speed.toFixed(4)}*PTS,fps=${FPS}`;
-      // 오버레이: 자막(시간 구간 enable) + 워터마크(항상). 입력은 0=video,1=audio,2..=캡션,그 뒤=워터마크.
-      const overlays = capPaths.map((_, j) => ({
-        inIdx: 2 + j,
-        enable: `between(t,${spans[j][0].toFixed(3)},${spans[j][1].toFixed(3)})`,
-      }));
-      if (wmPath) overlays.push({ inIdx: 2 + capPaths.length, enable: null });
-      // 제작 크레딧: 마지막 N씬에만. 입력 순서는 (자막들 → 워터마크 → 크레딧).
-      const showCredit = creditPath && i >= scenes.length - CREDIT_LAST_SCENES;
-      if (showCredit) {
-        overlays.push({ inIdx: 2 + capPaths.length + (wmPath ? 1 : 0), enable: null });
-      }
-
-      let filter;
-      if (overlays.length === 0) {
-        filter = `${base}[v]`;
-      } else {
-        filter = `${base}[bg]`;
-        let prev = "bg";
-        overlays.forEach((ov, k) => {
-          const label = k === overlays.length - 1 ? "v" : `o${k}`;
-          const en = ov.enable ? `:enable='${ov.enable}'` : "";
-          filter += `;[${prev}][${ov.inIdx}:v]overlay=0:0${en}[${label}]`;
-          prev = label;
-        });
-      }
+      // 입력은 0=video, 1=audio, 2=오버레이 concat(있으면), 그 뒤=효과음.
+      const filter = ovList ? `${base}[bg];[bg][2:v]overlay=0:0[v]` : `${base}[v]`;
 
       const out = join(dir, `scene${i}.mp4`);
       const args = ["-y", "-i", vPath];
       // 클린 모드: 음성 파일은 길이 측정에만 쓰고 트랙엔 안 싣는다(무음) — 타이밍 동일 유지.
       if (aPath && !clean) args.push("-i", aPath);
       else args.push("-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100");
-      // 자막 PNG는 -loop 1 로 연속 스트림화(단일 프레임 입력 + overlay 체인은 데드락).
-      // 출력 -t 가 전체 길이를 제한하므로 입력은 무한 루프로 둬도 안전(v6 검증됨).
-      for (const cp of capPaths) args.push("-loop", "1", "-framerate", String(FPS), "-i", cp);
-      if (wmPath) args.push("-loop", "1", "-framerate", String(FPS), "-i", wmPath);
-      if (showCredit) args.push("-loop", "1", "-framerate", String(FPS), "-i", creditPath);
+      if (ovList) args.push("-f", "concat", "-safe", "0", "-i", ovList);
       // [cliche] 효과음 믹싱 — 목소리(1:a) 밑에 효과음을 볼륨 낮춰 amix. sfx 입력은 -stream_loop
       // 로 반복하되 -t 로 씬 길이만큼만 읽어 유한하게(무한 입력 + amix=longest 는 매달림 위험).
       let filterFull = filter;
       let audioMap = "1:a";
       if (sfxPath) {
-        const sfxIdx = 2 + capPaths.length + (wmPath ? 1 : 0) + (showCredit ? 1 : 0);
+        const sfxIdx = ovList ? 3 : 2;
         args.push("-stream_loop", "-1", "-t", String(duration), "-i", sfxPath);
         const sfxVol = typeof s.sfxVolume === "number" ? Math.min(1, Math.max(0, s.sfxVolume)) : 0.35;
         // amix 는 입력 수(2)로 볼륨을 반씩 줄인다 → 미리 2배로 올려 상쇄(목소리 원음 유지,
@@ -580,7 +647,7 @@ export async function composeProject(projectId, lang, opts = {}) {
         out
       );
       await log(`씬 ${i + 1}: 인코딩 (캡션 ${capPaths.length}개, ${duration.toFixed(1)}s)…`);
-      await run("ffmpeg", args);
+      await run("ffmpeg", args, sceneTimeout(duration));
       await log(`씬 ${i + 1}: 완료`);
       sceneFiles.push(out);
     }
