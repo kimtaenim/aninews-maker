@@ -36,18 +36,6 @@ export async function nextDailySeq(dateStr: string): Promise<string> {
   return pad2(n);
 }
 
-// 현재 그날 카운터 값(아직 한 번도 안 올렸으면 0). 다음 업로드 번호는 이 값 +1.
-export async function getDailySeq(dateStr: string): Promise<number> {
-  const v = await getRedis().get<number | string>(`upload-seq:${dateStr}`);
-  const n = Number(v);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
-}
-
-// 그날 카운터를 특정 값으로 설정(갱신·초기화). 다음 업로드는 value+1 부터.
-export async function setDailySeq(dateStr: string, value: number): Promise<void> {
-  await getRedis().set(`upload-seq:${dateStr}`, Math.max(0, Math.floor(value)));
-}
-
 // 스크립트 내용을 훑어 파일명용 "영어 한 단어 키워드"를 짓는다. 실패 시 "Video".
 export async function pickKeyword(scriptText: string, projectId?: string): Promise<string> {
   const text = (scriptText ?? "").trim().slice(0, 4000);

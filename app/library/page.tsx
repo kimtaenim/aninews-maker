@@ -1,5 +1,4 @@
 import Link from "next/link";
-import DailySeqControl from "./DailySeqControl";
 import {
   countProjects,
   listProjectIds,
@@ -8,7 +7,6 @@ import {
 } from "@/lib/projectStore";
 import type { Project } from "@/lib/types";
 import ProjectCard from "@/components/ProjectCard";
-import driveConfig from "@/config/drive.json";
 import { searchTerms, matchesQuery, isLongform } from "@/lib/projectSearch";
 
 export const runtime = "nodejs";
@@ -62,17 +60,6 @@ export default async function LibraryPage({
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-lg font-semibold tracking-tight">라이브러리</h1>
         <div className="flex items-center gap-2">
-          <DailySeqControl />
-          {driveConfig.folderUrl && (
-            <a
-              href={driveConfig.folderUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs font-medium rounded-lg border border-zinc-200 dark:border-zinc-800 px-3 py-1.5 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-900"
-            >
-              📁 드라이브 폴더
-            </a>
-          )}
           <Link
             href="/new"
             className="text-xs font-medium rounded-lg bg-accent hover:bg-accent-strong text-white px-3 py-1.5"
