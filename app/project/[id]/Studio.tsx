@@ -561,13 +561,15 @@ export default function Studio({
     verdict: string;
     searched: boolean;
   } | null>(initialCritique ?? null);
-  const [critiqueOpen, setCritiqueOpen] = useState(false);
   const [critiqueSel, setCritiqueSel] = useState<Set<string>>(
     new Set((initialCritique?.fixes ?? []).map((f) => f.id))
   );
   const [critiqueApplied, setCritiqueApplied] = useState<Set<string>>(
     new Set(initialCritique?.applied?.ids ?? [])
   );
+  // 씬을 추가로 끼워 넣으면 그 뒤 씬 번호가 전부 밀린다 → 남은 항목의 "씬 N"이 더는 안 맞는다.
+  // 그 상태에서 마저 반영하면 엉뚱한 씬을 고치므로, 잠그고 재검수를 유도한다.
+  const [critiqueShifted, setCritiqueShifted] = useState(false);
   const [reviewStage, setReviewStage] = useState<null | "consent" | "revise">(null);
   const [selectedRev, setSelectedRev] = useState<Set<number>>(new Set());
   async function saveTitle() {
@@ -2133,7 +2135,7 @@ export default function Studio({
       // 기본은 전부 체크(시사인 봇과 동일) — 빼고 싶은 것만 풀면 된다.
       setCritiqueSel(new Set(fixes.map((f) => f.id)));
       setCritiqueApplied(new Set());
-      if (fixes.length > 0) setCritiqueOpen(true);
+      // 결과는 버튼 아래에 자동으로 펼쳐진다(따로 여는 버튼 없음).
     } catch (e) {
       setError(e instanceof Error ? e.message : "비판 검수 실패");
     } finally {
@@ -2207,7 +2209,10 @@ export default function Studio({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ projectId: project.id, ids: picked.map((f) => f.id) }),
       }).catch(() => {});
-      setCritiqueOpen(false);
+      // 목록은 그대로 두고 반영한 항목만 "반영됨"으로 흐려진다 — 나머지를 이어서 고를 수 있게.
+      // 단, 씬을 끼워 넣었으면 뒤 번호가 밀려 남은 항목의 씬 번호가 안 맞는다 → 잠근다.
+      if (picked.some((f) => f.kind === "insert")) setCritiqueShifted(true);
+      setCritiqueSel(new Set());
     } catch (e) {
       setError(e instanceof Error ? e.message : "반영 실패");
     }
@@ -2837,166 +2842,6 @@ export default function Studio({
       )}
 
       {/* 대본 구조 검수 — 별도 버튼이 띄우는 진단·동의 모달(위반 시). 채택해도 승인은 안 함. */}
-      {/* 비판 검수 반영 — 리포트를 항목으로 쪼개 체크박스로 고르고, 고른 것만 대본에 넣는다.
-          카드 전체가 <label> 이라 어디를 눌러도 토글된다. */}
-      {critiqueOpen && critique && (
-        <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-3"
-          onClick={() => setCritiqueOpen(false)}
-        >
-          <div
-            className="w-full max-w-xl max-h-[85vh] overflow-y-auto rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-4 shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-sm font-semibold">🔎 비판 검수 — 반영할 항목 선택</h3>
-            {!critique.searched && (
-              <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
-                ⚠ 웹 검색이 돌지 않았어요 — 검증 신뢰도가 낮습니다.
-              </p>
-            )}
-            {critique.verdict && (
-              <p className="mt-2 text-xs leading-relaxed text-zinc-600 dark:text-zinc-300">
-                {critique.verdict}
-              </p>
-            )}
-            {/* A안(씬 수정)·B안(반전 씬 추가)은 보통 둘 중 하나를 고르는 것이라 한 번에 잡히게. */}
-            <div className="mt-3 flex flex-wrap items-center gap-1.5">
-              {(
-                [
-                  ["전체 선택", () => new Set(critique.fixes.map((f) => f.id))],
-                  ["A안만", () => new Set(critique.fixes.filter((f) => f.plan === "A").map((f) => f.id))],
-                  ["B안만", () => new Set(critique.fixes.filter((f) => f.plan === "B").map((f) => f.id))],
-                  ["높음만", () => new Set(critique.fixes.filter((f) => f.severity === "high").map((f) => f.id))],
-                  ["전체 해제", () => new Set<string>()],
-                ] as [string, () => Set<string>][]
-              ).map(([label, make]) => (
-                <button
-                  key={label}
-                  type="button"
-                  onClick={() => setCritiqueSel(make())}
-                  className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-2.5 py-1 text-[11px] hover:bg-zinc-50 dark:hover:bg-zinc-900"
-                >
-                  {label}
-                </button>
-              ))}
-              <span className="ml-auto text-[11px] text-zinc-400">
-                {critiqueSel.size}/{critique.fixes.length} 선택
-              </span>
-            </div>
-            <ul className="mt-2 grid gap-2">
-              {critique.fixes.map((f) => {
-                const done = critiqueApplied.has(f.id);
-                // 마무리(마지막 씬)는 표준 문구라 잠금 — 다듬기 모달과 같은 규칙.
-                const locked = f.kind === "edit" && f.scene >= scenesRef.current.length;
-                const sevColor =
-                  f.severity === "high"
-                    ? "bg-red-600"
-                    : f.severity === "low"
-                      ? "bg-zinc-400"
-                      : "bg-amber-500";
-                return (
-                  <li key={f.id}>
-                    <label
-                      className={
-                        "flex items-start gap-2 rounded-lg border p-2 transition-colors " +
-                        (done || locked
-                          ? "opacity-50 border-zinc-200 dark:border-zinc-800"
-                          : "border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900 has-[:checked]:border-accent has-[:checked]:bg-accent/5")
-                      }
-                    >
-                      <input
-                        type="checkbox"
-                        disabled={done || locked}
-                        checked={!done && !locked && critiqueSel.has(f.id)}
-                        onChange={(e) =>
-                          setCritiqueSel((prev) => {
-                            const n = new Set(prev);
-                            if (e.target.checked) n.add(f.id);
-                            else n.delete(f.id);
-                            return n;
-                          })
-                        }
-                        className="mt-1"
-                      />
-                      <div className="min-w-0 flex-1 text-[11px]">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium text-white ${sevColor}`}>
-                            {f.severity === "high" ? "높음" : f.severity === "low" ? "낮음" : "보통"}
-                          </span>
-                          <span className="rounded bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 text-[10px]">
-                            {f.kind === "insert" ? `씬 ${f.scene} 뒤에 추가` : `씬 ${f.scene} 수정`}
-                          </span>
-                          <span className="text-[10px] text-zinc-400">{f.plan}안</span>
-                          {f.grade && <span className="text-[10px] text-zinc-400">· {f.grade}</span>}
-                          {f.image && (
-                            <span
-                              className={
-                                "text-[10px] " +
-                                (f.image === "regen" ? "text-amber-600 dark:text-amber-400" : "text-zinc-400")
-                              }
-                            >
-                              · 그림 {f.image === "regen" ? "재생성 필요" : "그대로"}
-                            </span>
-                          )}
-                          {done && <span className="text-[10px] text-emerald-600">· 반영됨</span>}
-                          {locked && <span className="text-[10px] text-zinc-400">· 마무리 잠금</span>}
-                        </div>
-                        {f.issue && <p className="mt-1 text-zinc-500">{f.issue}</p>}
-                        {f.original && (
-                          <p className="mt-1 text-zinc-400 line-through">{f.original}</p>
-                        )}
-                        <p className="mt-0.5 text-zinc-800 dark:text-zinc-100">{f.revised}</p>
-                        {f.sources && f.sources.length > 0 && (
-                          <p className="mt-1 flex flex-wrap gap-1.5">
-                            {f.sources.map((u, k) => (
-                              <a
-                                key={k}
-                                href={u}
-                                target="_blank"
-                                rel="noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                                className="text-[10px] text-accent underline hover:no-underline"
-                              >
-                                근거{k + 1}
-                              </a>
-                            ))}
-                          </p>
-                        )}
-                      </div>
-                    </label>
-                  </li>
-                );
-              })}
-            </ul>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={applyCritique}
-                disabled={critiqueSel.size === 0}
-                className="flex-1 rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 py-2 text-sm font-medium text-white"
-              >
-                선택 반영 ({critiqueSel.size}건)
-              </button>
-              <button
-                type="button"
-                onClick={() => setCritiqueOpen(false)}
-                className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-2 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-900"
-              >
-                닫기
-              </button>
-            </div>
-            {/* 전문은 접어 둔다 — 펼치고 싶을 때만. 기본으로 펼쳐 두면 예전처럼 글 덩어리가 된다. */}
-            <details className="mt-3 rounded-lg border border-zinc-200 dark:border-zinc-800">
-              <summary className="cursor-pointer select-none px-3 py-2 text-[11px] text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">
-                📄 검수 리포트 전문 보기 (근거·판정 이유)
-              </summary>
-              <pre className="max-h-72 overflow-y-auto whitespace-pre-wrap break-words border-t border-zinc-200 dark:border-zinc-800 px-3 py-2 text-[11px] leading-relaxed text-zinc-600 dark:text-zinc-300">
-                {critique.report}
-              </pre>
-            </details>
-          </div>
-        </div>
-      )}
 
       {reviewStage && reviewData && (
         <div
@@ -3596,22 +3441,171 @@ export default function Studio({
                 {copiedScript ? "✓ 복사됨" : "📋 스크립트 복사"}
               </button>
             </div>
-            {critique && critique.fixes.length > 0 && !critiqueOpen && (
-              <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
-                🔎 비판 검수 반영안 {critique.fixes.length}건
-                {critiqueApplied.size > 0 ? ` (${critiqueApplied.size}건 반영됨)` : ""}.{" "}
+            {/* 비판 검수 결과 — 버튼 바로 아래에 그대로 펼친다. 모달·추가 클릭 없음.
+                카드 전체가 <label> 이라 어디를 눌러도 체크된다. */}
+            {critique && critique.fixes.length > 0 && (
+              <div className="mt-3 rounded-xl border border-amber-300 dark:border-amber-700/60 bg-amber-50/50 dark:bg-amber-950/20 p-3">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <h4 className="text-xs font-semibold">🔎 비판 검수 — 반영할 항목 선택</h4>
+                  {!critique.searched && (
+                    <span className="text-[11px] text-amber-600 dark:text-amber-400">
+                      ⚠ 웹 검색이 돌지 않아 신뢰도 낮음
+                    </span>
+                  )}
+                  {critiqueApplied.size > 0 && (
+                    <span className="text-[11px] text-emerald-600">{critiqueApplied.size}건 반영됨</span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setCritique(null)}
+                    className="ml-auto text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                  >
+                    ✕ 결과 닫기
+                  </button>
+                </div>
+                {critique.verdict && (
+                  <p className="mt-1.5 text-[11px] leading-relaxed text-zinc-600 dark:text-zinc-300">
+                    {critique.verdict}
+                  </p>
+                )}
+                {critiqueShifted && (
+                  <p className="mt-1.5 rounded-lg bg-amber-100 dark:bg-amber-900/30 px-2 py-1.5 text-[11px] text-amber-700 dark:text-amber-300">
+                    씬을 추가해서 뒤 씬 번호가 밀렸어요 — 남은 항목은 번호가 안 맞으니 🔎 비판 검수를
+                    다시 돌린 뒤 반영하세요.
+                  </p>
+                )}
+                {/* A안(씬 수정)·B안(반전 씬 추가)은 보통 둘 중 하나를 고르는 것이라 한 번에 잡히게. */}
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  {(
+                    [
+                      ["전체", () => new Set(critique.fixes.map((f) => f.id))],
+                      ["A안만", () => new Set(critique.fixes.filter((f) => f.plan === "A").map((f) => f.id))],
+                      ["B안만", () => new Set(critique.fixes.filter((f) => f.plan === "B").map((f) => f.id))],
+                      ["높음만", () => new Set(critique.fixes.filter((f) => f.severity === "high").map((f) => f.id))],
+                      ["해제", () => new Set<string>()],
+                    ] as [string, () => Set<string>][]
+                  ).map(([label, make]) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => setCritiqueSel(make())}
+                      className="rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 px-2 py-0.5 text-[11px] hover:bg-zinc-50 dark:hover:bg-zinc-900"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                  <span className="ml-auto text-[11px] text-zinc-400">
+                    {critiqueSel.size}/{critique.fixes.length} 선택
+                  </span>
+                </div>
+                <ul className="mt-2 grid gap-1.5">
+                  {critique.fixes.map((f) => {
+                    const done = critiqueApplied.has(f.id);
+                    // 마무리(마지막 씬)는 표준 문구라 잠금 — 다듬기와 같은 규칙.
+                    // 씬 추가로 번호가 밀렸으면 남은 항목도 전부 잠근다(엉뚱한 씬 반영 방지).
+                    const locked =
+                      (f.kind === "edit" && f.scene >= scenesRef.current.length) ||
+                      (critiqueShifted && !done);
+                    const sevColor =
+                      f.severity === "high"
+                        ? "bg-red-600"
+                        : f.severity === "low"
+                          ? "bg-zinc-400"
+                          : "bg-amber-500";
+                    return (
+                      <li key={f.id}>
+                        <label
+                          className={
+                            "flex items-start gap-2 rounded-lg border bg-white dark:bg-zinc-950 p-2 transition-colors " +
+                            (done || locked
+                              ? "opacity-50 border-zinc-200 dark:border-zinc-800"
+                              : "border-zinc-200 dark:border-zinc-800 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900 has-[:checked]:border-accent has-[:checked]:bg-accent/5")
+                          }
+                        >
+                          <input
+                            type="checkbox"
+                            disabled={done || locked}
+                            checked={!done && !locked && critiqueSel.has(f.id)}
+                            onChange={(e) =>
+                              setCritiqueSel((prev) => {
+                                const n = new Set(prev);
+                                if (e.target.checked) n.add(f.id);
+                                else n.delete(f.id);
+                                return n;
+                              })
+                            }
+                            className="mt-1"
+                          />
+                          <div className="min-w-0 flex-1 text-[11px]">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium text-white ${sevColor}`}>
+                                {f.severity === "high" ? "높음" : f.severity === "low" ? "낮음" : "보통"}
+                              </span>
+                              <span className="rounded bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 text-[10px]">
+                                {f.kind === "insert" ? `씬 ${f.scene} 뒤에 추가` : `씬 ${f.scene} 수정`}
+                              </span>
+                              <span className="text-[10px] text-zinc-400">{f.plan}안</span>
+                              {f.grade && <span className="text-[10px] text-zinc-400">· {f.grade}</span>}
+                              {f.image && (
+                                <span
+                                  className={
+                                    "text-[10px] " +
+                                    (f.image === "regen" ? "text-amber-600 dark:text-amber-400" : "text-zinc-400")
+                                  }
+                                >
+                                  · 그림 {f.image === "regen" ? "재생성 필요" : "그대로"}
+                                </span>
+                              )}
+                              {done && <span className="text-[10px] text-emerald-600">· 반영됨</span>}
+                              {locked && <span className="text-[10px] text-zinc-400">· 마무리 잠금</span>}
+                            </div>
+                            {f.issue && <p className="mt-1 text-zinc-500">{f.issue}</p>}
+                            {f.original && <p className="mt-1 text-zinc-400 line-through">{f.original}</p>}
+                            <p className="mt-0.5 text-zinc-800 dark:text-zinc-100">{f.revised}</p>
+                            {f.sources && f.sources.length > 0 && (
+                              <p className="mt-1 flex flex-wrap gap-1.5">
+                                {f.sources.map((u, k) => (
+                                  <a
+                                    key={k}
+                                    href={u}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="text-[10px] text-accent underline hover:no-underline"
+                                  >
+                                    근거{k + 1}
+                                  </a>
+                                ))}
+                              </p>
+                            )}
+                          </div>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
                 <button
                   type="button"
-                  onClick={() => setCritiqueOpen(true)}
-                  className="font-medium underline hover:no-underline"
+                  onClick={applyCritique}
+                  disabled={critiqueSel.size === 0}
+                  className="mt-2 w-full rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 py-2 text-sm font-medium text-white"
                 >
-                  체크해서 반영하기
+                  선택 반영 ({critiqueSel.size}건)
                 </button>
-              </p>
+                {/* 전문은 접어 둔다 — 기본으로 펼치면 예전처럼 글 덩어리가 된다. */}
+                <details className="mt-2 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
+                  <summary className="cursor-pointer select-none px-3 py-1.5 text-[11px] text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">
+                    📄 검수 리포트 전문 보기 (근거·판정 이유)
+                  </summary>
+                  <pre className="max-h-72 overflow-y-auto whitespace-pre-wrap break-words border-t border-zinc-200 dark:border-zinc-800 px-3 py-2 text-[11px] leading-relaxed text-zinc-600 dark:text-zinc-300">
+                    {critique.report}
+                  </pre>
+                </details>
+              </div>
             )}
             {critique && critique.fixes.length === 0 && (
               <p className="mt-2 text-xs text-zinc-500">
-                🔎 비판 검수 완료 — 반영할 항목이 없어요. 리포트 전문은 아래 대화 로그에 있습니다.
+                🔎 비판 검수 완료 — 반영할 항목이 없어요.
               </p>
             )}
             {reviewPassed && !reviewBusy && (
