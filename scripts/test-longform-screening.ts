@@ -89,6 +89,24 @@ check("브리지 수 불일치 잡힘", bad.violations.some((v) => v.includes("�
 check("빈 말 승격 잡힘", bad.violations.some((v) => v.includes("빈 말")));
 check("시점 표현 잡힘", bad.violations.some((v) => v.includes("시점 표현")));
 
+// 실사고(2026-07-25): 엔딩이 종목 추천을 했고, 오프닝이 제작 내부 용어를 시청자에게 말했다.
+console.log("\n종목 추천 · 내부 용어 노출");
+const pick = screenScript(
+  pkg({ ending: { ...pkg().ending, partAClose: "한미반도체가 핵심 수혜예요." } }),
+  3
+);
+check("종목 추천 잡힘", pick.violations.some((v) => v.includes("종목 추천")), pick.violations);
+const jargon = screenScript(
+  pkg({ opening: { ...pkg().opening, blockBRoadmapLanding: "세 판, 끝에 계좌 힌트 나옵니다." } }),
+  3
+);
+check("내부 용어 잡힘", jargon.violations.some((v) => v.includes("내부 용어")), jargon.violations);
+check(
+  "회사명만 있고 추천 아니면 통과",
+  screenScript(pkg({ ending: { ...pkg().ending, partAClose: "답은 한미반도체 장비였어요." } }), 3)
+    .violations.length === 0
+);
+
 console.log("\n제목 검사");
 check("시점 표현 탈락", titleViolations("2026년 로봇 관련주 3대 총정리", "로봇 관련주").some((v) => v.includes("시점")));
 check("묶음 표시어 없어도 통과", titleViolations("로봇 관련주 이야기", "로봇 관련주").length === 0);

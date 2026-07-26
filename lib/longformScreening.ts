@@ -29,10 +29,22 @@ const BAN_PATTERNS: { re: RegExp; label: string }[] = [
   { re: /한대요|래요\b|랍니다/, label: "-한대요 전달체" },
   { re: /알기\s*쉬운|정리해\s*드릴|정리해\s*드립니다|하는\s*법을\s*알려/, label: "수업 예고형" },
   { re: /선택은\s*여러분의\s*몫|판단은\s*여러분/, label: "정보 없는 여운형" },
+  // ★ 제작 내부 용어를 시청자에게 그대로 말하는 것 — "끝에 계좌 힌트 나옵니다"가 실제로 나왔다.
+  // "계좌에 닿는가"는 우리가 원칙을 설명할 때 쓰는 말이지, 진행자가 할 대사가 아니다.
+  {
+    re: /계좌\s*(힌트|착지|언어|관점)|title[_\s]?promise|열린\s*고리|방점|승격|개방\s*문장|세그먼트|브리지/,
+    label: "제작 내부 용어 노출",
+  },
 ];
 
 // 승격 자리의 빈 말 — "이건 시작에 불과합니다" 류.
 const EMPTY_ELEVATION = /시작에\s*불과|맛보기에\s*불과|본론은\s*지금부터/;
+
+// ★ 종목 추천 — 원칙 ending.part_b.ban 에 있는데 코드로 안 막아 "한미반도체가 핵심 수혜예요"가
+// 그대로 나갔다(2026-07-25). 특정 회사를 사라/수혜다/유망하다로 지목하는 표현을 잡는다.
+// 회사명 자체는 고리를 닫는 근거로 필요하므로(part_a 는 구체로 닫아야 함) "추천 술어"만 본다.
+const STOCK_PICK =
+  /(수혜주|유망주|추천\s*종목|최선호|톱픽|top\s*pick)|((가|이|은|는)\s*)?(핵심\s*)?수혜(예요|입니다|다|株|주)|담아|사\s*두|매수|비중\s*확대|사야|투자하세요|주목하세요/i;
 
 export interface ScriptScreenResult {
   violations: string[];
@@ -68,23 +80,26 @@ export function screenScript(pkg: LongformScriptPackage, segmentCount: number): 
 
   scanBans("오프닝", `${pkg.opening.blockAHook} ${pkg.opening.blockBRoadmapLanding}`, v);
   scanBans("엔딩", `${pkg.ending.partAClose} ${pkg.ending.partBLanding}`, v);
+  // 종목 추천 금지(원칙 ending.part_b.ban) — 엔딩 전체와 연결에서 본다.
+  const pickTargets: [string, string][] = [
+    ["엔딩 파트 A", pkg.ending.partAClose],
+    ["엔딩 파트 B", pkg.ending.partBLanding],
+    ...pkg.bridges.map(
+      (b, i) => [`브리지 ${i + 1}`, [b.emphasis, b.elevation, b.opening].join(" ")] as [string, string]
+    ),
+  ];
+  for (const [label, text] of pickTargets) {
+    if (STOCK_PICK.test(text ?? "")) v.push(`${label}: 종목 추천 표현 — 특정 종목을 사라·수혜다로 지목 금지`);
+  }
   pkg.bridges.forEach((b, i) => {
     scanBans(`브리지 ${i + 1}`, `${b.emphasis} ${b.elevation} ${b.opening}`, v);
     if (EMPTY_ELEVATION.test(b.elevation)) v.push(`브리지 ${i + 1}: 승격이 빈 말("시작에 불과" 류)`);
-    // 브리지는 3~5초 — 3역할을 짧게 압축한다(역할당 상한: 방점 10자·승격 8자·개방 10자).
-    // 합계만 보면 모델이 한 역할에 몰아 쓰므로 역할별로도 잡는다.
-    const joined = `${b.emphasis} ${b.elevation} ${b.opening}`;
+    // 연결은 3~5초(16~27자). 총량만 본다 — 역할별 글자 상한을 걸었더니 모델이 의미를 버리고
+    // 글자 수만 맞춰 "빅3 구조로." "답 아직요." 같은 토막이 나왔다(2026-07-25 되돌림).
+    // 자연스러운 문장인지는 사람이 읽고 판단할 몫이라 코드로는 총 길이만 가드한다.
+    const joined = [b.emphasis, b.elevation, b.opening].filter(Boolean).join(" ");
     const sec = speakSeconds(joined);
     if (sec > BRIDGE_BUDGET) v.push(`브리지 ${i + 1}: ${sec}초 — ${BRIDGE_BUDGET}초 초과`);
-    const cap: [string, string, number][] = [
-      ["방점", b.emphasis, 10],
-      ["승격", b.elevation, 8],
-      ["개방", b.opening, 10],
-    ];
-    for (const [role, text, max] of cap) {
-      const n = (text ?? "").trim().length;
-      if (n > max) v.push(`브리지 ${i + 1} ${role}: ${n}자 — ${max}자 초과`);
-    }
   });
   const bridgeMax = pkg.bridges.length
     ? Math.max(...pkg.bridges.map((b) => speakSeconds(b.emphasis, b.elevation, b.opening)))

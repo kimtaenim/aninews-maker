@@ -1005,54 +1005,12 @@ export default function LongformStudio({
         </div>
       )}
 
-      {/* 진행자(마스코트) */}
+      {/* [모듈 2~4] 대본 — 오프닝 2블록 · 세그먼트 순서 + 브리지 · 엔딩 3파트
+          ★ 진행자 패널보다 반드시 위에 온다 — 진행자 씬은 이 대본을 펼치는 것이라
+            "먼저 대본을 생성하라"고 안내하면서 그 버튼이 아래 있으면 안 된다(작업 순서 = 화면 순서). */}
       <div className="mt-4 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold">진행자</h2>
-          <button
-            onClick={genHostScript}
-            disabled={hostBusy || !script}
-            className="shrink-0 text-xs rounded-lg border border-accent px-3 py-1.5 text-accent hover:bg-accent/10 disabled:opacity-40"
-          >
-            {hostBusy ? "생성 중…" : hostProject ? "씬 다시 만들기" : "진행자 씬 만들기"}
-          </button>
-        </div>
-        <p className="mt-1 text-[11px] text-zinc-500">
-          ②③④ 대본을 진행자 씬으로 펼칩니다 — 오프닝 2씬 · 브리지 {script?.bridges.length ?? 0}씬 · 엔딩 3씬.
-          그 뒤 <b>진행자 편집</b>에서 씬별로 이미지·영상·음성을 만드세요(오프닝 첫 씬 = 캐릭터 확정).
-        </p>
-        {!script && <p className="mt-2 text-[11px] text-amber-600">먼저 ②③④ 대본을 생성해주세요.</p>}
-        {hostErr && <p className="mt-2 text-[11px] text-red-600">{hostErr}</p>}
-        {hostProject ? (
-          <div className="mt-2 flex items-center gap-3 rounded-lg border border-zinc-200 dark:border-zinc-800 p-2">
-            <div className="h-10 w-16 shrink-0 overflow-hidden rounded bg-zinc-100 dark:bg-zinc-900">
-              {hostProject.keyframeUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={hostProject.keyframeUrl} alt="진행자" className="h-full w-full object-cover" />
-              ) : null}
-            </div>
-            <span className="flex-1 text-xs">
-              호스트 씬 {hostProject.sceneCount}개
-              {hostProject.finalVideoUrl ? " · 완성" : ""}
-            </span>
-            <Link
-              href={`/project/${hostProject.id}`}
-              className="shrink-0 text-[11px] rounded-md border border-accent px-2 py-1 text-accent hover:bg-accent/10"
-            >
-              진행자 편집 →
-            </Link>
-          </div>
-        ) : (
-          <p className="mt-2 text-[11px] text-amber-600 dark:text-amber-400">
-            아직 없음 — &lsquo;진행자 대본 생성&rsquo;을 눌러 시작하세요.
-          </p>
-        )}
-      </div>
-
-      {/* [모듈 2~4] 대본 — 오프닝 2블록 · 세그먼트 순서 + 브리지 · 엔딩 3파트 */}
-      <div className="mt-4 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold">②③④ 대본 (오프닝·브리지·엔딩)</h2>
+          <h2 className="text-sm font-semibold">② 진행자 대본 (오프닝·연결·엔딩)</h2>
           <button
             onClick={genScript}
             disabled={scriptBusy || !confirmedTitle}
@@ -1062,7 +1020,7 @@ export default function LongformStudio({
           </button>
         </div>
         <p className="mt-1 text-[11px] text-zinc-500">
-          오프닝(25초 이내 2블록) · 세그먼트 순서 설계 + 브리지(방점·승격·개방) · 엔딩(고리 닫기·계좌 착지·구독)을 한 번에.
+          진행자가 말하는 부분을 한 번에 씁니다 — 오프닝(5~7초) · 세그먼트 순서 설계 + 연결(3~5초씩) · 엔딩(10초 이내).
           전체 고리는 <b>엔딩 파트 A 한 곳</b>에서만 닫힙니다.
         </p>
         {!confirmedTitle && (
@@ -1099,7 +1057,7 @@ export default function LongformStudio({
             {/* 오프닝 */}
             <div>
               <p className="text-[11px] font-semibold text-accent">
-                오프닝 · {script.opening.estSeconds}초 (25초 이내)
+                오프닝 · {script.opening.estSeconds}초 (5~7초)
               </p>
               <textarea
                 value={edit.a}
@@ -1119,12 +1077,15 @@ export default function LongformStudio({
 
             {/* 브리지 */}
             <div>
-              <p className="text-[11px] font-semibold text-accent">브리지 {script.bridges.length}개 (방점 / 승격 / 개방 — 줄바꿈 구분)</p>
+              <p className="text-[11px] font-semibold text-accent">
+                연결 {script.bridges.length}개 · 각 3~5초 (방점 / 승격 / 개방 — 줄바꿈 구분)
+              </p>
               <div className="mt-1 grid gap-2">
                 {script.bridges.map((b, i) => (
                   <div key={i}>
                     <p className="text-[10px] text-zinc-500">
-                      세그 {b.afterSegment + 1} 뒤{b.isMidpointReopen ? " · 🔁 중간점 고리 환기" : ""}
+                      연결 {b.afterSegment + 1}/{b.afterSegment + 2} · {bridgeSeconds(b)}초
+                      {b.isMidpointReopen ? " · 🔁 중간점 고리 환기" : ""}
                     </p>
                     <textarea
                       value={edit.bridges[i] ?? ""}
@@ -1143,7 +1104,7 @@ export default function LongformStudio({
 
             {/* 엔딩 */}
             <div>
-              <p className="text-[11px] font-semibold text-accent">엔딩 · {script.ending.estSeconds}초 (25초 이내)</p>
+              <p className="text-[11px] font-semibold text-accent">엔딩 · {script.ending.estSeconds}초 (10초 이내)</p>
               <textarea
                 value={edit.pa}
                 onChange={(e) => setEdit({ ...edit, pa: e.target.value })}
@@ -1194,10 +1155,54 @@ export default function LongformStudio({
         )}
       </div>
 
+      {/* 진행자 씬 — 위 대본을 씬으로 펼친다. 반드시 대본 패널 "뒤"에 온다(작업 순서 = 화면 순서). */}
+      <div className="mt-4 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold">③ 진행자 씬</h2>
+          <button
+            onClick={genHostScript}
+            disabled={hostBusy || !script}
+            className="shrink-0 text-xs rounded-lg border border-accent px-3 py-1.5 text-accent hover:bg-accent/10 disabled:opacity-40"
+          >
+            {hostBusy ? "생성 중…" : hostProject ? "씬 다시 만들기" : "진행자 씬 만들기"}
+          </button>
+        </div>
+        <p className="mt-1 text-[11px] text-zinc-500">
+          위 진행자 대본을 씬으로 펼칩니다 — 오프닝 2씬 · 연결 {script?.bridges.length ?? 0}씬 · 엔딩 3씬.
+          그 뒤 <b>진행자 편집</b>에서 씬별로 이미지·영상·음성을 만드세요(오프닝 첫 씬 = 캐릭터 확정).
+        </p>
+        {!script && <p className="mt-2 text-[11px] text-amber-600">먼저 위 ② 진행자 대본을 생성해주세요.</p>}
+        {hostErr && <p className="mt-2 text-[11px] text-red-600">{hostErr}</p>}
+        {hostProject ? (
+          <div className="mt-2 flex items-center gap-3 rounded-lg border border-zinc-200 dark:border-zinc-800 p-2">
+            <div className="h-10 w-16 shrink-0 overflow-hidden rounded bg-zinc-100 dark:bg-zinc-900">
+              {hostProject.keyframeUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={hostProject.keyframeUrl} alt="진행자" className="h-full w-full object-cover" />
+              ) : null}
+            </div>
+            <span className="flex-1 text-xs">
+              진행자 씬 {hostProject.sceneCount}개
+              {hostProject.finalVideoUrl ? " · 완성" : ""}
+            </span>
+            <Link
+              href={`/project/${hostProject.id}`}
+              className="shrink-0 text-[11px] rounded-md border border-accent px-2 py-1 text-accent hover:bg-accent/10"
+            >
+              진행자 편집 →
+            </Link>
+          </div>
+        ) : (
+          <p className="mt-2 text-[11px] text-zinc-500">
+            아직 없음 — 위 버튼으로 대본을 씬으로 펼치세요.
+          </p>
+        )}
+      </div>
+
       {/* [모듈 5] 썸네일 */}
       <div className="mt-4 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold">⑤ 썸네일</h2>
+          <h2 className="text-sm font-semibold">④ 썸네일</h2>
           <button
             onClick={genThumbnail}
             disabled={thumbBusy || !confirmedTitle}
