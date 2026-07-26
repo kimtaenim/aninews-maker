@@ -17,7 +17,7 @@ import {
   ELONGATED_PLAN_SYSTEM_PROMPT,
   FACT_EXTRACT_INSTRUCTION,
 } from "./elongatedPlanPrompt";
-import { BLOCK_TYPES, GRADES, chapterCount } from "./elongated";
+import { BLOCK_TYPES, GRADES, SEARCH_MAX_USES, chapterCount } from "./elongated";
 import { formatSeconds, multiplier } from "./elongatedFormat";
 import shortsPrinciples from "../config/script-principles.json";
 import type { ElongatedBlock, ElongatedChapter, ElongatedPlan, FactCard } from "./types";
@@ -36,9 +36,13 @@ type Msg = {
 };
 type MsgParam = { role: "user" | "assistant"; content: unknown };
 
-// 대목 하나에 필요한 검색은 두세 번이면 된다. 실측(2026-07-26): max_uses 5 · 3라운드로
-// 두니 대목 하나에 5분이 걸렸다 — 대목이 15개면 한 시간을 넘긴다. 낮게 묶는다.
-const WEB_SEARCH_TOOL = { type: "web_search_20260209", name: "web_search", max_uses: 3 };
+// 검색 결과가 토큰으로 들어와 매 턴 재전송되므로 검색 횟수가 곧 비용이다(실측 2026-07-26:
+// max_uses 5·3라운드면 대목 하나에 5분·₩551). 상한은 config 단일 원천.
+const WEB_SEARCH_TOOL = {
+  type: "web_search_20260209",
+  name: "web_search",
+  max_uses: SEARCH_MAX_USES,
+};
 const MAX_ROUNDS = 2;
 
 export function today(): string {

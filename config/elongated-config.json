@@ -13,9 +13,12 @@
   "min_views": 500,
   "min_completion": 70,
 
-  "_comment_chapter": "챕터 하나의 목표 길이(초). 챕터 수 = 목표 길이 ÷ 이 값(원본 씬 수를 넘지 않는다).",
-  "chapter_target_sec": 75,
+  "_comment_chapter": "챕터 하나의 목표 길이(초). 챕터 수 = 목표 길이 ÷ 이 값(원본 씬 수를 넘지 않는다). 사실 찾기가 챕터당 한 번 도는 구조라 이 값이 곧 대본비다 — 75초면 8분 롱폼이 6챕터(₩3,000~4,000), 110초면 4챕터(₩1,500~2,000).",
+  "chapter_target_sec": 110,
   "chapter_min_count": 3,
+
+  "_comment_search": "챕터 하나의 사실을 찾을 때 쓸 웹 검색 횟수 상한. 검색 결과가 토큰으로 들어와 매 턴 재전송되므로 이 값이 비용의 주범이다(실측 2026-07-26).",
+  "search_max_uses": 2,
 
   "chapter_length_tolerance": 0.3,
   "target_length_tolerance": 0.2,

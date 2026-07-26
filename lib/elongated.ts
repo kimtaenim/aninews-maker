@@ -40,6 +40,7 @@ interface RawConfig {
   min_completion: number;
   chapter_target_sec: number;
   chapter_min_count: number;
+  search_max_uses: number;
   chapter_length_tolerance: number;
   target_length_tolerance: number;
   block_types: { id: string; desc: string }[];
@@ -59,6 +60,7 @@ export const BLOCK_TYPE_IDS: string[] = cfg.block_types.map((b) => b.id);
 export const REQUIRED_BLOCK: string = cfg.required_block;
 export const GRADES: string[] = cfg.grades;
 export const CHAPTER_TOLERANCE = cfg.chapter_length_tolerance;
+export const SEARCH_MAX_USES = cfg.search_max_uses;
 export const TARGET_TOLERANCE = cfg.target_length_tolerance;
 
 // ── 길이 계산 ────────────────────────────────────────────────────────────────
@@ -113,10 +115,12 @@ export function charsToSeconds(chars: number): number {
 // 목표 길이를 정하는 순간 편당 비용이 정해진다(8분이면 씬 70개 = 영상비가 전체의 90%).
 // 고르기 전에 화면에서 보이게 하려고 여기서 계산한다. 단가의 원천은 lib/cost.ts 하나다.
 
-// 대본 단계 실측(Redis cost:entries, 2026-07-26): 비판 검수와 같은 구조인 확장 설계가
-// 평균 ₩806·최대 ₩1,657, 롱폼 대본이 평균 ₩206, 대본 검수가 ₩56. 넉넉히 잡아 둔다.
+// 대본 단계 실측(Redis cost:entries, 2026-07-26):
+//   설계 ₩678 · 사실 찾기 챕터당 ₩550 안팎 · 본문·검수 ₩600 안팎.
+// 챕터 수(config chapter_target_sec)가 곧 대본비다 — 8분이면 4챕터라 ₩2,500~3,500.
+// 처음엔 ₩1,680으로 잡았다가 실측에서 5배가 나왔다. 넉넉히 잡는다.
 // ※ web_search 서버 도구 사용료는 anthropicCostUsd 가 아직 세지 않는다(토큰만 계산).
-const SCRIPT_STAGE_USD = 1.2;
+const SCRIPT_STAGE_USD = 2.5;
 
 /** 화면(서버·클라 공용)이 쓰는 단가 묶음. 단가의 원천은 lib/cost.ts 하나다. */
 export function costRates(videoUsdPerScene: number = FAL_VIDEO_DEFAULT_USD): CostRates {
