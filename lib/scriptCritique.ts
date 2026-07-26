@@ -51,7 +51,16 @@ export interface CritiqueResult {
   fixes: CritiqueFix[]; // 체크박스로 고를 수 있게 구조화한 반영안
   verdict: string; // 한 줄 총평(각도 유지/전환/전면 재작성 권고)
   searched: boolean; // 실제로 웹 검색이 돌았는지
+  partial: boolean; // 마감 시각에 걸려 이어 돌리기를 끊었는지(리포트가 덜 찼을 수 있음)
   costUsd: number;
+}
+
+// 라운드마다 걸린 시간 — 프로덕션 타임아웃 진단용(scripts/verify-critique-timing.ts).
+export interface CritiqueRoundInfo {
+  round: number;
+  ms: number;
+  stopReason?: string | null;
+  searched: boolean;
 }
 
 // 리포트(자연어) → 반영 항목 배열. 검색이 도는 1차 호출에 JSON 까지 시키면 서버 도구
@@ -112,8 +121,13 @@ export async function critiqueScript(args: {
   projectId: string;
   narrations: string[];
   imagesReady?: boolean; // 그림(씬 이미지) 완성 여부 — 6번 그림 호환 판정에 쓴다
+  // 이 시각(epoch ms)을 넘기면 이어 돌리기를 더 시작하지 않는다. Vercel maxDuration 안에서
+  // 504 로 통째로 잃는 대신, 여기까지 받은 리포트라도 살려서 돌려주기 위한 안전판.
+  deadlineMs?: number;
+  onRound?: (info: CritiqueRoundInfo) => void;
+  skipExtract?: boolean; // 구조화(2차 호출)를 건너뛴다 — 리포트만 먼저 저장할 때
 }): Promise<CritiqueResult> {
-  const { projectId, narrations, imagesReady } = args;
+  const { projectId, narrations, imagesReady, deadlineMs, onRound, skipExtract } = args;
   const client = getAnthropic();
 
   const system =
@@ -132,7 +146,14 @@ export async function critiqueScript(args: {
   const MAX_ROUNDS = 6; // pause_turn 이어 돌리기 상한(무한 루프 방지)
 
   let last: Msg | null = null;
+  let partial = false;
   for (let round = 0; round < MAX_ROUNDS; round++) {
+    // 이어 돌리기는 마감 전에만 새로 시작한다(첫 라운드는 무조건 돈다 — 없으면 리포트가 없다).
+    if (round > 0 && deadlineMs && Date.now() >= deadlineMs) {
+      partial = true;
+      break;
+    }
+    const roundStart = Date.now();
     // 웹 검색이 여러 번 도는 서버 도구 응답은 5분+ 걸린다 → 비스트리밍 요청은 타임아웃.
     // 스트리밍으로 받아 연결을 살려 둔다(이벤트마다 read 타임아웃 리셋). finalMessage 로 취합.
     const stream = client.messages.stream(
@@ -158,6 +179,7 @@ export async function critiqueScript(args: {
       searched = true;
     }
     last = r;
+    onRound?.({ round, ms: Date.now() - roundStart, stopReason: r.stop_reason ?? null, searched });
     // 서버 도구 루프가 반복 상한에 걸렸으면(pause_turn) 응답을 그대로 이어붙여 재전송.
     if (r.stop_reason === "pause_turn") {
       messages.push({ role: "assistant", content: r.content });
@@ -181,42 +203,54 @@ export async function critiqueScript(args: {
       .join("")
       .trim() || "검수 결과를 받지 못했어요 — 다시 시도해주세요.";
 
-  // 2차 호출 — 리포트를 체크박스 항목으로 쪼갠다(도구 없음, 짧고 저렴). 여기서 실패해도
-  // 리포트 자체는 살아 있어야 하므로 조용히 빈 배열로 떨어뜨린다.
   let fixes: CritiqueFix[] = [];
   let verdict = "";
-  if (last) {
-    try {
-      const ex = (await client.messages.create({
-        model: MODELS.sonnet,
-        max_tokens: 8000,
-        system: "너는 검수 리포트를 구조화된 JSON 으로 옮겨 적는 변환기다. JSON 만 출력한다.",
-        messages: [
-          { role: "user", content: `[검수 리포트]\n${report}\n\n${EXTRACT_INSTRUCTION}` },
-        ] as never,
-      })) as unknown as Msg;
-      totalCost += anthropicCostUsd({
-        inputTokens: ex.usage.input_tokens,
-        outputTokens: ex.usage.output_tokens,
-        model: MODELS.sonnet,
-      });
-      const parsed = parseFixes(
-        ex.content.filter((b) => b.type === "text").map((b) => b.text ?? "").join("")
-      );
-      fixes = parsed.fixes;
-      verdict = parsed.verdict;
-    } catch {
-      /* 구조화 실패 — 리포트만으로도 쓸 수 있다 */
-    }
+  if (last && !skipExtract) {
+    const ex = await extractCritiqueFixes({ projectId, report });
+    fixes = ex.fixes;
+    verdict = ex.verdict;
+    totalCost += ex.costUsd;
   }
 
+  return { report, fixes, verdict, searched, partial, costUsd: totalCost };
+}
+
+// 2차 호출 — 리포트를 체크박스 항목으로 쪼갠다(도구 없음, 짧고 저렴). 실패해도 리포트 자체는
+// 살아 있어야 하므로 조용히 빈 배열로 떨어뜨린다.
+// 리포트 생성과 분리해 둔다 — 웹 검색이 오래 걸린 요청에서 이것까지 붙이면 300초 상한을 넘긴다.
+export async function extractCritiqueFixes(args: {
+  projectId: string;
+  report: string;
+}): Promise<{ fixes: CritiqueFix[]; verdict: string; costUsd: number }> {
+  const { projectId, report } = args;
+  const client = getAnthropic();
+  let fixes: CritiqueFix[] = [];
+  let verdict = "";
+  let costUsd = 0;
+  try {
+    const ex = (await client.messages.create({
+      model: MODELS.sonnet,
+      max_tokens: 8000,
+      system: "너는 검수 리포트를 구조화된 JSON 으로 옮겨 적는 변환기다. JSON 만 출력한다.",
+      messages: [{ role: "user", content: `[검수 리포트]\n${report}\n\n${EXTRACT_INSTRUCTION}` }] as never,
+    })) as unknown as Msg;
+    costUsd = anthropicCostUsd({
+      inputTokens: ex.usage.input_tokens,
+      outputTokens: ex.usage.output_tokens,
+      model: MODELS.sonnet,
+    });
+    const parsed = parseFixes(ex.content.filter((b) => b.type === "text").map((b) => b.text ?? "").join(""));
+    fixes = parsed.fixes;
+    verdict = parsed.verdict;
+  } catch {
+    /* 구조화 실패 — 리포트만으로도 쓸 수 있다 */
+  }
   await recordCost({
     projectId,
     vendor: "anthropic",
     model: MODELS.sonnet,
-    costUsd: 0,
+    costUsd,
     meta: { kind: "script-critique-extract", fixes: fixes.length },
   }).catch(() => {});
-
-  return { report, fixes, verdict, searched, costUsd: totalCost };
+  return { fixes, verdict, costUsd };
 }

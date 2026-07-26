@@ -2123,13 +2123,22 @@ export default function Studio({
     setBusy("script-critique");
     try {
       await flushScenes();
+      // 두 번에 나눠 부른다 — 검색이 도는 리포트만으로 300초 상한에 가깝다(실측 13씬 208초).
+      // 1) 리포트(웹 검색) 2) 리포트를 체크박스 항목으로 정리. 리포트는 서버에 먼저 저장돼
+      //    2)가 실패해도 비싼 검색을 다시 돌리지 않는다.
       const data = await call("/api/script/critique", { projectId: project.id });
       setScriptChat(data.chat as typeof scriptChat);
-      const fixes = (data.fixes ?? []) as CritiqueFix[];
+      let fixes = (data.fixes ?? []) as CritiqueFix[];
+      let verdict = (data.verdict as string) ?? "";
+      if (data.needsExtract) {
+        const ex = await call("/api/script/critique", { projectId: project.id, phase: "extract" });
+        fixes = (ex.fixes ?? []) as CritiqueFix[];
+        verdict = (ex.verdict as string) ?? verdict;
+      }
       setCritique({
         report: data.report as string,
         fixes,
-        verdict: (data.verdict as string) ?? "",
+        verdict,
         searched: !!data.searched,
       });
       // 기본은 전부 체크(시사인 봇과 동일) — 빼고 싶은 것만 풀면 된다.
