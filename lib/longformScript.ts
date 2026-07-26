@@ -19,7 +19,9 @@ import eyecatchConfig from "../config/eyecatch.json";
 import type { LongformBridge, LongformScriptPackage } from "./types";
 import type { LongformConstituent } from "./longformTitleGen";
 
-export const PART_C_STANDARD: string = principles.ending.part_c.standard_line;
+// ★ 구독 표준 문구는 쇼츠 것을 그대로 쓴다(config/script-principles.json 의 ⑧씬 고정 문구).
+// 롱폼용으로 따로 지어내지 마라 — 채널 문구는 하나다(2026-07-25 사고: 임의로 새 문구를 만들었음).
+export const PART_C_STANDARD: string = shortsPrinciples.structure.scene_8.text;
 
 export interface LongformScriptInput {
   title: string; // 확정 제목
@@ -152,29 +154,17 @@ export async function generateLongformScript(args: {
   }
   const client = getAnthropic();
   const mascot = (eyecatchConfig as { description?: string }).description ?? "";
+  // ★ 쇼츠 원칙 전문을 그대로 준다(발췌·재서술 금지 — 그 과정에서 내가 원칙을 지어냈다).
   const system = LONGFORM_SCRIPT_SYSTEM_PROMPT.replace(
-    "{{PRINCIPLES}}",
-    JSON.stringify(
-      {
-        // ★ 톤·문체·금지는 쇼츠 원칙이 기준이다. 진행자 멘트는 쇼츠 나레이션과 같은 말투여야
-        // 하고, 쇼츠가 안 하는 짓(투자 조언·종목 추천)은 롱폼도 안 한다.
-        쇼츠_기준_톤과_금지: {
-          style: shortsPrinciples.style,
-          마무리_방식: shortsPrinciples.structure.scene_7,
-          설명: "롱폼 엔딩도 쇼츠 ⑦씬과 똑같다 — 질문의 답을 정보·사실로 닫는 게 전부. 투자 조언·종목 추천·계좌 이야기는 쇼츠에 없고 롱폼에도 없다.",
-        },
-        // 롱폼에만 있는 구조(길이 예산·연결·세그먼트 순서). 톤을 여기서 새로 정하지 않는다.
-        opening: principles.opening,
-        segment_order: principles.segment_order,
-        bridge: principles.bridge,
-        ending: principles.ending,
-        structure_loop: principles.structure_loop,
-        common_bans: principles.common_bans,
-      },
-      null,
-      2
+    "{{SHORTS}}",
+    JSON.stringify(shortsPrinciples, null, 2)
+  )
+    .replace(
+      "{{LONGFORM}}",
+      // 롱폼에만 있는 것 = 세그먼트 순서 설계뿐. 톤·금지·마무리는 위 쇼츠 원칙이 다룬다.
+      JSON.stringify({ segment_order: principles.segment_order }, null, 2)
     )
-  ).replace("{{MASCOT}}", mascot);
+    .replace("{{MASCOT}}", mascot);
   const text = scriptInputToText(input);
   let totalCost = 0;
 
@@ -197,24 +187,22 @@ export async function generateLongformScript(args: {
     return parse(blocks.map((b) => b.text).join("").trim(), input);
   };
 
-  // 진행자 길이 예산은 모델이 자주 무시한다(실측: 오프닝 15초·브리지 18초). 그래서
-  // 길이 위반이 남아 있으면 "현재 글자 수 → 목표 글자 수"를 숫자로 못박아 최대 2회 더 조인다.
+  // 씬 하나는 쇼츠 씬과 같은 4~7초 = 18~32자. 넘치면 그 씬만 현재/목표 글자 수로 지적한다.
+  const SCENE_CHAR_MAX = 32; // 7초 × 4.5자/초 × 1.2배 ≈ 38자, 여유 두고 32자
   const overLengthNote = (p: LongformScriptPackage, s: ScriptScreenResult): string => {
-    const chars = (...t: string[]) => t.map((x) => (x ?? "").trim().length).reduce((a, b) => a + b, 0);
+    const n = (...t: string[]) => t.map((x) => (x ?? "").trim().length).reduce((a, b) => a + b, 0);
     const lines: string[] = [
-      `앞선 대본이 진행자 길이 예산을 넘겼다: ${s.violations.join("; ")}.`,
-      "진행자 구간은 무조건 짧아야 한다. 아래 목표 글자 수(공백 포함)에 맞춰 문장을 잘라라.",
-      "내용을 지키려 하지 말고 길이를 지켜라 — 핵심 한 조각만 남기고 나머지는 버린다.",
-      `· 오프닝 블록 A: 현재 ${chars(p.opening.blockAHook)}자 → 목표 18자 이하(한 문장)`,
-      `· 오프닝 블록 B: 현재 ${chars(p.opening.blockBRoadmapLanding)}자 → 목표 20자 이하(한 문장)`,
+      `앞선 대본에서 씬 길이가 넘쳤다: ${s.violations.join("; ")}.`,
+      `진행자 씬 하나는 쇼츠 씬과 같은 4~7초다 — 씬당 ${SCENE_CHAR_MAX}자 이하(공백 포함).`,
+      "단, 말을 토막 내지 마라. 담는 내용을 줄여서 짧게 만들되 문장은 자연스럽게 유지한다.",
     ];
-    p.bridges.forEach((b, i) => {
-      lines.push(
-        `· 브리지 ${i + 1}: 현재 ${chars(b.emphasis, b.elevation, b.opening)}자 → 방점·승격·개방 합쳐 27자 이하`
-      );
-    });
-    lines.push(`· 엔딩 파트 A: 현재 ${chars(p.ending.partAClose)}자 → 목표 21자 이하`);
-    lines.push(`· 엔딩 파트 B: 현재 ${chars(p.ending.partBLanding)}자 → 목표 16자 이하`);
+    const over = (label: string, len: number) =>
+      len > SCENE_CHAR_MAX ? lines.push(`· ${label}: 현재 ${len}자 → ${SCENE_CHAR_MAX}자 이하`) : 0;
+    over("오프닝 1씬", n(p.opening.blockAHook));
+    over("오프닝 2씬", n(p.opening.blockBRoadmapLanding));
+    p.bridges.forEach((b, i) => over(`연결 ${i + 1}`, n(b.emphasis, b.elevation, b.opening)));
+    over("엔딩 답", n(p.ending.partAClose));
+    over("엔딩 여운", n(p.ending.partBLanding));
     lines.push("파트 C(구독 표준 문구)는 고정이니 건드리지 마라. 전체 JSON 을 다시 출력하라.");
     return lines.join("\n");
   };
@@ -224,7 +212,7 @@ export async function generateLongformScript(args: {
   for (let attempt = 0; attempt < 2; attempt++) {
     if (pkg && screen && screen.violations.length === 0) break;
     const note = pkg && screen
-      ? screen.violations.some((v) => /초 초과|문장 초과/.test(v))
+      ? screen.violations.some((v) => /상한.*초과/.test(v))
         ? overLengthNote(pkg, screen)
         : `앞선 대본에서 원칙 위반이 잡혔다: ${screen.violations.join("; ")}. 지적된 부분만 고쳐 전체 JSON 을 다시 출력하라.`
       : "JSON 형식이 어긋났다. 지정된 JSON 만 정확히 다시 출력하라.";

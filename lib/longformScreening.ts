@@ -6,6 +6,7 @@
 // ============================================================================
 
 import type { LongformScriptPackage } from "./types";
+import { DURATION_MAX } from "./scenes";
 
 // 한국어 TTS ≈ 4.5자/초(lib/scenes.ts 기준)에 보이스오버 기본 속도 1.2배를 곱한 값.
 // 프로젝트 기본 voiceSpeed 가 1.2(lib/projectStore.ts)라 실제 화면 시간은 이 속도로 계산한다.
@@ -15,12 +16,13 @@ export function speakSeconds(...texts: string[]): number {
   return Math.round((len / CHARS_PER_SEC) * 10) / 10;
 }
 
-// 진행자 구간 예산(2026-07-25 사용자 지정 — 이전 25/25초에서 대폭 단축).
-// 시청자는 세그먼트를 보러 왔지 진행자를 보러 온 게 아니다. 진행자는 짧게 끊고 넘긴다.
-//   오프닝 5~7초 · 연결(브리지) 3~5초 · 엔딩 10초 이내.
-export const OPENING_BUDGET = 7;
-export const ENDING_BUDGET = 10;
-export const BRIDGE_BUDGET = 5;
+// ★ 진행자 씬 길이는 쇼츠 씬과 같다 — lib/scenes.ts 의 DURATION_MIN/MAX(4~7초)가 원천.
+// 롱폼용 예산을 따로 지어내지 마라(2026-07-25). 오프닝 2씬·연결 1씬·엔딩 3씬이므로
+// 구간 예산은 씬 수 × 씬 상한으로 자동 계산된다.
+export const SCENE_MAX = DURATION_MAX; // 7초
+export const OPENING_BUDGET = SCENE_MAX * 2; // 오프닝 2씬 = 14초
+export const ENDING_BUDGET = SCENE_MAX * 3; // 엔딩 3씬 = 21초
+export const BRIDGE_BUDGET = SCENE_MAX; // 연결 1씬 = 7초
 
 // 전 모듈 공통 금지 표현(config common_bans / style.ban 의 기계 검사 가능한 부분).
 const BAN_PATTERNS: { re: RegExp; label: string }[] = [
@@ -79,56 +81,58 @@ export function screenScript(pkg: LongformScriptPackage, segmentCount: number): 
   const openingSeconds = speakSeconds(pkg.opening.blockAHook, pkg.opening.blockBRoadmapLanding);
   const endingSeconds = speakSeconds(pkg.ending.partAClose, pkg.ending.partBLanding, pkg.ending.partCStandard);
 
-  if (openingSeconds > OPENING_BUDGET) v.push(`오프닝 ${openingSeconds}초 — ${OPENING_BUDGET}초 초과`);
-  if (endingSeconds > ENDING_BUDGET) v.push(`엔딩 ${endingSeconds}초 — ${ENDING_BUDGET}초 초과`);
-  // 오프닝은 두 블록 합쳐 5~7초라 블록당 한 문장씩이 한계다.
-  if ((pkg.opening.blockAHook.match(/[.!?]/g)?.length ?? 0) > 1) v.push("오프닝 블록 A 1문장 초과");
-  if ((pkg.opening.blockBRoadmapLanding.match(/[.!?]/g)?.length ?? 0) > 1) v.push("오프닝 블록 B 1문장 초과");
-  if (speakSeconds(pkg.ending.partAClose) > 4) v.push("엔딩 파트 A 4초 초과");
-  if (speakSeconds(pkg.ending.partBLanding) > 3) v.push("엔딩 파트 B 3초 초과");
+  // 씬 단위로 본다 — 진행자 씬 하나는 쇼츠 씬과 같은 4~7초.
+  const scene = (label: string, text: string) => {
+    const t = (text ?? "").trim();
+    if (!t) return; // 비워도 되는 자리(엔딩 여운 등)
+    const sec = speakSeconds(t);
+    if (sec > SCENE_MAX) v.push(`${label} ${sec}초 — 씬 상한 ${SCENE_MAX}초 초과`);
+  };
+  scene("오프닝 1씬", pkg.opening.blockAHook);
+  scene("오프닝 2씬", pkg.opening.blockBRoadmapLanding);
+  scene("엔딩 답", pkg.ending.partAClose);
+  scene("엔딩 여운", pkg.ending.partBLanding);
 
   const gaps = Math.max(0, segmentCount - 1);
-  if (pkg.bridges.length !== gaps) v.push(`브리지 ${pkg.bridges.length}개 — 세그먼트 사이(${gaps}개)와 불일치`);
+  if (pkg.bridges.length !== gaps) v.push(`연결 ${pkg.bridges.length}개 — 세그먼트 사이(${gaps}개)와 불일치`);
   const midpoints = pkg.bridges.filter((b) => b.isMidpointReopen).length;
   if (midpoints > 1) v.push(`중간점 고리 환기 ${midpoints}회 — 영상당 1회만`);
-  if (midpoints === 0 && gaps >= 2) v.push("중간점 고리 환기 없음 — 중간 브리지 1개에 지정 필요");
 
   scanBans("오프닝", `${pkg.opening.blockAHook} ${pkg.opening.blockBRoadmapLanding}`, v);
   scanBans("엔딩", `${pkg.ending.partAClose} ${pkg.ending.partBLanding}`, v);
   // 종목 추천 금지(원칙 ending.part_b.ban) — 엔딩 전체와 연결에서 본다.
   const pickTargets: [string, string][] = [
-    ["엔딩 파트 A", pkg.ending.partAClose],
-    ["엔딩 파트 B", pkg.ending.partBLanding],
+    ["엔딩 답", pkg.ending.partAClose],
+    ["엔딩 여운", pkg.ending.partBLanding],
     ...pkg.bridges.map(
-      (b, i) => [`브리지 ${i + 1}`, [b.emphasis, b.elevation, b.opening].join(" ")] as [string, string]
+      (b, i) => [`연결 ${i + 1}`, [b.emphasis, b.elevation, b.opening].join(" ")] as [string, string]
     ),
   ];
   for (const [label, text] of pickTargets) {
-    if (STOCK_PICK.test(text ?? "")) v.push(`${label}: 종목 추천 표현 — 특정 종목을 사라·수혜다로 지목 금지`);
+    if (STOCK_PICK.test(text ?? "")) v.push(`${label}: 종목 추천·투자 조언 — 쇼츠는 안 하는 짓이다`);
   }
   pkg.bridges.forEach((b, i) => {
-    scanBans(`브리지 ${i + 1}`, `${b.emphasis} ${b.elevation} ${b.opening}`, v);
-    if (EMPTY_ELEVATION.test(b.elevation)) v.push(`브리지 ${i + 1}: 승격이 빈 말("시작에 불과" 류)`);
-    // 연결은 3~5초(16~27자). 총량만 본다 — 역할별 글자 상한을 걸었더니 모델이 의미를 버리고
-    // 글자 수만 맞춰 "빅3 구조로." "답 아직요." 같은 토막이 나왔다(2026-07-25 되돌림).
-    // 자연스러운 문장인지는 사람이 읽고 판단할 몫이라 코드로는 총 길이만 가드한다.
     const joined = [b.emphasis, b.elevation, b.opening].filter(Boolean).join(" ");
+    scanBans(`연결 ${i + 1}`, joined, v);
+    if (EMPTY_ELEVATION.test(b.elevation)) v.push(`연결 ${i + 1}: 빈 말("시작에 불과" 류)`);
+    // 연결 하나 = 진행자 씬 하나 = 쇼츠 씬과 같은 4~7초.
     const sec = speakSeconds(joined);
-    if (sec > BRIDGE_BUDGET) v.push(`브리지 ${i + 1}: ${sec}초 — ${BRIDGE_BUDGET}초 초과`);
+    if (sec > BRIDGE_BUDGET) v.push(`연결 ${i + 1} ${sec}초 — 씬 상한 ${BRIDGE_BUDGET}초 초과`);
   });
   const bridgeMax = pkg.bridges.length
     ? Math.max(...pkg.bridges.map((b) => speakSeconds(b.emphasis, b.elevation, b.opening)))
     : 0;
 
   const computed: Record<string, string> = {
-    진행자길이: `오프닝 ${openingSeconds}초(≤${OPENING_BUDGET}) · 연결 최대 ${bridgeMax}초(≤${BRIDGE_BUDGET}) · 엔딩 ${endingSeconds}초(≤${ENDING_BUDGET}) — ${
+    진행자길이: `오프닝 ${openingSeconds}초(2씬≤${OPENING_BUDGET}) · 연결 최대 ${bridgeMax}초(1씬≤${BRIDGE_BUDGET}) · 엔딩 ${endingSeconds}초(3씬≤${ENDING_BUDGET}) — ${
       openingSeconds <= OPENING_BUDGET && endingSeconds <= ENDING_BUDGET && bridgeMax <= BRIDGE_BUDGET
         ? "통과"
         : "탈락"
     }`,
-    중간점환기: midpoints === 1 ? "통과 — 1회" : `${midpoints}회 — ${gaps >= 2 ? "탈락" : "해당 없음"}`,
-    브리지수: pkg.bridges.length === gaps ? `통과 — ${gaps}개` : `탈락 — ${pkg.bridges.length}/${gaps}`,
-    금지표현: v.some((x) => /시점 표현|물결표|전달체|수업 예고형|여운형/.test(x)) ? "탈락" : "통과",
+    중간점환기: midpoints <= 1 ? "통과" : `${midpoints}회 — 탈락(1회만)`,
+    연결수: pkg.bridges.length === gaps ? `통과 — ${gaps}개` : `탈락 — ${pkg.bridges.length}/${gaps}`,
+    금지표현: v.some((x) => /시점 표현|물결표|전달체|수업 예고형|여운형|내부 용어/.test(x)) ? "탈락" : "통과",
+    종목추천: v.some((x) => x.includes("종목 추천")) ? "탈락" : "통과",
   };
 
   return { violations: v, computed, openingSeconds, endingSeconds };

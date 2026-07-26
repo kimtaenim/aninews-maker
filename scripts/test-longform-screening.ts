@@ -3,6 +3,7 @@ import { screenScript, speakSeconds } from "../lib/longformScreening";
 import { layoutText, strokeAt168 } from "../lib/thumbnailCompose";
 import { titleViolations, thumbnailTextViolations } from "../lib/longformTitleCheck";
 import type { LongformScriptPackage } from "../lib/types";
+import shorts from "../config/script-principles.json";
 
 let fail = 0;
 function check(label: string, cond: boolean, extra?: unknown) {
@@ -15,32 +16,33 @@ function pkg(over: Partial<LongformScriptPackage> = {}): LongformScriptPackage {
     titleUsed: "휴머노이드 관련주 3대 대결 총정리, 승자는 따로 있었다",
     titlePromise: "가장 센 쪽이 이기지 않는다",
     segmentOrder: [],
-    // 진행자 구간 예산(2026-07-25): 오프닝 5~7초 · 브리지 3~5초 · 엔딩 10초 이내.
+    // 진행자 씬은 쇼츠 씬과 같은 4~7초(씬당 32자 이하). 문장은 자연스럽게.
     opening: {
-      blockAHook: "이긴 쪽이 돈을 못 벌었어요.", // ≈2.6초
-      blockBRoadmapLanding: "세 판 보고 답 찾습니다.", // ≈2.2초
+      blockAHook: "이긴 쪽이 돈을 못 벌었어요.",
+      blockBRoadmapLanding: "그럼 돈은 누가 벌었을까요?",
       estSeconds: 0,
     },
     bridges: [
       {
         afterSegment: 0,
-        emphasis: "승자는 부품사.",
-        elevation: "답은 아직요.",
-        opening: "다음은 미중전.",
+        emphasis: "이긴 건 로봇이 아니라 부품사였어요.",
+        elevation: "",
+        opening: "다음은 미국과 중국입니다.",
         isMidpointReopen: true,
       },
       {
         afterSegment: 1,
-        emphasis: "둘 다 같은 데서.",
-        elevation: "방향이 보이죠.",
-        opening: "끝은 전시장.",
+        emphasis: "두 나라 다 같은 곳에서 사 갔어요.",
+        elevation: "",
+        opening: "마지막은 전시장입니다.",
         isMidpointReopen: false,
       },
     ],
     ending: {
-      partAClose: "답은 감속기를 판 회사였어요.", // ≈2.6초
-      partBLanding: "수주가 쏠리면 다시 보세요.", // ≈2.4초
-      partCStandard: "이런 이야기 매일 올려요. 구독해두세요.", // ≈3.5초
+      partAClose: "답은 감속기를 판 회사였어요.",
+      partBLanding: "",
+      // ★ 쇼츠 ⑧씬 고정 문구를 그대로 — 롱폼용으로 새로 짓지 않는다.
+      partCStandard: shorts.structure.scene_8.text,
       endscreenVideo: "로봇개 대결편",
       estSeconds: 0,
     },
@@ -54,9 +56,10 @@ console.log("낭독 길이 추정");
 const openSec = speakSeconds(pkg().opening.blockAHook, pkg().opening.blockBRoadmapLanding);
 const endSec = speakSeconds(pkg().ending.partAClose, pkg().ending.partBLanding, pkg().ending.partCStandard);
 const brSec = speakSeconds(pkg().bridges[0].emphasis, pkg().bridges[0].elevation, pkg().bridges[0].opening);
-check("오프닝 7초 이내", openSec <= 7, openSec);
-check("브리지 5초 이내", brSec <= 5, brSec);
-check("엔딩 10초 이내", endSec <= 10, endSec);
+// 진행자 씬 = 쇼츠 씬(4~7초). 오프닝 2씬·연결 1씬·엔딩 3씬.
+check("오프닝 2씬 ≤14초", openSec <= 14, openSec);
+check("연결 1씬 ≤7초", brSec <= 7, brSec);
+check("엔딩 3씬 ≤21초", endSec <= 21, endSec);
 
 console.log("\n정상 대본 — 위반 없음");
 const ok = screenScript(pkg(), 3);
@@ -68,7 +71,7 @@ const long = screenScript(
   pkg({ opening: { ...pkg().opening, blockAHook: "가".repeat(200) } }),
   3
 );
-check("오프닝 초과 잡힘", long.violations.some((v) => v.includes("7초 초과")), long.violations);
+check("오프닝 초과 잡힘", long.violations.some((v) => v.includes("씬 상한")), long.violations);
 
 console.log("\n중간점 환기 2회");
 const mid = screenScript(
@@ -77,7 +80,7 @@ const mid = screenScript(
 );
 check("중간점 2회 잡힘", mid.violations.some((v) => v.includes("중간점")), mid.violations);
 
-console.log("\n브리지 수 불일치 / 빈 말 승격 / 시점 표현");
+console.log("\n연결 수 불일치 / 빈 말 / 시점 표현");
 const bad = screenScript(
   pkg({
     bridges: [{ ...pkg().bridges[0], elevation: "그런데 이건 시작에 불과합니다.", isMidpointReopen: true }],
@@ -85,8 +88,8 @@ const bad = screenScript(
   }),
   3
 );
-check("브리지 수 불일치 잡힘", bad.violations.some((v) => v.includes("브리지")), bad.violations);
-check("빈 말 승격 잡힘", bad.violations.some((v) => v.includes("빈 말")));
+check("연결 수 불일치 잡힘", bad.violations.some((v) => v.includes("연결 1개")), bad.violations);
+check("빈 말 잡힘", bad.violations.some((v) => v.includes("빈 말")));
 check("시점 표현 잡힘", bad.violations.some((v) => v.includes("시점 표현")));
 
 // 실사고(2026-07-25): 엔딩이 종목 추천을 했고, 오프닝이 제작 내부 용어를 시청자에게 말했다.
