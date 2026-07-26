@@ -95,6 +95,13 @@ export function klingVideoCostUsd(): number {
   return KLING_VIDEO_USD;
 }
 
+// MiniMax(직접 API) image-to-video — 초당 단가 × 기본 6초. env MINIMAX_VIDEO_COST 로 조정.
+// re-animator 실측 기준 초당 $0.045.
+export const MINIMAX_VIDEO_USD_PER_SEC = Number(process.env.MINIMAX_VIDEO_COST || 0.045);
+export function minimaxVideoCostUsd(seconds = 6): number {
+  return MINIMAX_VIDEO_USD_PER_SEC * Math.max(1, seconds);
+}
+
 // ElevenLabs TTS — 문자당 USD (eleven_multilingual_v2 기준 ~$0.30/1000자).
 export const ELEVENLABS_USD_PER_CHAR = 0.0003;
 

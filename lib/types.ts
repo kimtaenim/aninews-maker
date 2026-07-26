@@ -497,7 +497,15 @@ export interface SimTheater {
 export interface CostEntry {
   id: string;
   projectId?: string;
-  vendor: "anthropic" | "openai" | "fal" | "grok" | "kling" | "elevenlabs" | "typecast";
+  vendor:
+    | "anthropic"
+    | "openai"
+    | "fal"
+    | "grok"
+    | "kling"
+    | "minimax"
+    | "elevenlabs"
+    | "typecast";
   model: string;
   costUsd: number;
   createdAt: number;

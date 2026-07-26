@@ -11,9 +11,10 @@ import videoModels from "../config/video-models.json";
 import { generateVideo as falGenerate, pollVideo as falPoll, type VideoPoll } from "./fal";
 import { submitGrokVideo, pollGrokVideo } from "./grok";
 import { submitKlingVideo, pollKlingVideo } from "./kling";
-import { falVideoCostUsd, grokVideoCostUsd, klingVideoCostUsd } from "./cost";
+import { submitMinimaxVideo, pollMinimaxVideo } from "./minimax";
+import { falVideoCostUsd, grokVideoCostUsd, klingVideoCostUsd, minimaxVideoCostUsd } from "./cost";
 
-export type VideoProvider = "fal" | "grok" | "kling";
+export type VideoProvider = "fal" | "grok" | "kling" | "minimax";
 
 export interface VideoModel {
   id: string;
@@ -55,6 +56,12 @@ export async function submitVideo(
     const taskId = await submitKlingVideo({ ...opts, model: model.endpoint, aspect: opts.aspect });
     return { jobId: `kling${SEP}${taskId}` };
   }
+  if (model.provider === "minimax") {
+    // model.endpoint = MiniMax 모델명(예: MiniMax-Hailuo-2.3).
+    // 비율은 입력 이미지(이미 9:16 또는 16:9)를 따르므로 aspect 를 넘기지 않는다.
+    const taskId = await submitMinimaxVideo({ ...opts, model: model.endpoint });
+    return { jobId: `minimax${SEP}${taskId}` };
+  }
   // fal — falGenerate 가 "<endpoint>::<requestId>" 를 돌려줌. 모델 필수 파라미터 전달.
   // 가로(롱폼)면 aspect_ratio 를 쓰는 모델만 덮어쓴다: Seedance 는 defaultParams 로 "9:16"
   // 을 강제하므로 "16:9"로 교체. 나머지(MiniMax·Kling·Grok)는 입력 이미지 비율(이미 16:9)을
@@ -78,6 +85,9 @@ export async function pollVideoJob(jobId: string): Promise<VideoPoll> {
   if (jobId.startsWith(`kling${SEP}`)) {
     return pollKlingVideo(jobId.slice(`kling${SEP}`.length));
   }
+  if (jobId.startsWith(`minimax${SEP}`)) {
+    return pollMinimaxVideo(jobId.slice(`minimax${SEP}`.length));
+  }
   if (jobId.startsWith(`fal${SEP}`)) {
     return falPoll(jobId.slice(`fal${SEP}`.length)); // "<endpoint>::<requestId>"
   }
@@ -89,6 +99,7 @@ export function videoCostUsd(modelId: string): number {
   const model = getVideoModel(modelId);
   if (model.provider === "grok") return grokVideoCostUsd();
   if (model.provider === "kling") return klingVideoCostUsd();
+  if (model.provider === "minimax") return minimaxVideoCostUsd();
   return falVideoCostUsd(model.endpoint);
 }
 

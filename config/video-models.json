@@ -1,13 +1,20 @@
 {
   "version": "2.0",
   "updated": "2026-06-17",
-  "_comment": "image-to-video 모델 레지스트리. provider(fal|kling|grok)별로 교차 사용. fal endpoint=fal 모델 경로, kling endpoint=Kling model_name(예: kling-v3), grok endpoint=xAI 모델명. Kling 은 직접 API(env KLING_API_KEY 단일 키, Bearer). 한 프로바이더가 막히면(잔액·콘텐츠 정책) 다른 걸로 교차.",
+  "_comment": "image-to-video 모델 레지스트리. provider(fal|minimax|kling|grok)별로 교차 사용. fal endpoint=fal 모델 경로, minimax endpoint=MiniMax 모델명, kling endpoint=Kling model_name(예: kling-v3), grok endpoint=xAI 모델명. MiniMax·Kling 은 직접 API(env MINIMAX_API_KEY / KLING_API_KEY, Bearer). 한 프로바이더가 막히면(잔액·콘텐츠 정책) 다른 걸로 교차.",
   "default": "minimax",
   "models": [
     {
       "id": "minimax",
+      "provider": "minimax",
+      "label": "MiniMax Hailuo 2.3 (직접 API · 가성비)",
+      "endpoint": "MiniMax-Hailuo-2.3",
+      "defaultParams": {}
+    },
+    {
+      "id": "minimax-fal",
       "provider": "fal",
-      "label": "MiniMax (fal · 가성비)",
+      "label": "MiniMax (fal 경유 · 대안)",
       "endpoint": "fal-ai/minimax-video/image-to-video",
       "defaultParams": {}
     },
