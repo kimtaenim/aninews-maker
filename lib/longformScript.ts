@@ -31,9 +31,9 @@ export interface LongformScriptInput {
   fixedOrder?: boolean; // true면 사용자가 순서를 고정한 것 — 그대로 따르고 우려만 한 번 적는다
 }
 
-// 씬 하나는 쇼츠 씬과 같은 4~7초 = 18~32자. 상한의 원천은 lib/scenes.ts DURATION_MAX 다.
-// (7초 × 4.5자/초 × 1.2배 ≈ 38자지만, 낭독이 붙는 편이라 여유를 두고 32자로 지시한다)
-export const SCENE_CHAR_MAX = 32;
+// 재생성 지적문에만 쓰는 값 — 프롬프트·원칙에는 글자 상한을 넣지 않는다.
+// (자체 길이 예산·역할별 글자 상한이 말을 토막 내던 원인이다 — 2026-07-25 사용자 지정)
+const SCENE_CHAR_MAX = 32;
 
 type Json = Record<string, unknown>;
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
@@ -168,9 +168,7 @@ export async function generateLongformScript(args: {
       // 롱폼에만 있는 것 = 세그먼트 순서 설계뿐. 톤·금지·마무리는 위 쇼츠 원칙이 다룬다.
       JSON.stringify({ segment_order: principles.segment_order }, null, 2)
     )
-    .replace("{{MASCOT}}", mascot)
-    // 씬 글자 상한은 코드가 검수하는 값과 같아야 한다 — 프롬프트에 숫자를 따로 쓰지 않는다.
-    .replaceAll("{{SCENE_CHARS}}", String(SCENE_CHAR_MAX));
+    .replace("{{MASCOT}}", mascot);
   const text = scriptInputToText(input);
   let totalCost = 0;
 

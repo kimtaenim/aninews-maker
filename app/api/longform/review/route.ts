@@ -3,6 +3,7 @@ import { getProject, getProjectsBulk, saveProject } from "@/lib/projectStore";
 import { getRedis } from "@/lib/redis";
 import { reviewLongform, type LongformReviewInput } from "@/lib/longformReview";
 import { screenScript } from "@/lib/longformScreening";
+import { buildSections } from "@/lib/longform";
 import type { LongformOpening } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -51,7 +52,11 @@ export async function POST(req: NextRequest) {
       const cur = longform.sourceProjectIds ?? [];
       if (a.order.length === cur.length && [...a.order].sort((x, y) => x - y).join(",") === cur.map((_, i) => i).join(",")) {
         const fresh = (await getProject(projectId)) ?? longform;
-        fresh.sourceProjectIds = a.order.map((i) => cur[i]);
+        const order = a.order.map((i) => cur[i]);
+        fresh.sourceProjectIds = order;
+        // ★ 섹션도 같이 다시 묶는다 — 합성은 sections 단위로 돌기 때문에 여기서 빼먹으면
+        // 화면에 보이는 재생 순서와 실제로 구워지는 순서가 달라진다(reorder·script 경로와 동일).
+        if (Array.isArray(fresh.sections) && fresh.sections.length > 0) fresh.sections = buildSections(order);
         fresh.updatedAt = now;
         await saveProject(fresh);
       }
