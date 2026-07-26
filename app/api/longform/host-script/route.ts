@@ -74,9 +74,12 @@ export async function POST(req: NextRequest) {
     scenes.push(mk(narration, b.imagePrompt, "connector", b.afterSegment));
   }
 
-  // 엔딩 3씬 — 파트 A(고리 닫기) · B(계좌 착지) · C(구독 전환).
+  // 엔딩 — 파트 A(고리 닫기) · B(여운, 보통 빈칸) · C(구독 전환).
+  // ★ 여운은 기본이 빈 문자열이다(투자 조언 금지). 비어 있으면 씬을 만들지 않는다 —
+  // 만들면 대사 없는 3초 정지 화면이 엔딩에 끼어든다(연결과 같은 처리).
   scenes.push(mk(pkg.ending.partAClose, pkg.ending.imagePromptA, "closing"));
-  scenes.push(mk(pkg.ending.partBLanding, pkg.ending.imagePromptB, "closing"));
+  const hasLanding = (pkg.ending.partBLanding ?? "").trim().length > 0;
+  if (hasLanding) scenes.push(mk(pkg.ending.partBLanding, pkg.ending.imagePromptB, "closing"));
   scenes.push(
     mk(
       pkg.ending.partCStandard,
@@ -130,6 +133,6 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     ok: true,
     hostProjectId: hostId,
-    counts: { opening: 2, connectors: pkg.bridges.length, closing: 3 },
+    counts: { opening: 2, connectors: pkg.bridges.length, closing: hasLanding ? 3 : 2 },
   });
 }

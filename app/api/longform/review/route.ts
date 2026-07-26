@@ -38,6 +38,14 @@ export async function POST(req: NextRequest) {
   if (body.apply) {
     const a = body.apply;
     const now = Date.now();
+    // ★ 마무리 줄 짝 맞추기 — 검수기가 돌려주는 줄 수는 보낸 줄 수와 다를 수 있다.
+    // 여운이 위반으로 잡히면 그 줄을 빼고 [답, 구독] 2줄만 돌려준다 — 순서대로 밀어 넣으면
+    // 구독 문구가 여운 칸에 들어가 구독을 두 번 읽는다(실측 확인).
+    // 구독 문구는 고정이라 검수 대상이 아니므로 걸러내고, 남은 [답, 여운]만 반영한다.
+    const closingBody = (a.closing ?? [])
+      .filter((l): l is string => typeof l === "string" && l.trim().length > 0)
+      .map((l) => l.trim())
+      .filter((l) => !l.includes("구독"));
     // 1) 세그먼트 순서(0-based 인덱스 재배열).
     if (Array.isArray(a.order) && a.order.length) {
       const cur = longform.sourceProjectIds ?? [];
@@ -70,11 +78,12 @@ export async function POST(req: NextRequest) {
             return hit ? { ...b, emphasis: hit.revised, elevation: "", opening: "" } : b;
           });
         }
-        if (a.closing?.length) {
+        if (closingBody.length) {
           next.ending = {
             ...cur.ending,
-            partAClose: a.closing[0] ?? cur.ending.partAClose,
-            partBLanding: a.closing[1] ?? cur.ending.partBLanding,
+            partAClose: closingBody[0] || cur.ending.partAClose,
+            // 검수기가 답만 돌려줬으면 여운은 뺀 것으로 본다(빈칸이 기본이라 그래도 된다).
+            partBLanding: closingBody[1] ?? "",
             // 파트 C(구독 표준 문구)는 고정 — 검수 결과로 덮지 않는다.
           };
         }
@@ -105,7 +114,7 @@ export async function POST(req: NextRequest) {
     if ((a.opening?.length || a.connectors?.length || a.closing?.length) && longform.hostProjectId) {
       const host = await getProject(longform.hostProjectId);
       if (host) {
-        const scenes = [...(host.scenes ?? [])];
+        let scenes = [...(host.scenes ?? [])];
         const applyBySlot = (lines: string[], slot: "opening" | "closing") => {
           const idxs = scenes.map((s, i) => (s.hostSlot === slot ? i : -1)).filter((i) => i >= 0);
           lines.forEach((line, k) => {
@@ -120,7 +129,18 @@ export async function POST(req: NextRequest) {
             if (idx >= 0) scenes[idx] = { ...scenes[idx], narration: c.revised };
           }
         }
-        if (a.closing?.length) applyBySlot(a.closing, "closing");
+        if (closingBody.length) {
+          // 마무리 씬 = [답, (여운), 구독]. 마지막(구독)은 고정이라 덮지 않는다.
+          const idxs = scenes.map((s, i) => (s.hostSlot === "closing" ? i : -1)).filter((i) => i >= 0);
+          const editable = idxs.slice(0, Math.max(0, idxs.length - 1));
+          closingBody.forEach((line, k) => {
+            const target = editable[k];
+            if (target !== undefined) scenes[target] = { ...scenes[target], narration: line };
+          });
+          // 검수기가 여운을 뺐으면 그 씬도 지워야 한다 — 남기면 대사 없는 정지 화면이 된다.
+          const stale = new Set(editable.slice(closingBody.length));
+          if (stale.size) scenes = scenes.filter((_, i) => !stale.has(i)).map((s, i) => ({ ...s, index: i }));
+        }
         host.scenes = scenes;
         host.updatedAt = now;
         await saveProject(host);

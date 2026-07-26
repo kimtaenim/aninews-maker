@@ -9,7 +9,7 @@
 import { getAnthropic, MODELS } from "./anthropic";
 import { anthropicCostUsd, recordCost } from "./cost";
 import { LONGFORM_SCRIPT_SYSTEM_PROMPT } from "./longformScriptPrompt";
-import { screenScript, type ScriptScreenResult } from "./longformScreening";
+import { screenScript, speakSeconds, SCENE_MAX, type ScriptScreenResult } from "./longformScreening";
 import principles from "../config/longform-principles.json";
 // ★ 진행자 멘트의 톤·금지는 쇼츠 원칙을 그대로 따른다(2026-07-25 사용자 지정).
 // 롱폼용으로 따로 만든 "계좌 착지" 원칙이 약장수 멘트를 부르는 통로였다 — 쇼츠는 그런 원칙
@@ -30,6 +30,10 @@ export interface LongformScriptInput {
   constituents: LongformConstituent[]; // 현재 순서
   fixedOrder?: boolean; // true면 사용자가 순서를 고정한 것 — 그대로 따르고 우려만 한 번 적는다
 }
+
+// 씬 하나는 쇼츠 씬과 같은 4~7초 = 18~32자. 상한의 원천은 lib/scenes.ts DURATION_MAX 다.
+// (7초 × 4.5자/초 × 1.2배 ≈ 38자지만, 낭독이 붙는 편이라 여유를 두고 32자로 지시한다)
+export const SCENE_CHAR_MAX = 32;
 
 type Json = Record<string, unknown>;
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
@@ -164,7 +168,9 @@ export async function generateLongformScript(args: {
       // 롱폼에만 있는 것 = 세그먼트 순서 설계뿐. 톤·금지·마무리는 위 쇼츠 원칙이 다룬다.
       JSON.stringify({ segment_order: principles.segment_order }, null, 2)
     )
-    .replace("{{MASCOT}}", mascot);
+    .replace("{{MASCOT}}", mascot)
+    // 씬 글자 상한은 코드가 검수하는 값과 같아야 한다 — 프롬프트에 숫자를 따로 쓰지 않는다.
+    .replaceAll("{{SCENE_CHARS}}", String(SCENE_CHAR_MAX));
   const text = scriptInputToText(input);
   let totalCost = 0;
 
@@ -187,8 +193,23 @@ export async function generateLongformScript(args: {
     return parse(blocks.map((b) => b.text).join("").trim(), input);
   };
 
-  // 씬 하나는 쇼츠 씬과 같은 4~7초 = 18~32자. 넘치면 그 씬만 현재/목표 글자 수로 지적한다.
-  const SCENE_CHAR_MAX = 32; // 7초 × 4.5자/초 × 1.2배 ≈ 38자, 여유 두고 32자
+  // 씬 하나가 상한을 넘긴 초의 합 — 위반 개수가 같을 때 어느 쪽이 나은지 가른다.
+  const overflowSeconds = (p: LongformScriptPackage): number => {
+    const over = (t: string) => Math.max(0, speakSeconds(t) - SCENE_MAX);
+    return (
+      over(p.opening.blockAHook) +
+      over(p.opening.blockBRoadmapLanding) +
+      over(p.ending.partAClose) +
+      over(p.ending.partBLanding) +
+      p.bridges.reduce((a, b) => a + over([b.emphasis, b.elevation, b.opening].filter(Boolean).join(" ")), 0)
+    );
+  };
+  // 위반 수가 같으면 초과 초가 적은 쪽을 택한다 — 예전엔 위반 수가 줄지 않으면 재시도 결과를
+  // 통째로 버려서, 길이를 절반으로 줄여온 응답도 폐기됐다.
+  const score = (p: LongformScriptPackage, s: ScriptScreenResult): number =>
+    s.violations.length * 1000 + overflowSeconds(p);
+
+  // 넘치면 그 씬만 현재/목표 글자 수로 지적한다.
   const overLengthNote = (p: LongformScriptPackage, s: ScriptScreenResult): string => {
     const n = (...t: string[]) => t.map((x) => (x ?? "").trim().length).reduce((a, b) => a + b, 0);
     const lines: string[] = [
@@ -218,7 +239,7 @@ export async function generateLongformScript(args: {
       : "JSON 형식이 어긋났다. 지정된 JSON 만 정확히 다시 출력하라.";
     const retry = await call(note);
     const retryScreen = retry ? screenScript(retry, input.constituents.length) : null;
-    if (retry && (!pkg || (retryScreen?.violations.length ?? 99) < (screen?.violations.length ?? 99))) {
+    if (retry && retryScreen && (!pkg || !screen || score(retry, retryScreen) < score(pkg, screen))) {
       pkg = retry;
       screen = retryScreen;
     }
