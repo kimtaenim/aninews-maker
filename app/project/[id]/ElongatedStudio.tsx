@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ElongatedTrack } from "@/lib/types";
@@ -35,6 +35,7 @@ export default function ElongatedStudio({
   maxSec,
   estimate,
   estimatesByPreset,
+  spentKrw,
 }: {
   project: { id: string; title: string };
   track: ElongatedTrack;
@@ -45,23 +46,22 @@ export default function ElongatedStudio({
   maxSec: number;
   estimate: CostEstimate;
   estimatesByPreset: Record<number, CostEstimate>; // targetSec → 예상비(프리셋 칩에 표시)
+  spentKrw: string; // 지금까지 쓴 돈(서버 계산 초기값)
 }) {
   const router = useRouter();
 
-  // 지금까지 이 확장판에 쓴 돈. 생성 액션마다 갱신한다.
-  const [spent, setSpent] = useState<string>("");
+  // 지금까지 이 확장판에 쓴 돈. 첫 값은 서버가 계산해 넘기고(prop), 생성 액션 뒤에만 다시 받는다.
+  const [spentLive, setSpentLive] = useState<string>("");
+  const spent = spentLive || spentKrw;
   const refreshCost = useCallback(async () => {
     try {
       const r = await fetch(`/api/cost?projectId=${encodeURIComponent(project.id)}`);
       const d = await r.json().catch(() => ({}));
-      if (d?.totalKrw) setSpent(d.totalKrw as string);
+      if (d?.totalKrw) setSpentLive(d.totalKrw as string);
     } catch {
       /* 비용 표시 실패가 작업을 막지 않게 */
     }
   }, [project.id]);
-  useEffect(() => {
-    void refreshCost();
-  }, [refreshCost]);
   // 저장 결과는 router.refresh() 로 서버에서 다시 받아 prop 으로 들어온다 — 사본을 두지 않는다
   // (useState(prop) 사본은 최초 1회만 잡혀 화면이 안 바뀌는 사고의 원인이었다).
   const cur = track;
@@ -109,6 +109,135 @@ export default function ElongatedStudio({
       setErr(e instanceof Error ? e.message : "저장 실패");
     } finally {
       setBusy(false);
+    }
+  }
+
+  // ── ③ 확장 설계 ──
+  const plan = cur.plan;
+  const [planBusy, setPlanBusy] = useState(false);
+  const [approveBusy, setApproveBusy] = useState(false);
+  const [togglingBusy, setTogglingBusy] = useState(false);
+  const [planErr, setPlanErr] = useState("");
+
+  // 아직 사실을 안 찾은 대목(켜 둔 것만) — 사실 찾기가 돌 대상.
+  const pending = useMemo(
+    () =>
+      (plan?.chapters ?? []).flatMap((c) =>
+        c.blocks
+          .map((b, bi) => ({ chapter: c.index, block: bi, b }))
+          .filter((x) => x.b.enabled && !x.b.searchedAt)
+      ),
+    [plan]
+  );
+  // 찾아봤는데 근거가 하나도 안 붙은 대목 — "부족한 사실 n건".
+  // (카드가 붙었는데 남은 메모가 있는 건 부족이 아니다 — 모델이 세부 미확인을 자주 부기한다)
+  const missing = useMemo(
+    () =>
+      (plan?.chapters ?? []).flatMap((c) =>
+        c.blocks.filter((b) => b.enabled && b.searchedAt && b.factIds.length === 0)
+      ),
+    [plan]
+  );
+  const expiring = useMemo(() => cur.facts.filter((f) => f.expires), [cur.facts]);
+
+  const [factBusy, setFactBusy] = useState(false);
+  const [factProgress, setFactProgress] = useState("");
+
+  // 서버가 대목들을 동시에 돌린다(한 건 89초 실측 — 순차로는 15건에 22분). 300초 상한에
+  // 걸려 남은 게 있으면 pending 으로 돌아오므로, 남은 게 없어질 때까지 이어서 부른다.
+  async function findFacts(only?: { chapter: number }) {
+    setFactBusy(true);
+    setPlanErr("");
+    try {
+      if (only) {
+        setFactProgress("사실 찾는 중…");
+        const r = await fetch("/api/longform/elongated/plan/facts", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ projectId: project.id, chapter: only.chapter }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.ok) throw new Error(d.error || "사실 찾기 실패");
+      } else {
+        let left = pending.length;
+        for (let pass = 0; pass < 5 && left > 0; pass++) {
+          setFactProgress(`사실 찾는 중 · ${left}건 남음`);
+          const r = await fetch("/api/longform/elongated/plan/facts", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ projectId: project.id, all: true }),
+          });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok || !d.ok) throw new Error(d.error || "사실 찾기 실패");
+          const next = Array.isArray(d.pending) ? d.pending.length : 0;
+          if (next >= left) break; // 더 진척이 없으면 멈춘다(무한 반복 방지)
+          left = next;
+        }
+      }
+      router.refresh();
+      void refreshCost();
+    } catch (e) {
+      setPlanErr(e instanceof Error ? e.message : "사실 찾기 실패");
+      router.refresh();
+    } finally {
+      setFactBusy(false);
+      setFactProgress("");
+    }
+  }
+
+  async function runPlan() {
+    if (plan && !confirm("설계를 다시 만들면 지금 설계와 승인이 사라져요. 진행할까요?")) return;
+    setPlanBusy(true);
+    setPlanErr("");
+    try {
+      const r = await fetch("/api/longform/elongated/plan", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId: project.id }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) throw new Error(d.error || "확장 설계 실패");
+      router.refresh();
+      void refreshCost();
+    } catch (e) {
+      setPlanErr(e instanceof Error ? e.message : "확장 설계 실패");
+    } finally {
+      setPlanBusy(false);
+    }
+  }
+
+  async function patchPlan(body: Record<string, unknown>) {
+    const r = await fetch("/api/longform/elongated/plan", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectId: project.id, ...body }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) throw new Error(d.error || "저장 실패");
+    router.refresh();
+  }
+
+  async function toggleBlock(chapter: number, block: number, enabled: boolean) {
+    setTogglingBusy(true);
+    setPlanErr("");
+    try {
+      await patchPlan({ toggle: { chapter, block, enabled } });
+    } catch (e) {
+      setPlanErr(e instanceof Error ? e.message : "저장 실패");
+    } finally {
+      setTogglingBusy(false);
+    }
+  }
+
+  async function approvePlan() {
+    setApproveBusy(true);
+    setPlanErr("");
+    try {
+      await patchPlan({ approve: true });
+    } catch (e) {
+      setPlanErr(e instanceof Error ? e.message : "승인 실패");
+    } finally {
+      setApproveBusy(false);
     }
   }
 
@@ -276,9 +405,188 @@ export default function ElongatedStudio({
         {err && <p className="mt-2 text-xs text-red-600">{err}</p>}
       </section>
 
-      {/* ③ 확장 설계 · ④ 본문 · ⑤ 검수 · ⑥ 렌더로 보내기 — 이어서 붙습니다 */}
+      {/* ── ③ 확장 설계 (동의 게이트) ── */}
+      <section className="mt-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 px-3 py-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold">③ 확장 설계</h2>
+          <button
+            type="button"
+            onClick={runPlan}
+            disabled={planBusy || !sourceExists}
+            className="rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white text-xs font-medium px-3 py-1.5"
+          >
+            {planBusy ? "설계 중… (몇 분)" : plan ? "다시 설계" : "확장 설계"}
+          </button>
+        </div>
+
+        {!plan ? (
+          <p className="mt-1.5 text-[11px] text-zinc-500">
+            원본을 챕터로 나누고, 챕터마다 덧붙일 대목을 배치해요. 그 대목이 필요로 하는 사실은
+            웹에서 실제로 찾아 카드로 만듭니다. 본문은 아직 쓰지 않아요.
+          </p>
+        ) : (
+          <div className="mt-2 grid gap-3">
+            {/* 열린 고리 */}
+            <div className="rounded-xl bg-zinc-50 dark:bg-zinc-900 px-2.5 py-2">
+              <p className="text-[11px] font-medium text-zinc-500">열린 고리</p>
+              <p className="mt-0.5 text-xs">{plan.openLoop.question || "—"}</p>
+              <p className="mt-0.5 text-[11px] text-zinc-500">
+                {plan.openLoop.closesAtChapter}번 챕터에서 닫아요
+                {plan.openLoop.closingLineHint ? ` · ${plan.openLoop.closingLineHint}` : ""}
+              </p>
+            </div>
+
+            {/* 챕터 배치 + 덧붙일 대목 */}
+            <ol className="grid gap-2">
+              {plan.chapters.map((c) => (
+                <li key={c.index} className="rounded-xl border border-zinc-100 dark:border-zinc-900 px-2.5 py-2">
+                  <p className="flex items-center gap-1.5 text-xs font-medium">
+                    <span className="flex-1">
+                      {c.index}. {c.title}
+                      <span className="ml-1.5 font-normal text-[11px] text-zinc-400">
+                        원본 {c.sourceSceneIndexes.map((i) => i + 1).join("·") || "—"}씬
+                      </span>
+                    </span>
+                    {c.blocks.some((b) => b.enabled && b.searchedAt) && (
+                      <button
+                        type="button"
+                        onClick={() => findFacts({ chapter: c.index })}
+                        disabled={factBusy}
+                        className="shrink-0 rounded border border-zinc-200 dark:border-zinc-800 px-1.5 py-0.5 text-[10px] font-normal text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-900 disabled:opacity-40"
+                      >
+                        사실 다시 찾기
+                      </button>
+                    )}
+                  </p>
+                  {c.role && <p className="mt-0.5 text-[11px] text-zinc-500">{c.role}</p>}
+                  {c.blocks.length > 0 && (
+                    <ul className="mt-1.5 grid gap-1">
+                      {c.blocks.map((b, bi) => {
+                        const short = b.searchedAt && !b.factIds.length;
+                        return (
+                          <li key={bi} className="flex items-start gap-1.5 text-[11px]">
+                            <input
+                              type="checkbox"
+                              checked={b.enabled}
+                              onChange={(e) => toggleBlock(c.index, bi, e.target.checked)}
+                              disabled={togglingBusy || factBusy}
+                              className="mt-0.5 accent-current"
+                            />
+                            <span className={b.enabled ? "flex-1" : "flex-1 text-zinc-400 line-through"}>
+                              <b>{b.type}</b>
+                              {b.need ? ` — ${b.need}` : ""}
+                              {b.factIds.length > 0 && (
+                                <span className="ml-1 text-zinc-400">[{b.factIds.join(", ")}]</span>
+                              )}
+                              {!b.searchedAt && b.enabled && (
+                                <span className="ml-1 text-zinc-400">· 사실 안 찾음</span>
+                              )}
+                              {short ? (
+                                <span className="ml-1 text-amber-600">
+                                  ⚠ {b.missing || "근거로 쓸 사실을 못 찾았어요"}
+                                </span>
+                              ) : (
+                                b.missing && (
+                                  <span className="ml-1 text-zinc-400" title={b.missing}>
+                                    · 일부 미확인
+                                  </span>
+                                )
+                              )}
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </li>
+              ))}
+            </ol>
+
+            {/* 사실 카드 */}
+            <details className="rounded-xl border border-zinc-100 dark:border-zinc-900">
+              <summary className="cursor-pointer select-none px-2.5 py-1.5 text-xs font-medium">
+                사실 카드 {cur.facts.length}건
+                {expiring.length > 0 && (
+                  <span className="ml-1.5 text-[11px] font-normal text-amber-600">
+                    ⏰ 게시 전 재확인 {expiring.length}건
+                  </span>
+                )}
+              </summary>
+              <ul className="border-t border-zinc-100 dark:border-zinc-900 px-2.5 py-2 grid gap-1.5">
+                {cur.facts.map((f) => (
+                  <li key={f.id} className="text-[11px] leading-relaxed">
+                    <span className="text-zinc-400">{f.id}</span>{" "}
+                    <span className="rounded bg-zinc-100 dark:bg-zinc-900 px-1">{f.grade}</span>{" "}
+                    {f.fact}
+                    <span className="text-zinc-400">
+                      {" "}
+                      — {f.sourceName || "출처"} {f.sourceDate}
+                      {f.expires ? " ⏰" : ""}{" "}
+                      <a href={f.sourceUrl} target="_blank" rel="noreferrer" className="text-accent underline">
+                        링크
+                      </a>
+                    </span>
+                  </li>
+                ))}
+                {cur.facts.length === 0 && <li className="text-[11px] text-zinc-500">아직 없어요.</li>}
+              </ul>
+            </details>
+
+            {/* 사실 찾기 — 대목 하나씩 웹에서 확인 */}
+            {pending.length > 0 && (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => findFacts()}
+                  disabled={factBusy}
+                  className="rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white text-xs font-medium px-3 py-1.5"
+                >
+                  {factBusy ? factProgress || "찾는 중…" : `🔎 사실 찾기 (${pending.length}건)`}
+                </button>
+                <span className="text-[11px] text-zinc-500">
+                  대목마다 웹에서 확인해요. 한 건에 1분쯤 걸려요.
+                </span>
+              </div>
+            )}
+
+            {/* 부족한 사실 + 승인 */}
+            {missing.length > 0 && (
+              <p className="text-[11px] text-amber-600">
+                부족한 사실 {missing.length}건 — 그대로 두면 본문에 근거 없는 문장이 생겨요. 해당
+                대목의 체크를 풀고 진행하거나, 다시 찾아 주세요.
+              </p>
+            )}
+            <div className="flex items-center gap-2">
+              {plan.approvedAt ? (
+                <span className="text-xs text-accent font-medium">
+                  ✅ 설계 승인됨 · {new Date(plan.approvedAt).toLocaleString("ko-KR")}
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={approvePlan}
+                  disabled={approveBusy || factBusy || pending.length > 0}
+                  className="rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white text-xs font-medium px-3 py-1.5"
+                >
+                  {approveBusy ? "승인 중…" : "✅ 설계 승인"}
+                </button>
+              )}
+              {!plan.approvedAt && (
+                <span className="text-[11px] text-zinc-500">
+                  {pending.length > 0
+                    ? "사실을 다 찾은 뒤 승인할 수 있어요."
+                    : "승인해야 본문을 쓸 수 있어요."}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+        {planErr && <p className="mt-2 text-xs text-red-600">{planErr}</p>}
+      </section>
+
+      {/* ④ 본문 · ⑤ 검수 · ⑥ 렌더로 보내기 — 이어서 붙습니다 */}
       <p className="mt-6 text-center text-[11px] text-zinc-400">
-        다음 단계(확장 설계 · 본문 · 검수 · 렌더)는 이어서 붙습니다.
+        다음 단계(본문 · 검수 · 렌더)는 이어서 붙습니다.
       </p>
     </main>
   );

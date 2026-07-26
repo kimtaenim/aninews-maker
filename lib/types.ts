@@ -313,11 +313,14 @@ export interface FactCard {
 }
 
 // 챕터 사이에 끼우는 "덧붙일 대목". 유형은 config block_types.
+// 설계(1단계)가 need·query 까지 적고, 사실 찾기(2단계)가 factIds·missing·searchedAt 을 채운다.
 export interface ElongatedBlock {
   type: string; // 근거 심화 | 사례 | 반론 | 배경
   need: string; // 이 대목이 요구하는 내용(설계가 적는다)
+  query?: string; // 근거를 찾을 때 쓸 검색어(설계가 적는다)
   factIds: string[]; // 붙은 사실 카드
   missing?: string; // 검색으로 못 채운 것 — 있으면 "부족한 사실"
+  searchedAt?: number; // 사실 찾기를 돌린 시각. 없으면 아직 안 찾은 대목.
   enabled: boolean; // 사용자가 끄면 본문에서 제외
 }
 
