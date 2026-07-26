@@ -9,6 +9,8 @@ import { getCritiqueLog } from "@/lib/scriptCritiqueLog";
 import { reviewFingerprint } from "@/lib/scriptReview";
 import Studio from "./Studio";
 import LongformStudio from "./LongformStudio";
+import ElongatedStudio from "./ElongatedStudio";
+import { CUSTOM_MAX_SEC, CUSTOM_MIN_SEC, PRESETS, isElongated } from "@/lib/elongated";
 
 // 단계별 스튜디오. 스타일 프로필(2D/3D 모드·모션·postFx)을 같이 넘겨 키프레임
 // 단계에서 표시·미세조정에 쓴다.
@@ -20,6 +22,26 @@ export default async function ProjectStudioPage({
   const { id } = await params;
   const project = await getProject(id);
   if (!project) notFound();
+
+  // 확장판 — 쇼츠 한 편을 늘린 롱폼. 세그먼트가 없고 elongated 트랙을 갖는다. 전용 화면으로.
+  if (isElongated(project)) {
+    const track = project.elongated!;
+    const source = await getProject(track.sourceProjectId);
+    const sourceScenes = (source?.scenes ?? [])
+      .filter((s) => !s.skipped)
+      .map((s, i) => ({ index: i, narration: s.narration ?? "" }));
+    return (
+      <ElongatedStudio
+        project={{ id: project.id, title: project.title }}
+        track={track}
+        sourceScenes={sourceScenes}
+        sourceExists={!!source}
+        presets={PRESETS}
+        minSec={CUSTOM_MIN_SEC}
+        maxSec={CUSTOM_MAX_SEC}
+      />
+    );
+  }
 
   // 롱폼(세그먼트 이어붙이기) — 씬이 없고 sourceProjectIds 를 참조한다. 전용 화면으로.
   if (

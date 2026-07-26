@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listAllProjectIds, listProjectIds, getProjectsBulk } from "@/lib/projectStore";
 import { searchTerms, matchesQuery, isBundleCandidate } from "@/lib/projectSearch";
+import { sourceSeconds } from "@/lib/elongated";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -32,6 +33,10 @@ export async function GET(req: NextRequest) {
         id: p.id,
         title: p.title,
         keyframeUrl: p.keyframeUrl,
+        // 확장판 원본 고르기 화면이 쓰는 값(묶기 화면은 안 읽는다).
+        sceneCount: (p.scenes ?? []).filter((s) => !s.skipped).length,
+        speakSec: sourceSeconds(p.scenes ?? []),
+        createdAt: p.createdAt,
       })),
     });
   } catch (e) {

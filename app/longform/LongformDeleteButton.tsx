@@ -4,7 +4,17 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 // 롱폼 폴더 헤더의 통째 삭제 버튼 — 롱폼 + 세그먼트 + 진행자를 모두 지운다.
-export default function LongformDeleteButton({ projectId, title }: { projectId: string; title: string }) {
+// 확장판(kind="elongated")은 세그먼트·진행자가 없어 자신만 지워지므로 문구가 다르다.
+// 어느 쪽이든 원본 숏폼은 건드리지 않는다(참조만 하기 때문).
+export default function LongformDeleteButton({
+  projectId,
+  title,
+  kind = "compilation",
+}: {
+  projectId: string;
+  title: string;
+  kind?: "compilation" | "elongated";
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
 
@@ -12,12 +22,11 @@ export default function LongformDeleteButton({ projectId, title }: { projectId: 
     e.preventDefault();
     e.stopPropagation();
     if (busy) return;
-    if (
-      !confirm(
-        `"${title}" 롱폼을 삭제할까요?\n세그먼트·진행자까지 전부 지워지고 되돌릴 수 없어요.`
-      )
-    )
-      return;
+    const warn =
+      kind === "elongated"
+        ? `"${title}"을(를) 삭제할까요?\n원본 숏폼은 그대로 남고, 이 확장판만 지워져요. 되돌릴 수 없어요.`
+        : `"${title}" 롱폼을 삭제할까요?\n세그먼트·진행자까지 전부 지워지고 되돌릴 수 없어요.`;
+    if (!confirm(warn)) return;
     setBusy(true);
     try {
       const r = await fetch("/api/longform/delete", {

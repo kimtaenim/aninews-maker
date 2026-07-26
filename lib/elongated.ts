@@ -58,11 +58,8 @@ export function sourceSeconds(scenes: { narration?: string; skipped?: boolean }[
   return speakSeconds(...(scenes ?? []).filter((s) => !s.skipped).map((s) => s.narration ?? ""));
 }
 
-/** 목표 ÷ 원본. 원본이 0이면 0. */
-export function multiplier(sourceSec: number, targetSec: number): number {
-  if (!sourceSec) return 0;
-  return Math.round((targetSec / sourceSec) * 10) / 10;
-}
+// 배수·초 표기는 클라이언트도 쓰므로 순수 모듈에 두고 여기서 다시 내보낸다.
+export { formatSeconds, multiplier } from "./elongatedFormat";
 
 /** 목표 길이(초) → 전체 본문 글자 예산. */
 export function totalCharBudget(targetSec: number): number {
@@ -92,14 +89,6 @@ export function charsToSeconds(chars: number): number {
   return Math.round((chars / CHARS_PER_SEC) * 10) / 10;
 }
 
-/** 초 → "5분 12초" 표기. */
-export function formatSeconds(sec: number): string {
-  const s = Math.max(0, Math.round(sec));
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  return m ? `${m}분 ${r}초` : `${r}초`;
-}
-
 // ── 사실 카드 ────────────────────────────────────────────────────────────────
 
 /** 다음 카드 id — 기존 카드의 최대 번호 + 1. */
@@ -125,6 +114,26 @@ function stepAt(kind: StepKind, status: StepState["status"], now: number): StepS
 /** 확장판인가 — 스튜디오·목록 분기의 단일 판정. */
 export function isElongated(p: Pick<Project, "elongated">): boolean {
   return !!p.elongated?.sourceProjectId;
+}
+
+/**
+ * 지금 어디까지 왔는가 — 목록 배지와 스튜디오가 같은 판정을 쓰도록 한 곳에 둔다.
+ * 화면 순서(설계 → 승인 → 본문 → 검수 → 렌더)를 그대로 따른다.
+ */
+export function elongatedStage(p: Pick<Project, "elongated" | "finalVideoUrl" | "scenes">): {
+  key: "plan" | "approve" | "body" | "review" | "render" | "done";
+  label: string;
+} {
+  const t = p.elongated;
+  if (p.finalVideoUrl) return { key: "done", label: "완성" };
+  if (!t?.plan) return { key: "plan", label: "설계 전" };
+  if (!t.plan.approvedAt) return { key: "approve", label: "설계 승인 대기" };
+  const bodies = t.plan.chapters.filter((c) => (c.body ?? "").trim()).length;
+  if (bodies === 0) return { key: "body", label: "본문 대기" };
+  if (bodies < t.plan.chapters.length)
+    return { key: "body", label: `본문 ${bodies}/${t.plan.chapters.length}` };
+  if ((p.scenes ?? []).length > 0) return { key: "render", label: "렌더 대기" };
+  return { key: "review", label: "검수·렌더 대기" };
 }
 
 /**
