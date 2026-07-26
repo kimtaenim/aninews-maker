@@ -96,6 +96,16 @@ const pick = screenScript(
   3
 );
 check("종목 추천 잡힘", pick.violations.some((v) => v.includes("종목 추천")), pick.violations);
+// 우회 표현도 잡아야 한다(실제로 통과했던 것들).
+for (const bad of [
+  "장비주 실적이 먼저 움직이는 구조예요.",
+  "장비는 한미반도체가 쥐고 있어요.",
+  "수요가 꺾이면 다시 계산하세요.",
+  "공급 전환 속도 확인 후 판단하세요.",
+]) {
+  const r = screenScript(pkg({ ending: { ...pkg().ending, partBLanding: bad } }), 3);
+  check(`우회 추천 잡힘: "${bad.slice(0, 14)}…"`, r.violations.some((v) => v.includes("종목 추천")));
+}
 const jargon = screenScript(
   pkg({ opening: { ...pkg().opening, blockBRoadmapLanding: "세 판, 끝에 계좌 힌트 나옵니다." } }),
   3

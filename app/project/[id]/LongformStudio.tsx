@@ -421,6 +421,21 @@ export default function LongformStudio({
   useEffect(() => {
     setLfTitle(project.title);
   }, [project.title]);
+  // 대본·제목·썸네일도 같은 이유로 동기화 — 전체 다듬기 채택 후 router.refresh() 하면
+  // 서버가 새 대본을 내려주는데, 이게 없으면 화면엔 옛 문장이 남는다.
+  useEffect(() => {
+    if (initialScript) {
+      setScript(initialScript);
+      loadEdit(initialScript);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialScript]);
+  useEffect(() => {
+    if (initialTitle) setTitlePkg(initialTitle);
+  }, [initialTitle]);
+  useEffect(() => {
+    if (initialThumbnail) setThumb(initialThumbnail);
+  }, [initialThumbnail]);
 
   const readyCount = segs.filter((s) => s.finalVideoUrl).length;
   const allReady = segs.length > 0 && readyCount === segs.length;
@@ -837,29 +852,6 @@ export default function LongformStudio({
         </div>
       </div>
 
-      {/* 전체 구조 검수(열린 고리) + 최종 조립 출력 */}
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <a
-          href={`/api/longform/package?projectId=${encodeURIComponent(project.id)}`}
-          target="_blank"
-          rel="noreferrer"
-          className="text-xs rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-1.5 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-900"
-        >
-          📦 제작 패키지 JSON
-        </a>
-        <button
-          onClick={genReview}
-          disabled={rvBusy}
-          className="text-xs rounded-lg border border-accent px-3 py-1.5 text-accent hover:bg-accent/10 disabled:opacity-40"
-        >
-          {rvBusy ? "구조 검수 중…" : "🔍 전체 구조 검수"}
-        </button>
-        {rvPassed && (
-          <span className="text-xs text-emerald-600 dark:text-emerald-400">✓ 구조 검수 통과 — 열린 고리 확인됨</span>
-        )}
-        {rvErr && <span className="text-xs text-amber-600 dark:text-amber-400">검수 실패: {rvErr}</span>}
-      </div>
-
       {rvStage && rvData && (
         <div
           className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-3"
@@ -872,7 +864,7 @@ export default function LongformStudio({
             className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-4 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-sm font-semibold">🔍 롱폼 전체 구조 검수</h3>
+            <h3 className="text-sm font-semibold">✍️ 롱폼 전체 다듬기</h3>
             <p className="mt-2 text-xs leading-relaxed text-zinc-600 dark:text-zinc-300">{rvData.diagnosisSummary}</p>
             {rvData.violations.length > 0 && (
               <ul className="mt-2 grid list-disc gap-0.5 pl-4 text-[11px] text-red-600">
@@ -1154,6 +1146,36 @@ export default function LongformStudio({
           </div>
         )}
       </div>
+
+      {/* 전체 다듬기 — 세그먼트 대본까지 통째로 읽고 훅 구조·순서·진행자 멘트를 손본다.
+          대본이 있어야 의미가 있으므로 대본 패널 바로 뒤에 둔다. */}
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <button
+          onClick={genReview}
+          disabled={rvBusy || !script}
+          title="세그먼트 대본까지 다 읽고 전체 훅 구조를 점검 — 세그먼트 순서·오프닝·연결·엔딩 수정안을 제안합니다(세그먼트 문장은 안 건드림)"
+          className="text-xs rounded-lg border border-accent px-3 py-1.5 text-accent hover:bg-accent/10 disabled:opacity-40"
+        >
+          {rvBusy ? "다듬는 중…" : "✍️ 전체 다듬기 (훅 구조·순서)"}
+        </button>
+        <a
+          href={`/api/longform/package?projectId=${encodeURIComponent(project.id)}`}
+          target="_blank"
+          rel="noreferrer"
+          className="text-xs rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-1.5 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-900"
+        >
+          📦 제작 패키지 JSON
+        </a>
+        {rvPassed && (
+          <span className="text-xs text-emerald-600 dark:text-emerald-400">✓ 다듬을 곳 없어요 — 고리 구조 확인됨</span>
+        )}
+        {rvErr && <span className="text-xs text-amber-600 dark:text-amber-400">실패: {rvErr}</span>}
+      </div>
+      {!script && (
+        <p className="mt-1 text-[11px] text-zinc-500">
+          전체 다듬기는 ② 진행자 대본을 만든 뒤에 쓸 수 있어요.
+        </p>
+      )}
 
       {/* 진행자 씬 — 위 대본을 씬으로 펼친다. 반드시 대본 패널 "뒤"에 온다(작업 순서 = 화면 순서). */}
       <div className="mt-4 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">

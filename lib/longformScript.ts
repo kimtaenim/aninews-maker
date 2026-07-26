@@ -11,6 +11,10 @@ import { anthropicCostUsd, recordCost } from "./cost";
 import { LONGFORM_SCRIPT_SYSTEM_PROMPT } from "./longformScriptPrompt";
 import { screenScript, type ScriptScreenResult } from "./longformScreening";
 import principles from "../config/longform-principles.json";
+// ★ 진행자 멘트의 톤·금지는 쇼츠 원칙을 그대로 따른다(2026-07-25 사용자 지정).
+// 롱폼용으로 따로 만든 "계좌 착지" 원칙이 약장수 멘트를 부르는 통로였다 — 쇼츠는 그런 원칙
+// 없이 잘 굴러가므로, 사본을 만들지 말고 쇼츠 파일을 그대로 읽어 주입한다.
+import shortsPrinciples from "../config/script-principles.json";
 import eyecatchConfig from "../config/eyecatch.json";
 import type { LongformBridge, LongformScriptPackage } from "./types";
 import type { LongformConstituent } from "./longformTitleGen";
@@ -152,13 +156,20 @@ export async function generateLongformScript(args: {
     "{{PRINCIPLES}}",
     JSON.stringify(
       {
+        // ★ 톤·문체·금지는 쇼츠 원칙이 기준이다. 진행자 멘트는 쇼츠 나레이션과 같은 말투여야
+        // 하고, 쇼츠가 안 하는 짓(투자 조언·종목 추천)은 롱폼도 안 한다.
+        쇼츠_기준_톤과_금지: {
+          style: shortsPrinciples.style,
+          마무리_방식: shortsPrinciples.structure.scene_7,
+          설명: "롱폼 엔딩도 쇼츠 ⑦씬과 똑같다 — 질문의 답을 정보·사실로 닫는 게 전부. 투자 조언·종목 추천·계좌 이야기는 쇼츠에 없고 롱폼에도 없다.",
+        },
+        // 롱폼에만 있는 구조(길이 예산·연결·세그먼트 순서). 톤을 여기서 새로 정하지 않는다.
         opening: principles.opening,
         segment_order: principles.segment_order,
         bridge: principles.bridge,
         ending: principles.ending,
-        style: principles.style,
-        common_bans: principles.common_bans,
         structure_loop: principles.structure_loop,
+        common_bans: principles.common_bans,
       },
       null,
       2
