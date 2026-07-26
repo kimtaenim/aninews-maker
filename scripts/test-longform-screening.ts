@@ -105,6 +105,9 @@ for (const bad of [
   "장비는 한미반도체가 쥐고 있어요.",
   "수요가 꺾이면 다시 계산하세요.",
   "공급 전환 속도 확인 후 판단하세요.",
+  // 투자 관점·기준 제시도 조언이다(2026-07-25).
+  "그래서 그레이엄 원칙대로, 구조의 값어치를 먼저 보는 거예요.",
+  "이런 구조에 투자할 때 기준은 공정 종속도예요.",
 ]) {
   const r = screenScript(pkg({ ending: { ...pkg().ending, partBLanding: bad } }), 3);
   check(`우회 추천 잡힘: "${bad.slice(0, 14)}…"`, r.violations.some((v) => v.includes("종목 추천")));
