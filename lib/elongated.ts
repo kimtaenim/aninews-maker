@@ -12,6 +12,14 @@
 import { randomUUID } from "crypto";
 import raw from "../config/elongated-config.json";
 import { CHARS_PER_SEC, speakSeconds } from "./longformScreening";
+import { DURATION_MAX, DURATION_MIN } from "./scenes";
+import {
+  ELEVENLABS_USD_PER_CHAR,
+  FAL_VIDEO_DEFAULT_USD,
+  KRW_PER_USD,
+  OPENAI_IMAGE_PRICING,
+} from "./cost";
+import { estimateCost, type CostRates, type ElongatedCostEstimate } from "./elongatedFormat";
 import { emptySteps } from "./projectStore";
 import type { ElongatedTrack, FactCard, Project, StepKind, StepState } from "./types";
 
@@ -30,6 +38,8 @@ interface RawConfig {
   custom_max_sec: number;
   min_views: number;
   min_completion: number;
+  chapter_target_sec: number;
+  chapter_min_count: number;
   chapter_length_tolerance: number;
   target_length_tolerance: number;
   block_types: { id: string; desc: string }[];
@@ -58,8 +68,18 @@ export function sourceSeconds(scenes: { narration?: string; skipped?: boolean }[
   return speakSeconds(...(scenes ?? []).filter((s) => !s.skipped).map((s) => s.narration ?? ""));
 }
 
-// 배수·초 표기는 클라이언트도 쓰므로 순수 모듈에 두고 여기서 다시 내보낸다.
-export { formatSeconds, multiplier } from "./elongatedFormat";
+// 배수·초 표기·비용 계산은 클라이언트도 쓰므로 순수 모듈에 두고 여기서 다시 내보낸다.
+export { formatSeconds, multiplier, estimateCost } from "./elongatedFormat";
+export type { CostRates, ElongatedCostEstimate } from "./elongatedFormat";
+
+/**
+ * 챕터 몇 개로 묶을 것인가 — 목표 길이 ÷ 챕터당 목표 길이.
+ * 원본 씬을 묶어 만드는 것이므로 원본 씬 수를 넘을 수 없고, 최소 개수는 설정값을 따른다.
+ */
+export function chapterCount(targetSec: number, sourceSceneCount: number): number {
+  const byLength = Math.max(cfg.chapter_min_count, Math.round(targetSec / cfg.chapter_target_sec));
+  return Math.max(1, Math.min(byLength, Math.max(1, sourceSceneCount)));
+}
 
 /** 목표 길이(초) → 전체 본문 글자 예산. */
 export function totalCharBudget(targetSec: number): number {
@@ -87,6 +107,36 @@ export function withinTargetLength(totalChars: number, targetSec: number): boole
 /** 글자 수 → 초(화면 표시용). */
 export function charsToSeconds(chars: number): number {
   return Math.round((chars / CHARS_PER_SEC) * 10) / 10;
+}
+
+// ── 예상 제작비 ──────────────────────────────────────────────────────────────
+// 목표 길이를 정하는 순간 편당 비용이 정해진다(8분이면 씬 70개 = 영상비가 전체의 90%).
+// 고르기 전에 화면에서 보이게 하려고 여기서 계산한다. 단가의 원천은 lib/cost.ts 하나다.
+
+// 대본 단계 실측(Redis cost:entries, 2026-07-26): 비판 검수와 같은 구조인 확장 설계가
+// 평균 ₩806·최대 ₩1,657, 롱폼 대본이 평균 ₩206, 대본 검수가 ₩56. 넉넉히 잡아 둔다.
+// ※ web_search 서버 도구 사용료는 anthropicCostUsd 가 아직 세지 않는다(토큰만 계산).
+const SCRIPT_STAGE_USD = 1.2;
+
+/** 화면(서버·클라 공용)이 쓰는 단가 묶음. 단가의 원천은 lib/cost.ts 하나다. */
+export function costRates(videoUsdPerScene: number = FAL_VIDEO_DEFAULT_USD): CostRates {
+  return {
+    videoUsdPerScene,
+    imageUsd: OPENAI_IMAGE_PRICING["gpt-image-2"]?.medium ?? 0.04,
+    voiceUsdPerChar: ELEVENLABS_USD_PER_CHAR,
+    scriptUsd: SCRIPT_STAGE_USD,
+    krwPerUsd: KRW_PER_USD,
+    durationMin: DURATION_MIN,
+    durationMax: DURATION_MAX,
+    charsPerSec: CHARS_PER_SEC,
+  };
+}
+
+export function estimateElongatedCost(
+  targetSec: number,
+  videoUsdPerScene: number = FAL_VIDEO_DEFAULT_USD
+): ElongatedCostEstimate {
+  return estimateCost(targetSec, costRates(videoUsdPerScene));
 }
 
 // ── 사실 카드 ────────────────────────────────────────────────────────────────

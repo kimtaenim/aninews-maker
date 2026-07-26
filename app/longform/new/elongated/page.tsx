@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { listProjectIds, getProjectsBulk } from "@/lib/projectStore";
 import { isBundleCandidate } from "@/lib/projectSearch";
-import { sourceSeconds, PRESETS, CUSTOM_MIN_SEC, CUSTOM_MAX_SEC } from "@/lib/elongated";
+import { sourceSeconds, PRESETS, CUSTOM_MIN_SEC, CUSTOM_MAX_SEC, costRates } from "@/lib/elongated";
 import ElongatedNewForm from "./ElongatedNewForm";
 
 export const runtime = "nodejs";
@@ -58,6 +58,7 @@ export default async function ElongatedNewPage() {
           presets={PRESETS}
           minSec={CUSTOM_MIN_SEC}
           maxSec={CUSTOM_MAX_SEC}
+          rates={costRates()}
         />
       )}
     </main>

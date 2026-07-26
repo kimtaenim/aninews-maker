@@ -2,7 +2,14 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { formatSeconds as fmtSec, multiplier } from "@/lib/elongatedFormat";
+import {
+  formatSeconds as fmtSec,
+  multiplier,
+  estimateCost,
+  won,
+  wonRange,
+  type CostRates,
+} from "@/lib/elongatedFormat";
 
 interface ShortItem {
   id: string;
@@ -29,11 +36,13 @@ export default function ElongatedNewForm({
   presets,
   minSec,
   maxSec,
+  rates,
 }: {
   shorts: ShortItem[];
   presets: Preset[];
   minSec: number;
   maxSec: number;
+  rates: CostRates;
 }) {
   const router = useRouter();
   const [items, setItems] = useState<ShortItem[]>(shorts);
@@ -58,6 +67,8 @@ export default function ElongatedNewForm({
 
   const x = selected ? multiplier(selected.speakSec, targetSec) : 0;
   const targetOk = targetSec >= minSec && targetSec <= maxSec;
+  // 길이를 고르는 자리에서 바로 돈이 보여야 한다 — 8분은 영상비만 5만 원대다.
+  const est = useMemo(() => (targetOk ? estimateCost(targetSec, rates) : null), [targetOk, targetSec, rates]);
 
   async function runSearch(nextQ: string) {
     setSearching(true);
@@ -201,11 +212,15 @@ export default function ElongatedNewForm({
       {/* ── 2. 목표 길이 ── */}
       <h2 className="mt-7 text-sm font-semibold">2. 목표 길이</h2>
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        {presets.map((p, i) => (
-          <button key={p.name} type="button" onClick={() => setPresetIdx(i)} className={chip(presetIdx === i)}>
-            {p.name}
-          </button>
-        ))}
+        {presets.map((p, i) => {
+          const e = estimateCost(p.targetSec, rates);
+          return (
+            <button key={p.name} type="button" onClick={() => setPresetIdx(i)} className={chip(presetIdx === i)}>
+              {p.name}
+              <span className="ml-1 opacity-70">약 {won(e.totalKrw[0])}~</span>
+            </button>
+          );
+        })}
         <button type="button" onClick={() => setPresetIdx(-1)} className={chip(isCustom)}>
           직접 입력
         </button>
@@ -240,6 +255,21 @@ export default function ElongatedNewForm({
           </span>
         )}
       </p>
+
+      {est && (
+        <div className="mt-3 rounded-2xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/60 dark:bg-amber-950/20 px-3 py-2">
+          <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
+            완성까지 예상 비용 {wonRange(est.totalKrw)}
+          </p>
+          <p className="mt-1 text-[11px] text-amber-700/80 dark:text-amber-400/80">
+            씬 {est.minScenes}~{est.maxScenes}개 · 대본 {won(est.scriptKrw)} · 그림{" "}
+            {wonRange(est.imageKrw)} · 영상 {wonRange(est.videoKrw)} · 음성 {won(est.voiceKrw)}
+          </p>
+          <p className="mt-0.5 text-[10px] text-amber-700/60 dark:text-amber-400/60">
+            영상이 전체의 대부분이에요. 웹검색 도구 사용료는 아직 합계에 안 잡힙니다.
+          </p>
+        </div>
+      )}
 
       {err && <p className="mt-3 text-xs text-red-600">{err}</p>}
 

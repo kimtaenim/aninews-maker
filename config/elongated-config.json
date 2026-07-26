@@ -13,6 +13,10 @@
   "min_views": 500,
   "min_completion": 70,
 
+  "_comment_chapter": "챕터 하나의 목표 길이(초). 챕터 수 = 목표 길이 ÷ 이 값(원본 씬 수를 넘지 않는다).",
+  "chapter_target_sec": 75,
+  "chapter_min_count": 3,
+
   "chapter_length_tolerance": 0.3,
   "target_length_tolerance": 0.2,
 

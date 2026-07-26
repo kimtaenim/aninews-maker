@@ -1,10 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ElongatedTrack } from "@/lib/types";
-import { formatSeconds as fmtSec, multiplier } from "@/lib/elongatedFormat";
+import {
+  formatSeconds as fmtSec,
+  multiplier,
+  won,
+  wonRange,
+  type ElongatedCostEstimate,
+} from "@/lib/elongatedFormat";
 
 interface Preset {
   name: string;
@@ -14,6 +20,8 @@ interface SourceScene {
   index: number;
   narration: string;
 }
+// 목표 길이로 정해지는 예상 제작비 — 서버(lib/elongated.ts)가 계산해서 넘긴다.
+type CostEstimate = ElongatedCostEstimate;
 
 // 확장판 스튜디오 — 화면 순서가 곧 작업 순서다.
 //   ① 원본(읽기 전용) → ② 목표 길이 → ③ 확장 설계 → ④ 본문 → ⑤ 검수 → ⑥ 렌더로 보내기
@@ -25,6 +33,8 @@ export default function ElongatedStudio({
   presets,
   minSec,
   maxSec,
+  estimate,
+  estimatesByPreset,
 }: {
   project: { id: string; title: string };
   track: ElongatedTrack;
@@ -33,8 +43,25 @@ export default function ElongatedStudio({
   presets: Preset[];
   minSec: number;
   maxSec: number;
+  estimate: CostEstimate;
+  estimatesByPreset: Record<number, CostEstimate>; // targetSec → 예상비(프리셋 칩에 표시)
 }) {
   const router = useRouter();
+
+  // 지금까지 이 확장판에 쓴 돈. 생성 액션마다 갱신한다.
+  const [spent, setSpent] = useState<string>("");
+  const refreshCost = useCallback(async () => {
+    try {
+      const r = await fetch(`/api/cost?projectId=${encodeURIComponent(project.id)}`);
+      const d = await r.json().catch(() => ({}));
+      if (d?.totalKrw) setSpent(d.totalKrw as string);
+    } catch {
+      /* 비용 표시 실패가 작업을 막지 않게 */
+    }
+  }, [project.id]);
+  useEffect(() => {
+    void refreshCost();
+  }, [refreshCost]);
   // 저장 결과는 router.refresh() 로 서버에서 다시 받아 prop 으로 들어온다 — 사본을 두지 않는다
   // (useState(prop) 사본은 최초 1회만 잡혀 화면이 안 바뀌는 사고의 원인이었다).
   const cur = track;
@@ -110,6 +137,26 @@ export default function ElongatedStudio({
         </Link>
       </div>
 
+      {/* 돈 — 지금까지 쓴 것과 이 길이로 끝까지 갔을 때 */}
+      <div className="mt-3 rounded-2xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/60 dark:bg-amber-950/20 px-3 py-2">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="text-xs font-semibold text-amber-800 dark:text-amber-300">
+            지금까지 쓴 돈 {spent || "—"}
+          </span>
+          <span className="text-[11px] text-amber-700 dark:text-amber-400">
+            완성까지 예상 {wonRange(estimate.totalKrw)}
+          </span>
+        </div>
+        <p className="mt-1 text-[11px] text-amber-700/80 dark:text-amber-400/80">
+          씬 {estimate.minScenes}~{estimate.maxScenes}개 · 대본 {won(estimate.scriptKrw)} · 그림{" "}
+          {wonRange(estimate.imageKrw)} · 영상 {wonRange(estimate.videoKrw)} · 음성{" "}
+          {won(estimate.voiceKrw)}
+        </p>
+        <p className="mt-0.5 text-[10px] text-amber-700/60 dark:text-amber-400/60">
+          영상이 전체의 대부분이에요. 웹검색 도구 사용료는 아직 합계에 안 잡힙니다.
+        </p>
+      </div>
+
       {/* ── ① 원본 대본 (읽기 전용) ── */}
       <section className="mt-6">
         <details className="rounded-2xl border border-zinc-200 dark:border-zinc-800">
@@ -165,11 +212,17 @@ export default function ElongatedStudio({
         ) : (
           <>
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              {presets.map((p, i) => (
-                <button key={p.name} type="button" onClick={() => setPresetIdx(i)} className={chip(presetIdx === i)}>
-                  {p.name}
-                </button>
-              ))}
+              {presets.map((p, i) => {
+                const est = estimatesByPreset[p.targetSec];
+                return (
+                  <button key={p.name} type="button" onClick={() => setPresetIdx(i)} className={chip(presetIdx === i)}>
+                    {p.name}
+                    {est && (
+                      <span className="ml-1 opacity-70">약 {won(est.totalKrw[0])}~</span>
+                    )}
+                  </button>
+                );
+              })}
               <button type="button" onClick={() => setPresetIdx(-1)} className={chip(isCustom)}>
                 직접 입력
               </button>

@@ -10,7 +10,13 @@ import { reviewFingerprint } from "@/lib/scriptReview";
 import Studio from "./Studio";
 import LongformStudio from "./LongformStudio";
 import ElongatedStudio from "./ElongatedStudio";
-import { CUSTOM_MAX_SEC, CUSTOM_MIN_SEC, PRESETS, isElongated } from "@/lib/elongated";
+import {
+  CUSTOM_MAX_SEC,
+  CUSTOM_MIN_SEC,
+  PRESETS,
+  estimateElongatedCost,
+  isElongated,
+} from "@/lib/elongated";
 
 // 단계별 스튜디오. 스타일 프로필(2D/3D 모드·모션·postFx)을 같이 넘겨 키프레임
 // 단계에서 표시·미세조정에 쓴다.
@@ -39,6 +45,10 @@ export default async function ProjectStudioPage({
         presets={PRESETS}
         minSec={CUSTOM_MIN_SEC}
         maxSec={CUSTOM_MAX_SEC}
+        estimate={estimateElongatedCost(track.targetSec)}
+        estimatesByPreset={Object.fromEntries(
+          PRESETS.map((p) => [p.targetSec, estimateElongatedCost(p.targetSec)])
+        )}
       />
     );
   }
