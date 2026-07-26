@@ -7,35 +7,35 @@
     {
       "id": "minimax",
       "provider": "minimax",
-      "label": "MiniMax Hailuo 2.3 (직접 API · 가성비)",
+      "label": "MiniMax Hailuo 2.3 (가성비)",
       "endpoint": "MiniMax-Hailuo-2.3",
       "defaultParams": {}
     },
     {
       "id": "minimax-fal",
       "provider": "fal",
-      "label": "MiniMax (fal 경유 · 대안)",
+      "label": "MiniMax (대안 경로)",
       "endpoint": "fal-ai/minimax-video/image-to-video",
       "defaultParams": {}
     },
     {
       "id": "seedance",
       "provider": "fal",
-      "label": "Seedance Pro (fal · 고품질)",
+      "label": "Seedance Pro (고품질)",
       "endpoint": "fal-ai/bytedance/seedance/v1/pro/image-to-video",
       "defaultParams": { "aspect_ratio": "9:16", "resolution": "1080p" }
     },
     {
       "id": "kling",
       "provider": "kling",
-      "label": "Kling 3 (직접 API · 모션 우수)",
+      "label": "Kling 3 (모션 우수)",
       "endpoint": "kling-v3",
       "defaultParams": {}
     },
     {
       "id": "grok",
       "provider": "grok",
-      "label": "Grok Imagine (xAI · 정책 느슨, fal 대안)",
+      "label": "Grok Imagine (정책 느슨)",
       "endpoint": "grok-imagine-video",
       "defaultParams": {}
     }
