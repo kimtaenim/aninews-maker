@@ -10,7 +10,7 @@ import { DURATION_MAX } from "./scenes";
 
 // 한국어 TTS ≈ 4.5자/초(lib/scenes.ts 기준)에 보이스오버 기본 속도 1.2배를 곱한 값.
 // 프로젝트 기본 voiceSpeed 가 1.2(lib/projectStore.ts)라 실제 화면 시간은 이 속도로 계산한다.
-const CHARS_PER_SEC = 4.5 * 1.2;
+export const CHARS_PER_SEC = 4.5 * 1.2;
 export function speakSeconds(...texts: string[]): number {
   const len = texts.map((t) => (t ?? "").trim().length).reduce((a, b) => a + b, 0);
   return Math.round((len / CHARS_PER_SEC) * 10) / 10;

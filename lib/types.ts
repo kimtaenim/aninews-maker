@@ -298,6 +298,89 @@ export interface LongformSection {
   updatedAt?: number;
 }
 
+// ── [확장판] 사실 카드 — 검색에서 대본으로 건너가는 유일한 다리 ────────────────
+// 본문은 카드에 없는 숫자·고유명사를 새로 들여올 수 없다(팩트 대조가 기계로 잡는다).
+// 같은 소재의 쇼츠·확장판이 카드를 공유할 수 있게 프로젝트에 통째로 저장한다.
+export interface FactCard {
+  id: string; // "F-001"
+  fact: string; // 한 문장 사실
+  grade: string; // 공식 | 보도 | 관찰 | 추측 (config/elongated-config.json grades)
+  sourceUrl: string;
+  sourceName: string;
+  sourceDate: string; // YYYY-MM-DD (출처가 말하는 시점)
+  fetchedAt: string; // YYYY-MM-DD (우리가 가져온 날)
+  expires: boolean; // 가격·시세류 — 게시 전 재확인 필요
+}
+
+// 챕터 사이에 끼우는 "덧붙일 대목". 유형은 config block_types.
+export interface ElongatedBlock {
+  type: string; // 근거 심화 | 사례 | 반론 | 배경
+  need: string; // 이 대목이 요구하는 내용(설계가 적는다)
+  factIds: string[]; // 붙은 사실 카드
+  missing?: string; // 검색으로 못 채운 것 — 있으면 "부족한 사실"
+  enabled: boolean; // 사용자가 끄면 본문에서 제외
+}
+
+export interface ElongatedChapter {
+  index: number; // 1-based
+  title: string;
+  sourceSceneIndexes: number[]; // 이 챕터가 품는 원본 씬(0-based)
+  role: string; // 열린 고리에서 이 챕터가 하는 일
+  blocks: ElongatedBlock[];
+  body?: string; // 본문(생성 후). 문장 뒤 카드 주석 포함.
+  bodyGeneratedAt?: number;
+}
+
+export interface ElongatedPlan {
+  openLoop: {
+    question: string; // 원본 ①씬이 연 질문 — 롱폼에서도 이걸 연다
+    closesAtChapter: number; // 닫는 챕터 번호
+    closingLineHint: string;
+  };
+  chapters: ElongatedChapter[];
+  approvedAt?: number; // 사용자 승인 — 이게 없으면 본문 생성 잠김(동의 게이트)
+  generatedAt: number;
+}
+
+// 팩트 대조 결과 — 판정은 3종뿐. 의견성 지적을 담지 않는다.
+export type FactMatchVerdict = "카드에 있음" | "카드에 없음" | "카드와 다름";
+export interface ElongatedFactCheckItem {
+  chapter: number;
+  sentence: string;
+  token: string; // 문제의 숫자·날짜·고유명사·인용
+  verdict: FactMatchVerdict;
+  cardId?: string;
+}
+export interface ElongatedFactCheck {
+  items: ElongatedFactCheckItem[];
+  checkedAt: number;
+}
+
+// 닫힌 채점표 — 항목은 lib/elongatedScore.ts 의 고정 목록이 전부다(추가 금지).
+export interface ElongatedScore {
+  items: { no: number; label: string; pass: boolean; evidence: string }[];
+  summary: string; // 전 항목 통과면 "통과" 한 단어
+  scoredAt: number;
+}
+
+// ── [확장판] 트랙 — 검증된 쇼츠 한 편을 N배로 늘린 단일 롱폼 ──────────────────
+// 컴필레이션(여러 쇼츠를 이어붙임, sourceProjectIds)과는 별개 트랙. 이 필드가 있으면
+// 확장판이다(롱폼 탭의 확장판 목록 · 스튜디오 분기 기준).
+export interface ElongatedTrack {
+  sourceProjectId: string; // 늘릴 원본 쇼츠 — 읽기 전용으로만 쓴다
+  sourceTitle: string; // 스냅샷(원본이 지워져도 화면이 안 깨지게)
+  sourceSeconds: number; // 원본 낭독 길이(초) — 배수 계산 기준
+  targetSec: number; // 목표 길이(초)
+  presetName?: string; // 고른 프리셋 이름(직접 입력이면 없음)
+  blockTypes: string[]; // 켜 둔 덧붙일 대목 유형
+  plan?: ElongatedPlan;
+  facts: FactCard[];
+  factCheck?: ElongatedFactCheck;
+  score?: ElongatedScore;
+  createdAt: number;
+  updatedAt: number;
+}
+
 // ── 프로젝트 ──────────────────────────────────────────────────────────────────
 export interface Project {
   id: string;
@@ -333,6 +416,9 @@ export interface Project {
   // [롱폼] 섹션 — 세그먼트를 2~3개씩 묶은 부분 합성 단위. 있으면 합성을 섹션별 잡으로 쪼갠 뒤
   // 최종 join(섹션 영상 이어붙이기)을 한다. 없으면 기존 단일 runLongformConcat 경로.
   sections?: LongformSection[];
+  // [확장판] 쇼츠 한 편을 N배로 늘린 롱폼. 이 필드가 있으면 확장판(컴필레이션과 별개 트랙).
+  // 세그먼트가 없으므로 sourceProjectIds 는 비어 있고, 챕터 본문이 이 프로젝트의 씬이 된다.
+  elongated?: ElongatedTrack;
   cast?: string[]; // [cliche] 등장 인물 이름들(화자 = 이 이름 또는 "내레이션"). 목소리·씬 화자에 사용.
   castMembers?: CastMember[]; // [cliche] 캐스팅 단계 산출물(얼굴·목소리 포함). cast/castVoices 의 원천.
   styleProfileId: string; // config/style-profiles.json 의 id
