@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ElongatedTrack } from "@/lib/types";
 import {
+  bodyChars,
   formatSeconds as fmtSec,
   multiplier,
   won,
@@ -36,6 +37,7 @@ export default function ElongatedStudio({
   estimate,
   estimatesByPreset,
   spentKrw,
+  chapterBudget,
 }: {
   project: { id: string; title: string };
   track: ElongatedTrack;
@@ -47,6 +49,7 @@ export default function ElongatedStudio({
   estimate: CostEstimate;
   estimatesByPreset: Record<number, CostEstimate>; // targetSec → 예상비(프리셋 칩에 표시)
   spentKrw: string; // 지금까지 쓴 돈(서버 계산 초기값)
+  chapterBudget: number; // 챕터 하나의 목표 글자 수(초과 시 빨간 표시)
 }) {
   const router = useRouter();
 
@@ -238,6 +241,54 @@ export default function ElongatedStudio({
       setPlanErr(e instanceof Error ? e.message : "승인 실패");
     } finally {
       setApproveBusy(false);
+    }
+  }
+
+  // ── ④ 본문 ──
+  const [bodyBusy, setBodyBusy] = useState(false);
+  const [bodyProgress, setBodyProgress] = useState("");
+  const [bodyErr, setBodyErr] = useState("");
+  const written = (plan?.chapters ?? []).filter((c) => (c.body ?? "").trim()).length;
+  const totalChars = (plan?.chapters ?? []).reduce((a, c) => a + bodyChars(c.body ?? ""), 0);
+
+  // 챕터는 앞 챕터를 이어받아야 해서 서버가 순서대로 쓴다. 마감에 걸려 남으면 이어서 부른다.
+  async function writeBody(chapter?: number) {
+    setBodyBusy(true);
+    setBodyErr("");
+    try {
+      if (chapter !== undefined) {
+        setBodyProgress("쓰는 중…");
+        const r = await fetch("/api/longform/elongated/body", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ projectId: project.id, chapter }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.ok) throw new Error(d.error || "본문 생성 실패");
+      } else {
+        let left = (plan?.chapters ?? []).filter((c) => !(c.body ?? "").trim()).length;
+        for (let pass = 0; pass < 5 && left > 0; pass++) {
+          setBodyProgress(`본문 쓰는 중 · ${left}챕터 남음`);
+          const r = await fetch("/api/longform/elongated/body", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ projectId: project.id, all: true }),
+          });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok || !d.ok) throw new Error(d.error || "본문 생성 실패");
+          const next = Array.isArray(d.pending) ? d.pending.length : 0;
+          if (next >= left) break; // 더 진척이 없으면 멈춘다
+          left = next;
+        }
+      }
+      router.refresh();
+      void refreshCost();
+    } catch (e) {
+      setBodyErr(e instanceof Error ? e.message : "본문 생성 실패");
+      router.refresh();
+    } finally {
+      setBodyBusy(false);
+      setBodyProgress("");
     }
   }
 
@@ -584,9 +635,82 @@ export default function ElongatedStudio({
         {planErr && <p className="mt-2 text-xs text-red-600">{planErr}</p>}
       </section>
 
-      {/* ④ 본문 · ⑤ 검수 · ⑥ 렌더로 보내기 — 이어서 붙습니다 */}
+      {/* ── ④ 본문 ── */}
+      <section className="mt-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 px-3 py-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold">
+            ④ 본문
+            {plan && (
+              <span className="ml-1.5 text-[11px] font-normal text-zinc-500">
+                {written}/{plan.chapters.length}챕터
+                {totalChars > 0 && ` · ${totalChars.toLocaleString("ko-KR")}자`}
+              </span>
+            )}
+          </h2>
+          <button
+            type="button"
+            onClick={() => writeBody()}
+            disabled={!plan?.approvedAt || bodyBusy || factBusy}
+            className="rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white text-xs font-medium px-3 py-1.5"
+          >
+            {bodyBusy ? bodyProgress || "쓰는 중…" : written > 0 ? "남은 챕터 쓰기" : "본문 생성"}
+          </button>
+        </div>
+
+        {!plan?.approvedAt ? (
+          <p className="mt-1.5 text-[11px] text-zinc-500">설계를 승인하면 열려요.</p>
+        ) : (
+          <div className="mt-2 grid gap-2">
+            {plan.chapters.map((c) => {
+              const chars = bodyChars(c.body ?? "");
+              const over = chars > Math.round(chapterBudget * 1.3);
+              return (
+                <details key={c.index} className="rounded-xl border border-zinc-100 dark:border-zinc-900">
+                  <summary className="cursor-pointer select-none flex items-center gap-2 px-2.5 py-1.5 text-xs">
+                    <span className="flex-1 truncate">
+                      {c.index}. {c.title}
+                    </span>
+                    <span className={over ? "text-red-600 font-medium" : "text-zinc-400"}>
+                      {chars ? `${chars}자 / ${chapterBudget}자` : "미작성"}
+                    </span>
+                    {c.body && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          void writeBody(c.index);
+                        }}
+                        disabled={bodyBusy}
+                        className="shrink-0 rounded border border-zinc-200 dark:border-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-900 disabled:opacity-40"
+                      >
+                        다시 쓰기
+                      </button>
+                    )}
+                  </summary>
+                  {c.body ? (
+                    <p className="border-t border-zinc-100 dark:border-zinc-900 px-2.5 py-2 text-xs leading-relaxed whitespace-pre-wrap">
+                      {c.body}
+                    </p>
+                  ) : (
+                    <p className="border-t border-zinc-100 dark:border-zinc-900 px-2.5 py-2 text-[11px] text-zinc-500">
+                      아직 안 썼어요.
+                    </p>
+                  )}
+                </details>
+              );
+            })}
+            <p className="text-[10px] text-zinc-400">
+              대괄호 안 [F-001] 은 그 문장의 근거 카드예요. 낭독·자막엔 안 들어가고 렌더 전에
+              지워집니다.
+            </p>
+          </div>
+        )}
+        {bodyErr && <p className="mt-2 text-xs text-red-600">{bodyErr}</p>}
+      </section>
+
+      {/* ⑤ 검수 · ⑥ 렌더로 보내기 — 이어서 붙습니다 */}
       <p className="mt-6 text-center text-[11px] text-zinc-400">
-        다음 단계(본문 · 검수 · 렌더)는 이어서 붙습니다.
+        다음 단계(검수 · 렌더)는 이어서 붙습니다.
       </p>
     </main>
   );

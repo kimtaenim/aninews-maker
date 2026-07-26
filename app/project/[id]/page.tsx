@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { formatKrw, totalCostUsd } from "@/lib/cost";
 import { getProject, getProjectsBulk } from "@/lib/projectStore";
 import { listStyleProfiles } from "@/lib/styleProfiles";
 import { listVideoModels } from "@/lib/videoProvider";
@@ -14,6 +15,8 @@ import {
   CUSTOM_MAX_SEC,
   CUSTOM_MIN_SEC,
   PRESETS,
+  chapterCharBudget,
+  chapterCount,
   estimateElongatedCost,
   isElongated,
 } from "@/lib/elongated";
@@ -45,6 +48,11 @@ export default async function ProjectStudioPage({
         presets={PRESETS}
         minSec={CUSTOM_MIN_SEC}
         maxSec={CUSTOM_MAX_SEC}
+        spentKrw={formatKrw(await totalCostUsd(project.id))}
+        chapterBudget={chapterCharBudget(
+          track.targetSec,
+          track.plan?.chapters.length ?? chapterCount(track.targetSec, sourceScenes.length)
+        )}
         estimate={estimateElongatedCost(track.targetSec)}
         estimatesByPreset={Object.fromEntries(
           PRESETS.map((p) => [p.targetSec, estimateElongatedCost(p.targetSec)])

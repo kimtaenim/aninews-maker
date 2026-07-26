@@ -67,6 +67,29 @@ export function estimateCost(targetSec: number, r: CostRates): ElongatedCostEsti
   };
 }
 
+// ── 본문 텍스트 ──────────────────────────────────────────────────────────────
+// 본문 문장 끝에 붙는 근거 표시 [F-001] — 낭독·자막엔 들어가면 안 되므로 렌더 전에 지운다.
+// 화면(글자 수 표시)과 서버(생성·검수)가 같은 규칙을 써야 해서 여기 둔다.
+export const CARD_REF = /\s*\[(F-\d{3}(?:\s*,\s*F-\d{3})*)\]/g;
+
+export function stripCardRefs(body: string): string {
+  return (body ?? "").replace(CARD_REF, "").replace(/[ \t]+\n/g, "\n").trim();
+}
+
+/** 본문에서 인용한 카드 id 들. */
+export function citedCardIds(body: string): string[] {
+  const out = new Set<string>();
+  for (const m of (body ?? "").matchAll(CARD_REF)) {
+    for (const id of m[1].split(",")) out.add(id.trim());
+  }
+  return [...out];
+}
+
+/** 낭독 글자 수 — 근거 표시·강조 마크업을 뺀 실제 나레이션 기준. */
+export function bodyChars(body: string): number {
+  return stripCardRefs(body).replace(/\[\[|\]\]/g, "").replace(/\s+/g, " ").trim().length;
+}
+
 export const won = (n: number) => `₩${n.toLocaleString("ko-KR")}`;
 export const wonRange = (r: [number, number]) =>
   r[0] === r[1] ? won(r[0]) : `${won(r[0])}~${won(r[1])}`;
