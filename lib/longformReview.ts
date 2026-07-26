@@ -8,16 +8,17 @@
 import { getAnthropic, MODELS } from "./anthropic";
 import { anthropicCostUsd, recordCost } from "./cost";
 import { LONGFORM_REVIEW_SYSTEM_PROMPT } from "./longformReviewPrompt";
+import { SCENE_CHAR_MAX } from "./longformScript";
 import allPrinciples from "../config/longform-principles.json";
+// ★ 검수기도 생성기와 같은 원칙을 읽는다 — 이 채널의 대본 원칙은 쇼츠 파일 하나다.
+// 예전엔 롱폼 원칙 파일의 opening/bridge/ending/style 을 주입했는데, 그건 2026-07-25에 폐기된
+// 자작 원칙이라(자체 구독 문구·자체 길이 예산·예시 문장) 검수기가 생성기 결과를 탈락시켰다.
+import shortsPrinciples from "../config/script-principles.json";
 
-// 구조 검수는 롱폼 원칙 파일의 "열린 고리" 관련 섹션만 본다(단일 원천 = longform-principles.json).
 const principles = {
-  channel: allPrinciples.channel,
-  structure_loop: allPrinciples.structure_loop,
-  opening: allPrinciples.opening,
-  bridge: allPrinciples.bridge,
-  ending: allPrinciples.ending,
-  style: allPrinciples.style,
+  대본원칙_쇼츠: shortsPrinciples,
+  // 롱폼에만 있는 것 = 세그먼트 순서 설계뿐(lib/longformScript.ts 와 같은 주입).
+  롱폼_세그먼트순서: allPrinciples.segment_order,
 };
 
 export interface LongformReviewInput {
@@ -127,7 +128,11 @@ export async function reviewLongform(args: {
 }): Promise<LongformReviewResult> {
   const { projectId, input } = args;
   const client = getAnthropic();
-  const system = LONGFORM_REVIEW_SYSTEM_PROMPT.replace("{{PRINCIPLES}}", JSON.stringify(principles, null, 2));
+  const system = LONGFORM_REVIEW_SYSTEM_PROMPT.replace(
+    "{{PRINCIPLES}}",
+    JSON.stringify(principles, null, 2)
+    // 씬 글자 상한은 생성기와 같은 값을 쓴다 — 검수기에 숫자를 따로 적으면 사본이 갈라진다.
+  ).replaceAll("{{SCENE_CHARS}}", String(SCENE_CHAR_MAX));
   const text = assembleReviewText(input);
   let totalCost = 0;
 
