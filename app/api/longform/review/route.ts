@@ -144,11 +144,17 @@ export async function POST(req: NextRequest) {
   const segProjects = await getProjectsBulk(segIds);
   const byId = new Map(segProjects.map((s) => [s.id, s]));
   // 전체 흐름을 보려면 세그먼트 내용이 충분히 보여야 한다(250자로는 훅 구조 판정이 안 됐다).
+  // 10분+ 롱폼(세그먼트 20~30편)까지 감안해 총량 예산을 세그먼트 수로 나눠 배분한다.
+  // Sonnet 1M 컨텍스트라 총 6만자(≈4만 토큰)는 넉넉하다. 편당 상한은 3000자.
+  const SEG_TOTAL_BUDGET = 60_000;
+  const perSeg = Math.min(3000, Math.max(900, Math.floor(SEG_TOTAL_BUDGET / Math.max(1, segIds.length))));
   const segments = segIds.map((id, i) => {
     const s = byId.get(id);
+    const full = (s?.scenes ?? []).map((sc) => sc.narration).filter(Boolean).join(" ");
     return {
       title: s?.title ?? `세그먼트 ${i + 1}`,
-      summary: (s?.scenes ?? []).map((sc) => sc.narration).filter(Boolean).join(" ").slice(0, 900),
+      // 잘릴 때만 말줄임 — 잘렸는지 모델이 알아야 "끝이 이상하다"는 오판을 안 한다.
+      summary: full.length > perSeg ? `${full.slice(0, perSeg)}…(이하 생략)` : full,
     };
   });
   // ★ 진행자 대본(longformScript)이 원천이다. 예전엔 진행자 "씬"에서만 읽어서, 씬을 아직

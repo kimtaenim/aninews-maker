@@ -122,16 +122,21 @@ export async function POST(req: NextRequest) {
   const segProjects = await getProjectsBulk(segIds);
   const byId = new Map(segProjects.map((s) => [s.id, s]));
   const overrides = new Map((body.constituents ?? []).map((c) => [(c.segmentId ?? "").trim(), c]));
+  // 연결 멘트는 앞뒤 세그먼트 내용을 알아야 쓸 수 있다. 400자로 자르니 부실했다.
+  // 10분+ 롱폼(세그먼트 20~30편)까지 감안해 총량 예산을 편수로 나눠 배분한다(편당 최대 3000자).
+  const SEG_TOTAL_BUDGET = 60_000;
+  const perSeg = Math.min(3000, Math.max(900, Math.floor(SEG_TOTAL_BUDGET / Math.max(1, segIds.length))));
   const constituents: LongformConstituent[] = segIds
     .map((id) => byId.get(id))
     .filter((s): s is NonNullable<typeof s> => !!s)
     .map((s) => {
       const ov = overrides.get(s.id);
+      const full = (s.scenes ?? []).map((sc) => sc.narration).filter(Boolean).join(" ");
       return {
         title: s.title,
         topic:
           (ov?.topic ?? "").trim() ||
-          (s.scenes ?? []).map((sc) => sc.narration).filter(Boolean).join(" ").slice(0, 400),
+          (full.length > perSeg ? `${full.slice(0, perSeg)}…(이하 생략)` : full),
         performance: (ov?.performance ?? "").trim() || undefined,
         segmentId: s.id,
       };

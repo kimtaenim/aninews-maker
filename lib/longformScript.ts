@@ -181,7 +181,8 @@ export async function generateLongformScript(args: {
   const call = async (extra?: string): Promise<LongformScriptPackage | null> => {
     const r = await client.messages.create({
       model: MODELS.sonnet,
-      max_tokens: 4000,
+      // 세그먼트 20~30편이면 연결도 그만큼 나온다 — 출력이 잘리지 않게 넉넉히.
+      max_tokens: 16000,
       system,
       messages: [{ role: "user", content: extra ? `${text}\n\n${extra}` : text }],
     });

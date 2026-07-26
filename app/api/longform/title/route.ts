@@ -159,14 +159,20 @@ export async function POST(req: NextRequest) {
     if (segIds.length < 1) return NextResponse.json({ ok: false, error: "세그먼트가 없어요" }, { status: 422 });
     const segProjects = await getProjectsBulk(segIds);
     const byId = new Map(segProjects.map((s) => [s.id, s]));
+    // title_promise 가 이후 전 모듈의 기준점이라 세그먼트 내용을 넉넉히 봐야 한다.
+    // 10분+ 롱폼(20~30편)까지 감안해 총량을 편수로 나눈다(편당 최대 2000자).
+    const perSeg = Math.min(2000, Math.max(600, Math.floor(40_000 / Math.max(1, segIds.length))));
     constituents = segIds
       .map((id) => byId.get(id))
       .filter((s): s is NonNullable<typeof s> => !!s)
-      .map((s) => ({
-        title: s.title,
-        topic: (s.scenes ?? []).map((sc) => sc.narration).filter(Boolean).join(" ").slice(0, 300),
-        segmentId: s.id,
-      }));
+      .map((s) => {
+        const full = (s.scenes ?? []).map((sc) => sc.narration).filter(Boolean).join(" ");
+        return {
+          title: s.title,
+          topic: full.length > perSeg ? `${full.slice(0, perSeg)}…(이하 생략)` : full,
+          segmentId: s.id,
+        };
+      });
   }
   if (constituents.length === 0) {
     return NextResponse.json({ ok: false, error: "구성(세그먼트) 대본이 비어 있어요" }, { status: 422 });
