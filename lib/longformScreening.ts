@@ -25,7 +25,8 @@ export const ENDING_BUDGET = SCENE_MAX * 3; // 엔딩 3씬 = 21초
 export const BRIDGE_BUDGET = SCENE_MAX; // 연결 1씬 = 7초
 
 // 전 모듈 공통 금지 표현(config common_bans / style.ban 의 기계 검사 가능한 부분).
-const BAN_PATTERNS: { re: RegExp; label: string }[] = [
+// 확장판 검수(lib/elongatedScore.ts)도 같은 금지 규칙을 쓴다 — 두 벌 만들지 않는다.
+export const BANNED: { re: RegExp; label: string }[] = [
   { re: /20\d{2}\s*년?|최근|요즘|올해|작년|내년|이번\s*(주|달|분기)/, label: "시점 표현" },
   { re: /~/, label: "물결표(~)" },
   { re: /한대요|래요\b|랍니다/, label: "-한대요 전달체" },
@@ -77,9 +78,14 @@ export interface ScriptScreenResult {
 }
 
 function scanBans(label: string, text: string, out: string[]): void {
-  for (const p of BAN_PATTERNS) {
+  for (const p of BANNED) {
     if (p.re.test(text)) out.push(`${label}: ${p.label}`);
   }
+}
+
+// 확장판 검수도 같은 판정을 써야 한다 — 정규식을 두 벌 만들지 않는다.
+export function hasStockPick(text: string): boolean {
+  return STOCK_PICK.test(text ?? "");
 }
 
 export function screenScript(pkg: LongformScriptPackage, segmentCount: number): ScriptScreenResult {

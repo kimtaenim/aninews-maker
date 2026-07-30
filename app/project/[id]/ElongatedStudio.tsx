@@ -292,6 +292,30 @@ export default function ElongatedStudio({
     }
   }
 
+  // ── ⑤ 검수 ──
+  const [checkBusy, setCheckBusy] = useState<"" | "fact" | "score">("");
+  const [checkErr, setCheckErr] = useState("");
+
+  async function runCheck(mode: "fact" | "score") {
+    setCheckBusy(mode);
+    setCheckErr("");
+    try {
+      const r = await fetch("/api/longform/elongated/check", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId: project.id, mode }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) throw new Error(d.error || "검수 실패");
+      router.refresh();
+      if (mode === "score") void refreshCost();
+    } catch (e) {
+      setCheckErr(e instanceof Error ? e.message : "검수 실패");
+    } finally {
+      setCheckBusy("");
+    }
+  }
+
   const chip = (active: boolean) =>
     `rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
       active
@@ -708,9 +732,100 @@ export default function ElongatedStudio({
         {bodyErr && <p className="mt-2 text-xs text-red-600">{bodyErr}</p>}
       </section>
 
-      {/* ⑤ 검수 · ⑥ 렌더로 보내기 — 이어서 붙습니다 */}
+      {/* ── ⑤ 검수 ── */}
+      <section className="mt-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 px-3 py-2.5">
+        <h2 className="text-sm font-semibold">⑤ 검수</h2>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => runCheck("fact")}
+            disabled={!!checkBusy || written === 0}
+            className="rounded-lg border border-zinc-200 dark:border-zinc-800 px-3 py-1.5 text-xs font-medium hover:bg-zinc-50 dark:hover:bg-zinc-900 disabled:opacity-40"
+          >
+            {checkBusy === "fact" ? "대조 중…" : "팩트 대조"}
+          </button>
+          <button
+            type="button"
+            onClick={() => runCheck("score")}
+            disabled={!!checkBusy || written === 0}
+            className="rounded-lg border border-zinc-200 dark:border-zinc-800 px-3 py-1.5 text-xs font-medium hover:bg-zinc-50 dark:hover:bg-zinc-900 disabled:opacity-40"
+          >
+            {checkBusy === "score" ? "채점 중…" : "채점표"}
+          </button>
+          <span className="text-[11px] text-zinc-500">팩트 대조는 기계 대조라 돈이 안 들어요.</span>
+        </div>
+
+        {cur.factCheck && (
+          <div className="mt-3">
+            <p className="text-xs font-medium">
+              팩트 대조 —{" "}
+              {cur.factCheck.items.length === 0 ? (
+                <span className="text-accent">통과</span>
+              ) : (
+                <span className="text-red-600">{cur.factCheck.items.length}건 불일치</span>
+              )}
+            </p>
+            {cur.factCheck.items.length > 0 && (
+              <div className="mt-1.5 overflow-x-auto">
+                <table className="w-full text-[11px]">
+                  <thead className="text-zinc-400">
+                    <tr>
+                      <th className="text-left font-normal pr-2">챕터</th>
+                      <th className="text-left font-normal pr-2">문제</th>
+                      <th className="text-left font-normal pr-2">판정</th>
+                      <th className="text-left font-normal">문장</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cur.factCheck.items.map((it, i) => (
+                      <tr key={i} className="border-t border-zinc-100 dark:border-zinc-900">
+                        <td className="pr-2 py-1 align-top">{it.chapter}</td>
+                        <td className="pr-2 py-1 align-top font-medium">{it.token}</td>
+                        <td className="pr-2 py-1 align-top text-red-600 whitespace-nowrap">
+                          {it.verdict}
+                          {it.cardId ? ` (${it.cardId})` : ""}
+                        </td>
+                        <td className="py-1 align-top text-zinc-500 line-clamp-2">{it.sentence}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {cur.score && (
+          <div className="mt-3">
+            <p className="text-xs font-medium">
+              채점표 —{" "}
+              <span className={cur.score.summary === "통과" ? "text-accent" : "text-red-600"}>
+                {cur.score.summary}
+              </span>
+            </p>
+            <ul className="mt-1.5 grid gap-1">
+              {cur.score.items.map((it) => (
+                <li key={it.no} className="flex items-start gap-1.5 text-[11px]">
+                  <span className={it.pass ? "text-accent" : "text-red-600"}>
+                    {it.pass ? "○" : "✕"}
+                  </span>
+                  <span className="flex-1">
+                    <span className={it.pass ? "" : "font-medium"}>
+                      {it.no}. {it.label}
+                    </span>
+                    {it.evidence && <span className="ml-1 text-zinc-500">— {it.evidence}</span>}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {checkErr && <p className="mt-2 text-xs text-red-600">{checkErr}</p>}
+      </section>
+
+      {/* ⑥ 렌더로 보내기 — 이어서 붙습니다 */}
       <p className="mt-6 text-center text-[11px] text-zinc-400">
-        다음 단계(검수 · 렌더)는 이어서 붙습니다.
+        다음 단계(렌더로 보내기)는 이어서 붙습니다.
       </p>
     </main>
   );

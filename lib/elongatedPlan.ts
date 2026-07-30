@@ -17,7 +17,7 @@ import {
   ELONGATED_PLAN_SYSTEM_PROMPT,
   FACT_EXTRACT_INSTRUCTION,
 } from "./elongatedPlanPrompt";
-import { BLOCK_TYPES, GRADES, SEARCH_MAX_USES, chapterCount } from "./elongated";
+import { BLOCK_TYPES, FACT_MODEL, GRADES, SEARCH_MAX_USES, chapterCount } from "./elongated";
 import { formatSeconds, multiplier } from "./elongatedFormat";
 import shortsPrinciples from "../config/script-principles.json";
 import type { ElongatedBlock, ElongatedChapter, ElongatedPlan, FactCard } from "./types";
@@ -44,6 +44,9 @@ const WEB_SEARCH_TOOL = {
   max_uses: SEARCH_MAX_USES,
 };
 const MAX_ROUNDS = 2;
+// 사실 수집·정리에 쓸 모델. 수집은 판단이 아니라 옮겨 적기라 기본이 haiku(단가 1/3).
+// 카드 품질이 모자라면 config 의 fact_model 만 올린다.
+const FACT_MODEL_ID = MODELS[FACT_MODEL];
 
 export function today(): string {
   const d = new Date();
@@ -294,7 +297,7 @@ export async function findChapterFacts(args: {
     const stream = client.messages.stream(
       {
         // 사실 확인은 판단이 아니라 수집이다 — Sonnet 으로 충분하고 훨씬 빠르다.
-        model: MODELS.sonnet,
+        model: FACT_MODEL_ID,
         max_tokens: 4000,
         system: ELONGATED_FACT_SYSTEM_PROMPT,
         tools: [WEB_SEARCH_TOOL] as never,
@@ -308,7 +311,7 @@ export async function findChapterFacts(args: {
       outputTokens: r.usage.output_tokens,
       cacheReadTokens: r.usage.cache_read_input_tokens ?? undefined,
       cacheWriteTokens: r.usage.cache_creation_input_tokens ?? undefined,
-      model: MODELS.sonnet,
+      model: FACT_MODEL_ID,
     });
     if (r.content.some((b) => b.type === "web_search_tool_result" || b.type === "server_tool_use")) {
       searched = true;
@@ -327,7 +330,7 @@ export async function findChapterFacts(args: {
     await recordCost({
       projectId,
       vendor: "anthropic",
-      model: MODELS.sonnet,
+      model: FACT_MODEL_ID,
       costUsd,
       meta: { kind: "elongated-facts", searched: false },
     }).catch(() => {});
@@ -338,7 +341,7 @@ export async function findChapterFacts(args: {
 
   // 옮겨 적기(도구 없음, 짧고 저렴) — 검색이 도는 호출에 JSON 까지 시키면 형식이 깨진다.
   const ex = (await client.messages.create({
-    model: MODELS.sonnet,
+    model: FACT_MODEL_ID,
     max_tokens: 4000,
     system: "너는 확인 결과를 구조화된 JSON 으로 옮겨 적는 변환기다. JSON 만 출력한다.",
     messages: [{ role: "user", content: `[확인 결과]\n${report}\n\n${FACT_EXTRACT_INSTRUCTION}` }] as never,
@@ -346,7 +349,7 @@ export async function findChapterFacts(args: {
   costUsd += anthropicCostUsd({
     inputTokens: ex.usage.input_tokens,
     outputTokens: ex.usage.output_tokens,
-    model: MODELS.sonnet,
+    model: FACT_MODEL_ID,
   });
 
   const parsed = parseFacts(textOf(ex), { blockCount: blocks.length });
@@ -361,7 +364,7 @@ export async function findChapterFacts(args: {
   await recordCost({
     projectId,
     vendor: "anthropic",
-    model: MODELS.sonnet,
+    model: FACT_MODEL_ID,
     costUsd,
     meta: { kind: "elongated-facts", blocks: blocks.length, facts: total, searched: true },
   }).catch(() => {});

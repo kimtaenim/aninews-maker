@@ -41,6 +41,7 @@ interface RawConfig {
   chapter_target_sec: number;
   chapter_min_count: number;
   search_max_uses: number;
+  fact_model: "haiku" | "sonnet" | "opus";
   chapter_length_tolerance: number;
   target_length_tolerance: number;
   block_types: { id: string; desc: string }[];
@@ -61,6 +62,8 @@ export const REQUIRED_BLOCK: string = cfg.required_block;
 export const GRADES: string[] = cfg.grades;
 export const CHAPTER_TOLERANCE = cfg.chapter_length_tolerance;
 export const SEARCH_MAX_USES = cfg.search_max_uses;
+// 사실 수집에 쓸 모델 — 수집은 판단이 아니라 옮겨 적기라 기본은 가장 싼 것.
+export const FACT_MODEL: "haiku" | "sonnet" | "opus" = cfg.fact_model ?? "haiku";
 export const TARGET_TOLERANCE = cfg.target_length_tolerance;
 
 // ── 길이 계산 ────────────────────────────────────────────────────────────────
@@ -116,11 +119,12 @@ export function charsToSeconds(chars: number): number {
 // 고르기 전에 화면에서 보이게 하려고 여기서 계산한다. 단가의 원천은 lib/cost.ts 하나다.
 
 // 대본 단계 실측(Redis cost:entries, 2026-07-26):
-//   설계 ₩678 · 사실 찾기 챕터당 ₩550 안팎 · 본문·검수 ₩600 안팎.
-// 챕터 수(config chapter_target_sec)가 곧 대본비다 — 8분이면 4챕터라 ₩2,500~3,500.
-// 처음엔 ₩1,680으로 잡았다가 실측에서 5배가 나왔다. 넉넉히 잡는다.
+//   설계 ₩678 · 사실 찾기 대목당 ₩551(Sonnet·대목 단위) · 본문 챕터당 ₩60 안팎.
+// 여기서 두 번 줄였다: 사실 찾기를 챕터 단위로 묶고(호출 15→4), 모델을 haiku 로 내렸다(단가 1/3).
+// 8분 기준 예상 = 설계 ₩678 + 사실 4챕터 ₩740 + 본문 ₩240 + 채점 ₩50 ≈ ₩1,700.
+// 처음엔 ₩1,680으로 잡았다가 실측이 5배로 나왔다 — 다시 밑돌지 않게 넉넉히 잡는다.
 // ※ web_search 서버 도구 사용료는 anthropicCostUsd 가 아직 세지 않는다(토큰만 계산).
-const SCRIPT_STAGE_USD = 2.5;
+const SCRIPT_STAGE_USD = 1.8;
 
 /** 화면(서버·클라 공용)이 쓰는 단가 묶음. 단가의 원천은 lib/cost.ts 하나다. */
 export function costRates(videoUsdPerScene: number = FAL_VIDEO_DEFAULT_USD): CostRates {
