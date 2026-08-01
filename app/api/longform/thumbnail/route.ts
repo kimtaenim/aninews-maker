@@ -18,6 +18,8 @@ export async function POST(req: NextRequest) {
     styleProfileId?: string;
     quality?: "low" | "medium" | "high";
     chipIds?: string[];
+    // 생성 없이 설정만 저장(화면에서 고르는 즉시). 리로드해도 그대로 있어야 한다.
+    settingsOnly?: boolean;
   };
   try {
     body = await req.json();
@@ -29,6 +31,30 @@ export async function POST(req: NextRequest) {
 
   const longform = await getProject(projectId);
   if (!longform) return NextResponse.json({ ok: false, error: "프로젝트 없음" }, { status: 404 });
+
+  // ── 설정만 저장 — 아직 생성 전이어도 고른 값이 남아야 한다(사용자 지적 2026-08-01).
+  if (body.settingsOnly) {
+    const fresh = (await getProject(projectId)) ?? longform;
+    const cur = fresh.thumbnail;
+    const settings = {
+      styleProfileId: body.styleProfileId,
+      quality: body.quality,
+      chipIds: Array.isArray(body.chipIds) ? body.chipIds : undefined,
+      extra: (body.styleExtra ?? "").trim() || undefined,
+    };
+    fresh.thumbnail = cur
+      ? { ...cur, settings, ...(body.text !== undefined ? { textUsed: body.text } : {}) }
+      : {
+          textUsed: body.text ?? "",
+          variants: [],
+          screening: {},
+          generatedAt: 0, // 아직 안 만든 상태 — 설정만 담아 둔 껍데기
+          settings,
+        };
+    fresh.updatedAt = Date.now();
+    await saveProject(fresh);
+    return NextResponse.json({ ok: true, thumbnail: fresh.thumbnail });
+  }
 
   // ── 시안 확정 모드
   if (body.selected) {

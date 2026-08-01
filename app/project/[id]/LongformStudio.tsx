@@ -451,6 +451,32 @@ export default function LongformStudio({
     }
   }
 
+  // ★ 고른 설정은 곧바로 저장한다 — 생성 전에 리로드해도 남아야 한다(사용자 지적 2026-08-01).
+  // 첫 렌더에서는 저장하지 않는다(서버에서 받은 값을 그대로 되쓰는 낭비를 막는다).
+  const thumbSettingsReady = useRef(false);
+  useEffect(() => {
+    if (!thumbSettingsReady.current) {
+      thumbSettingsReady.current = true;
+      return;
+    }
+    const t = setTimeout(() => {
+      fetch("/api/longform/thumbnail", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          projectId: project.id,
+          settingsOnly: true,
+          styleProfileId: thumbStyleId || undefined,
+          quality: thumbQuality,
+          chipIds: thumbChips,
+          styleExtra: thumbExtra,
+          text: thumbTextEdit,
+        }),
+      }).catch(() => {});
+    }, 600); // 타이핑이 멈추면 저장
+    return () => clearTimeout(t);
+  }, [project.id, thumbStyleId, thumbQuality, thumbChips, thumbExtra, thumbTextEdit]);
+
   // ── [모듈 5] 썸네일 — 시안 3종 + 168px 축소 검증본.
   const [thumb, setThumb] = useState<LongformThumbnailPackage | null>(initialThumbnail);
   const [thumbBusy, setThumbBusy] = useState(false);
