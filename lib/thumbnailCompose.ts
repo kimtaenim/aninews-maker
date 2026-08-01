@@ -10,6 +10,7 @@
 //  · 출력: 1280x720 JPG(2MB 이하) + 168px 축소 검증본(실제 리샘플).
 // ============================================================================
 
+import sharp from "sharp";
 import { createCanvas, loadImage, GlobalFonts } from "@napi-rs/canvas";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -54,7 +55,11 @@ export async function composeThumbnail(args: {
   const ctx = canvas.getContext("2d");
 
   // 배경 — 비율이 달라도 캔버스를 꽉 채우게 cover.
-  const img = await loadImage(background);
+  // ★ OpenAI 이미지에는 C2PA 메타데이터 청크(caBX/jumb)가 붙어 오는데, @napi-rs/canvas 가
+  // 그걸 못 읽고 "Invalid SVG image" 로 죽는다(2026-08-01 실측 — 썸네일이 통째로 실패했다).
+  // sharp 로 한 번 다시 인코딩해 메타데이터를 털어내고 넘긴다.
+  const clean = await sharp(background).png().toBuffer();
+  const img = await loadImage(clean);
   const scale = Math.max(THUMB_W / img.width, THUMB_H / img.height);
   const dw = img.width * scale;
   const dh = img.height * scale;
