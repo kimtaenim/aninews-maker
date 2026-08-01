@@ -9,7 +9,7 @@
 import { getAnthropic, MODELS } from "./anthropic";
 import { anthropicCostUsd, recordCost } from "./cost";
 import { generateThumbnailImage } from "./image";
-import { encodeThumbnail } from "./thumbnailCompose";
+
 import { uploadAsset } from "./blob";
 import principles from "../config/longform-principles.json";
 import eyecatchConfig from "../config/eyecatch.json";
@@ -161,18 +161,16 @@ export async function buildThumbnails(args: {
         quality,
         text: thumbnailText, // 글씨를 그림 안에 같이 그린다
       });
-      // 글씨는 그림 안에 이미 있다 — 캔버스를 거치지 않고 sharp 로만 JPG·검증본을 만든다.
-      const { jpg, preview, strokePx, readable } = await encodeThumbnail(bytes);
-      const raw = await uploadAsset(`project/${projectId}/thumb-${stamp}-${i}-raw.png`, bytes, "image/png");
-      const file = await uploadAsset(`project/${projectId}/thumb-${stamp}-${i}.jpg`, jpg, "image/jpeg");
-      const prev = await uploadAsset(`project/${projectId}/thumb-${stamp}-${i}-168.jpg`, preview, "image/jpeg");
+      // ★ 숏폼과 같은 길 — 받은 바이트를 그대로 Blob 에 올린다. 서버에서 이미지 가공을 하지
+      // 않는다(캔버스는 OpenAI PNG 의 C2PA 청크에서, sharp 는 Vercel wasm 폴백에서 죽었다).
+      // OpenAI 가 이미 1280×720 으로 주고, 글씨도 그림 안에 있으니 가공할 게 없다.
+      // 168px 판독은 화면에서 작게 보여주는 것으로 눈으로 확인한다.
+      const file = await uploadAsset(`project/${projectId}/thumb-${stamp}-${i}.png`, bytes, "image/png");
       variants.push({
         ...base,
-        imageUrl: raw.url,
+        imageUrl: file.url,
         fileUrl: file.url,
-        previewUrl: prev.url,
-        strokePx,
-        ...(readable ? {} : { composition: `${base.composition} · ⚠ 문구가 168px에서 안 읽힘` }),
+        previewUrl: file.url,
       });
     } catch (e) {
       errors.push(`시안 ${i + 1}: ${e instanceof Error ? e.message : "실패"}`);
