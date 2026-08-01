@@ -375,6 +375,9 @@ export default function LongformStudio({
   const [thumbChips, setThumbChips] = useState<string[]>([]); // 켜 둔 칩 id
   const [thumbExtra, setThumbExtra] = useState(""); // 직접 쓴 그림 지시
   const [thumbTextEdit, setThumbTextEdit] = useState(""); // 썸네일 문구 직접 수정
+  // 숏폼 이미지 화면과 같은 조작 — 모드(스타일 프로파일)·품질.
+  const [thumbStyleId, setThumbStyleId] = useState(studioProps.styleProfiles[0]?.id ?? "");
+  const [thumbQuality, setThumbQuality] = useState<"low" | "medium" | "high">("medium");
   useEffect(() => {
     fetch("/api/chipsets")
       .then((r) => r.json())
@@ -465,6 +468,8 @@ export default function LongformStudio({
             .filter(Boolean)
             .join(". "),
           ...(thumbTextEdit.trim() ? { text: thumbTextEdit.trim() } : {}),
+          styleProfileId: thumbStyleId || undefined,
+          quality: thumbQuality,
         }),
       });
       const d = await r.json().catch(() => ({}));
@@ -1170,6 +1175,36 @@ export default function LongformStudio({
         {/* 그림 조정 — 썸네일도 그림을 만드는 일이라 스타일 칩과 직접 지시가 필요하다.
             칩은 쇼츠 Studio 와 같은 계정 칩셋을 그대로 쓴다(따로 만들지 않는다). */}
         <div className="mt-2 grid gap-1.5">
+          <div className="flex flex-wrap gap-3">
+            <label className="grid gap-1">
+              <span className="text-[11px] font-medium text-zinc-500">모드</span>
+              <select
+                value={thumbStyleId}
+                onChange={(e) => setThumbStyleId(e.target.value)}
+                disabled={thumbBusy}
+                className="rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-accent disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-950"
+              >
+                {studioProps.styleProfiles.map((sp) => (
+                  <option key={sp.id} value={sp.id}>
+                    {sp.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1">
+              <span className="text-[11px] font-medium text-zinc-500">품질</span>
+              <select
+                value={thumbQuality}
+                onChange={(e) => setThumbQuality(e.target.value as "low" | "medium" | "high")}
+                disabled={thumbBusy}
+                className="rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-accent disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-950"
+              >
+                <option value="low">빠름·저렴</option>
+                <option value="medium">보통</option>
+                <option value="high">고품질</option>
+              </select>
+            </label>
+          </div>
           <ChipsetRow
             stage="style"
             chipsets={chipsets}

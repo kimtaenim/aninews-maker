@@ -10,7 +10,7 @@ export const maxDuration = 300;
 //   POST { projectId }             → 생성 → { ok, thumbnail }
 //   POST { projectId, selected }   → 사용자 시안 확정 → { ok, thumbnail }
 export async function POST(req: NextRequest) {
-  let body: { projectId?: string; selected?: string; text?: string; styleExtra?: string };
+  let body: { projectId?: string; selected?: string; text?: string; styleExtra?: string; styleProfileId?: string; quality?: "low" | "medium" | "high" };
   try {
     body = await req.json();
   } catch {
@@ -64,6 +64,8 @@ export async function POST(req: NextRequest) {
       thumbnailText,
       // 화면에서 켠 스타일 칩·직접 쓴 지시(그림에만 붙는다).
       styleExtra: (body.styleExtra ?? "").trim() || undefined,
+      styleProfileId: body.styleProfileId,
+      quality: body.quality,
     });
     const fresh = (await getProject(projectId)) ?? longform;
     fresh.thumbnail = pkg;
