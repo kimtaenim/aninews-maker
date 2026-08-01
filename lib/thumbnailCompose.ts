@@ -42,8 +42,11 @@ export async function composeThumbnail(args: {
   background: Buffer;
   text: string;
   side: "left" | "right"; // 글씨를 어느 위(좌상/우상)에 둘지 — 피사체 반대편
+  // ★ 글씨를 이미지 생성에서 이미 그렸으면 여기선 얹지 않는다(사용자 지정 2026-08-01).
+  // 배경을 1280×720 JPG 로 맞추고 168px 검증본만 만든다.
+  drawText?: boolean;
 }): Promise<ComposeResult> {
-  const { background, text, side } = args;
+  const { background, text, side, drawText = true } = args;
   ensureFont();
   const layout = layoutText(text);
 
@@ -57,6 +60,7 @@ export async function composeThumbnail(args: {
   const dh = img.height * scale;
   ctx.drawImage(img, (THUMB_W - dw) / 2, (THUMB_H - dh) / 2, dw, dh);
 
+  if (drawText) {
   // 글씨 뒤 반투명 띠 — 배경이 복잡할 때 대비 확보(원칙 4).
   const gx0 = side === "left" ? 0 : THUMB_W;
   const gx1 = side === "left" ? THUMB_W * 0.62 : THUMB_W * 0.38;
@@ -89,6 +93,7 @@ export async function composeThumbnail(args: {
     ctx.fillStyle = i === 0 ? "#FFE24D" : "#FFFFFF"; // 핵심 단어(윗줄)를 강조색으로
     ctx.fillText(layout.lines[i], x, y);
     y += Math.round(size * 0.95);
+  }
   }
 
   // JPG 2MB 이하로 — 품질을 낮춰가며 맞춘다.

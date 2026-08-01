@@ -10,7 +10,15 @@ export const maxDuration = 300;
 //   POST { projectId }             → 생성 → { ok, thumbnail }
 //   POST { projectId, selected }   → 사용자 시안 확정 → { ok, thumbnail }
 export async function POST(req: NextRequest) {
-  let body: { projectId?: string; selected?: string; text?: string; styleExtra?: string; styleProfileId?: string; quality?: "low" | "medium" | "high" };
+  let body: {
+    projectId?: string;
+    selected?: string;
+    text?: string;
+    styleExtra?: string;
+    styleProfileId?: string;
+    quality?: "low" | "medium" | "high";
+    chipIds?: string[];
+  };
   try {
     body = await req.json();
   } catch {
@@ -68,6 +76,13 @@ export async function POST(req: NextRequest) {
       quality: body.quality,
     });
     const fresh = (await getProject(projectId)) ?? longform;
+    // 쓴 설정을 같이 저장 — 다시 만들 때 화면이 그대로 복원된다.
+    pkg.settings = {
+      styleProfileId: body.styleProfileId,
+      quality: body.quality,
+      chipIds: Array.isArray(body.chipIds) ? body.chipIds : undefined,
+      extra: (body.styleExtra ?? "").trim() || undefined,
+    };
     fresh.thumbnail = pkg;
     fresh.updatedAt = Date.now();
     await saveProject(fresh);

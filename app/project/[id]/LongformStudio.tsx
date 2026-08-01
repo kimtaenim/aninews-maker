@@ -372,12 +372,17 @@ export default function LongformStudio({
   // 🧩 내 칩셋 — 계정 단위로 저장해 둔 프롬프트 조각(쇼츠 Studio 와 같은 것을 그대로 쓴다).
   // 썸네일도 그림을 만드는 일이라 스타일 칩이 필요하다(사용자 지정 2026-08-01).
   const [chipsets, setChipsets] = useState<Chipset[]>([]);
-  const [thumbChips, setThumbChips] = useState<string[]>([]); // 켜 둔 칩 id
-  const [thumbExtra, setThumbExtra] = useState(""); // 직접 쓴 그림 지시
-  const [thumbTextEdit, setThumbTextEdit] = useState(""); // 썸네일 문구 직접 수정
+  const [thumbChips, setThumbChips] = useState<string[]>(initialThumbnail?.settings?.chipIds ?? []);
+  const [thumbExtra, setThumbExtra] = useState(initialThumbnail?.settings?.extra ?? "");
+  // ★ 지난번에 쓴 설정 그대로 시작한다 — 다시 만들 때 또 고르게 하지 않는다.
+  const [thumbTextEdit, setThumbTextEdit] = useState(initialThumbnail?.textUsed ?? "");
   // 숏폼 이미지 화면과 같은 조작 — 모드(스타일 프로파일)·품질.
-  const [thumbStyleId, setThumbStyleId] = useState(studioProps.styleProfiles[0]?.id ?? "");
-  const [thumbQuality, setThumbQuality] = useState<"low" | "medium" | "high">("medium");
+  const [thumbStyleId, setThumbStyleId] = useState(
+    initialThumbnail?.settings?.styleProfileId ?? studioProps.styleProfiles[0]?.id ?? ""
+  );
+  const [thumbQuality, setThumbQuality] = useState<"low" | "medium" | "high">(
+    initialThumbnail?.settings?.quality ?? "medium"
+  );
   useEffect(() => {
     fetch("/api/chipsets")
       .then((r) => r.json())
@@ -470,6 +475,7 @@ export default function LongformStudio({
           ...(thumbTextEdit.trim() ? { text: thumbTextEdit.trim() } : {}),
           styleProfileId: thumbStyleId || undefined,
           quality: thumbQuality,
+          chipIds: thumbChips,
         }),
       });
       const d = await r.json().catch(() => ({}));

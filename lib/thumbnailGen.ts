@@ -159,11 +159,13 @@ export async function buildThumbnails(args: {
         prompt: extra ? `${p.prompt}. ${extra}` : p.prompt,
         styleProfileId,
         quality,
+        text: thumbnailText, // 글씨를 그림 안에 같이 그린다
       });
       const { jpg, preview, strokePx, readable } = await composeThumbnail({
         background: bytes,
         text: thumbnailText,
-        side: p.subjectSide === "left" ? "right" : "left", // 글씨는 피사체 반대편
+        side: p.subjectSide === "left" ? "right" : "left",
+        drawText: false, // 글씨는 이미 그림 안에 있다 — 여기선 1280×720 JPG·168px 검증본만
       });
       const raw = await uploadAsset(`project/${projectId}/thumb-${stamp}-${i}-raw.png`, bytes, "image/png");
       const file = await uploadAsset(`project/${projectId}/thumb-${stamp}-${i}.jpg`, jpg, "image/jpeg");

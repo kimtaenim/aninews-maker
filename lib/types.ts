@@ -274,11 +274,19 @@ export interface LongformThumbnailVariant {
 }
 
 export interface LongformThumbnailPackage {
-  textUsed: string; // 모듈 1의 thumbnail_text
+  textUsed: string; // 제목 단계에서 정한 썸네일 문구(직접 고쳤으면 그 값)
   variants: LongformThumbnailVariant[];
   selected?: string; // 사용자 확정 파일 URL
   screening: Record<string, string>;
   generatedAt: number;
+  // ★ 화면에서 지정한 설정을 그대로 담아 둔다 — 다시 만들 때 또 고르게 하지 않는다
+  // (사용자 지정 2026-08-01).
+  settings?: {
+    styleProfileId?: string;
+    quality?: "low" | "medium" | "high";
+    chipIds?: string[]; // 켜 뒀던 칩
+    extra?: string; // 직접 쓴 그림 지시
+  };
 }
 
 // ── [롱폼] 섹션 — 2~3 세그먼트씩 묶어 "부분 합성"한 중간본 ─────────────────────

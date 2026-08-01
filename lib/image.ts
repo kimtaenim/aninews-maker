@@ -438,15 +438,25 @@ export async function generateThumbnailImage(args: {
   prompt: string; // 구도·감정·배경 분리가 담긴 영문 프롬프트
   quality?: ImageQuality;
   styleProfileId?: string; // 숏폼 이미지와 같은 모드 — 화풍을 맞춘다
+  // ★ 썸네일 글씨를 그림 안에 직접 그리게 한다(사용자 지정 2026-08-01).
+  // 캔버스로 나중에 얹으면 그림과 따로 논다 — 돈 내고 쓰는 모델이 같이 그리는 게 맞다.
+  text?: string;
 }): Promise<{ bytes: Buffer; costUsd: number }> {
-  const { projectId, prompt, quality = "medium", styleProfileId } = args;
+  const { projectId, prompt, quality = "medium", styleProfileId, text } = args;
   const styleLine = styleProfileId ? (getStyleProfile(styleProfileId)?.imageBible ?? "") : "";
   const client = getOpenAI();
   const cfg = eyecatchConfig as { description?: string; referenceImageUrl?: string };
   const full =
     `${cfg.description ?? ""}\n\n${prompt}\n\n` +
-    "ABSOLUTELY NO TEXT, letters, numbers, logos, or watermarks anywhere in the image — " +
-    "the caption is composited afterwards. Leave the bottom-right corner visually quiet " +
+    (text?.trim()
+      ? `Render this exact Korean text INSIDE the image as a bold poster headline: "${text.trim()}". ` +
+        "Very large heavy sans-serif, thick dark outline and drop shadow so it stays readable when the " +
+        "image is shrunk to 168px wide. Place it on the empty side away from the subject, never covering " +
+        "the face. Keep the wording EXACTLY as given — no other text, no logos, no watermarks, " +
+        "no extra letters or numbers anywhere."
+      : "ABSOLUTELY NO TEXT, letters, numbers, logos, or watermarks anywhere in the image — " +
+        "the caption is composited afterwards.") +
+    " Leave the bottom-right corner visually quiet " +
     "(YouTube overlays the duration badge there). Avoid pure white and pure black backgrounds.";
   const ref = cfg.referenceImageUrl?.trim();
   const result = ref
