@@ -437,8 +437,10 @@ export async function generateThumbnailImage(args: {
   projectId: string;
   prompt: string; // 구도·감정·배경 분리가 담긴 영문 프롬프트
   quality?: ImageQuality;
+  styleProfileId?: string; // 숏폼 이미지와 같은 모드 — 화풍을 맞춘다
 }): Promise<{ bytes: Buffer; costUsd: number }> {
-  const { projectId, prompt, quality = "medium" } = args;
+  const { projectId, prompt, quality = "medium", styleProfileId } = args;
+  const styleLine = styleProfileId ? (getStyleProfile(styleProfileId)?.imageBible ?? "") : "";
   const client = getOpenAI();
   const cfg = eyecatchConfig as { description?: string; referenceImageUrl?: string };
   const full =

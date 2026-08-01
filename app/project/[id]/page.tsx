@@ -86,6 +86,8 @@ export default async function ProjectStudioPage({
         keyframeUrl: s.keyframeUrl,
         finalVideoUrl: s.finalVideoUrl,
       }));
+    // ★ 진행자 씬(오프닝·연결·엔딩)의 그림·영상·음성은 숏폼과 똑같은 화면으로 만든다
+    // (사용자 지정 2026-08-01). 그래서 진행자 프로젝트 전문을 Studio 에 그대로 태운다.
     const host = project.hostProjectId ? await getProject(project.hostProjectId) : null;
     const hostProject = host
       ? {
@@ -118,6 +120,12 @@ export default async function ProjectStudioPage({
         }}
         segments={segments}
         hostProject={hostProject}
+        hostFull={host ?? null}
+        studioProps={{
+          styleProfiles: listStyleProfiles().map((p) => ({ id: p.id, label: p.label })),
+          videoModels: listVideoModels().map((m) => ({ id: m.id, label: m.label })),
+          tts: ttsProviderInfo(),
+        }}
         initialTitle={project.longformTitle ?? null}
         initialScript={project.longformScript ?? null}
         initialThumbnail={project.thumbnail ?? null}

@@ -13,6 +13,8 @@ import type {
 import type { LongformReviewResult } from "@/lib/longformReview";
 import type { Chipset, ChipsetStage } from "@/lib/chipsets";
 import ChipsetRow from "./ChipsetRow";
+import Studio from "./Studio";
+import type { Project } from "@/lib/types";
 import { speakSeconds } from "@/lib/longformScreening";
 
 // 브리지 낭독 길이(초) — 타임라인에 진행자 구간 길이를 그대로 보여주기 위해.
@@ -53,6 +55,8 @@ export default function LongformStudio({
   project,
   segments,
   hostProject,
+  hostFull,
+  studioProps,
   initialTitle,
   initialScript,
   initialThumbnail,
@@ -66,6 +70,17 @@ export default function LongformStudio({
   };
   segments: SegInfo[];
   hostProject: HostProject | null;
+  // ★ 진행자 씬은 숏폼과 똑같은 화면(Studio)으로 만든다 — 그림·영상·음성·칩셋 전부 같은 것.
+  hostFull: Project | null;
+  studioProps: {
+    styleProfiles: { id: string; label: string }[];
+    videoModels: { id: string; label: string }[];
+    tts?: {
+      default: "elevenlabs" | "typecast";
+      configured: { elevenlabs: boolean; typecast: boolean };
+      typecastVoices?: { fallback: boolean; perLang: Record<string, boolean> };
+    };
+  };
   initialTitle: LongformTitlePackage | null;
   initialScript: LongformScriptPackage | null;
   initialThumbnail: LongformThumbnailPackage | null;
@@ -256,8 +271,6 @@ export default function LongformStudio({
     setRvData(null);
     router.refresh();
   }
-  const [hostBusy, setHostBusy] = useState(false);
-  const [hostErr, setHostErr] = useState("");
 
   // ── [모듈 2~4] 대본 트랙 — 오프닝(2블록) · 세그먼트 순서 + 브리지 · 엔딩(3파트).
   const [script, setScript] = useState<LongformScriptPackage | null>(initialScript);
@@ -265,7 +278,9 @@ export default function LongformStudio({
   const [scriptSaveBusy, setScriptSaveBusy] = useState(false);
   const [scriptErr, setScriptErr] = useState("");
   const [scriptViolations, setScriptViolations] = useState<string[]>([]);
-  const [fixedOrder, setFixedOrder] = useState(false);
+  // 편 순서는 고른 순서 그대로 간다 — 모델이 제안한 순서로 갈아치우지 않는다(지시).
+  // 순서를 바꾸려면 ③ 목록에서 ▲▼ 로 직접 옮긴다.
+  const fixedOrder = true;
   const [edit, setEdit] = useState<{ a: string; b: string; pa: string; pb: string; bridges: string[] } | null>(
     initialScript
       ? {
@@ -305,7 +320,7 @@ export default function LongformStudio({
       loadEdit(pkg);
       setScriptViolations(Array.isArray(d.violations) ? d.violations : []);
       refreshCost();
-      if (d.orderApplied) router.refresh(); // 순서가 바뀌었으면 세그먼트 목록 다시 읽기
+      router.refresh(); // 대본을 쓰면 씬도 서버에서 같이 갱신된다 — 아래 편집 화면을 다시 읽는다
     } catch (e) {
       setScriptErr(e instanceof Error ? e.message : "대본 생성 실패");
     } finally {
@@ -346,6 +361,7 @@ export default function LongformStudio({
       if (!r.ok || !d.ok) throw new Error(d.error || "저장 실패");
       setScript(d.script as LongformScriptPackage);
       setScriptViolations(Array.isArray(d.violations) ? d.violations : []);
+      router.refresh(); // 고친 말이 씬 나레이션에도 반영됐으니 아래 편집 화면을 다시 읽는다
     } catch (e) {
       setScriptErr(e instanceof Error ? e.message : "저장 실패");
     } finally {
@@ -427,75 +443,6 @@ export default function LongformStudio({
     }
   }
 
-  // ── 진행자 그림 — 오프닝·연결·엔딩 씬의 그림을 이 화면에서 만든다.
-  // 예전엔 진행자 프로젝트로 넘어가야 했다(사용자 지적 2026-08-01: 만들 자리가 없다).
-  // 씬0 은 키프레임 경로, 나머지는 씬 이미지 경로 — 쇼츠와 같은 API 를 그대로 쓴다.
-  const [hostImgBusy, setHostImgBusy] = useState<null | "all" | number>(null);
-  const [hostImgErr, setHostImgErr] = useState("");
-
-  async function post(url: string, body: unknown) {
-    const r = await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok || !d.ok) throw new Error(d.error || "요청 실패");
-    return d as Record<string, unknown>;
-  }
-
-  // 진행자 씬 그림 한 번에 — 키프레임(첫 후보) → 승인 → 나머지 씬 일괄.
-  async function genHostImages() {
-    if (!hostProject) return;
-    setHostImgBusy("all");
-    setHostImgErr("");
-    try {
-      const id = hostProject.id;
-      const chipText = chipsets.filter((c) => thumbChips.includes(c.id)).map((c) => c.text);
-      const hasKeyframe = !!hostProject.keyframeUrl;
-      if (!hasKeyframe) {
-        const kf = await post("/api/image/keyframe", { projectId: id });
-        const urls = (kf.urls as string[]) ?? [];
-        if (!urls.length) throw new Error("키프레임 후보가 안 나왔어요");
-        await post("/api/image/keyframe/select", { projectId: id, url: urls[0] });
-        await post("/api/step/approve", { projectId: id, step: "keyframe" });
-      }
-      const rest = hostScenes.filter((s) => s.index > 0 && !s.imageUrl).map((s) => s.index);
-      if (rest.length) await post("/api/image/scenes-batch", { projectId: id, sceneIndexes: rest });
-      if (chipText.length) {
-        /* 칩은 씬 프롬프트에 이미 반영되지 않는다 — 여기선 알림만(별도 지시는 씬 편집에서). */
-      }
-      router.refresh();
-    } catch (e) {
-      setHostImgErr(e instanceof Error ? e.message : "진행자 그림 생성 실패");
-    } finally {
-      setHostImgBusy(null);
-    }
-  }
-
-  // 그 씬 하나만 다시 — 씬0 은 키프레임이라 후보를 다시 뽑고 첫 장을 쓴다.
-  async function genHostSceneImage(index: number) {
-    if (!hostProject) return;
-    setHostImgBusy(index);
-    setHostImgErr("");
-    try {
-      const id = hostProject.id;
-      if (index === 0) {
-        const kf = await post("/api/image/keyframe", { projectId: id });
-        const urls = (kf.urls as string[]) ?? [];
-        if (!urls.length) throw new Error("키프레임 후보가 안 나왔어요");
-        await post("/api/image/keyframe/select", { projectId: id, url: urls[0] });
-      } else {
-        await post("/api/image/scene", { projectId: id, sceneIndex: index });
-      }
-      router.refresh();
-    } catch (e) {
-      setHostImgErr(e instanceof Error ? e.message : "그림 생성 실패");
-    } finally {
-      setHostImgBusy(null);
-    }
-  }
-
   // ── [모듈 5] 썸네일 — 시안 3종 + 168px 축소 검증본.
   const [thumb, setThumb] = useState<LongformThumbnailPackage | null>(initialThumbnail);
   const [thumbBusy, setThumbBusy] = useState(false);
@@ -545,24 +492,6 @@ export default function LongformStudio({
     }
   }
 
-  async function genHostScript() {
-    setHostBusy(true);
-    setHostErr("");
-    try {
-      const r = await fetch("/api/longform/host-script", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ projectId: project.id }),
-      });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok || !d.ok) throw new Error(d.error || "진행자 대본 생성 실패");
-      router.refresh(); // 서버에서 새 호스트 씬을 다시 읽어와 표시
-    } catch (e) {
-      setHostErr(e instanceof Error ? e.message : "진행자 대본 생성 실패");
-    } finally {
-      setHostBusy(false);
-    }
-  }
   const [composing, setComposing] = useState(false);
   const [status, setStatus] = useState<string>("");
   const [progress, setProgress] = useState<string>("");
@@ -795,23 +724,8 @@ export default function LongformStudio({
               ? "씬 미생성"
               : "대본 미생성"}
         </span>
-        {hostProject && scene && (
-          <button
-            onClick={() => genHostSceneImage(scene.index)}
-            disabled={hostImgBusy !== null}
-            className="shrink-0 rounded border border-zinc-300 px-1.5 py-0.5 text-[10px] hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-900"
-            title="이 씬 그림만 다시 만듭니다"
-          >
-            {hostImgBusy === scene.index ? "…" : scene.imageUrl ? "그림 다시" : "그림 만들기"}
-          </button>
-        )}
-        {hostProject && scene && (
-          <Link
-            href={`/project/${hostProject.id}`}
-            className="shrink-0 text-[10px] text-zinc-500 underline hover:text-accent"
-          >
-            씬 편집
-          </Link>
+        {scene && (
+          <span className="shrink-0 text-[10px] text-zinc-400">아래에서 편집</span>
         )}
       </div>
       {onChange ? (
@@ -849,7 +763,7 @@ export default function LongformStudio({
         </div>
       </div>
       <p className="mt-2 text-xs text-zinc-500">
-        가로 16:9 롱폼 — 아래 순서 그대로 이어붙습니다. 칸마다 진행자 말을 고치고, 각 편은 편집에서 완성하세요.
+        가로 16:9 롱폼 — 아래 순서 그대로 이어붙습니다. 칸마다 말을 고치고, 각 편은 편집에서 완성하세요.
       </p>
 
       {/* [모듈 1] 롱폼 제목 — 검색 5원칙 */}
@@ -866,7 +780,7 @@ export default function LongformStudio({
         </div>
         <p className="mt-1 text-[11px] text-zinc-500">
           어긋나는 두 사실로 궁금하게 만들되 답은 주지 않습니다. 구성한 편들에 실제로 있는 사실만 씁니다.
-          <b> 제목을 확정해야</b> 썸네일과 진행자 말을 만들 수 있어요 — 제목이 약속한 궁금증이 그 뒤 전부의 기준점이라서요.
+          <b> 제목을 확정해야</b> 썸네일과 대본을 만들 수 있어요 — 제목이 약속한 궁금증이 그 뒤 전부의 기준점이라서요.
         </p>
         {titleErr && <p className="mt-2 text-[11px] text-red-600">{titleErr}</p>}
         {titlePkg && (
@@ -1367,8 +1281,8 @@ export default function LongformStudio({
           이 아래에 접어 둔다(사용자 지정 2026-07-26: 머릿속 구조가 곧 화면 구조여야 한다). */}
       <div className="mt-4 flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold">
-          ③ 재생 순서 <span className="text-[11px] font-normal text-zinc-500">
-            (편 {readyCount}/{segs.length} · 진행자 씬 {hostVideoDone}/{hostScenes.length || 0})
+          ③ 대본 <span className="text-[11px] font-normal text-zinc-500">
+            (편 {readyCount}/{segs.length} · 진행자 {hostVideoDone}/{hostScenes.length || 0})
           </span>
         </h2>
         <div className="flex shrink-0 items-center gap-2">
@@ -1379,7 +1293,7 @@ export default function LongformStudio({
               className="rounded-lg bg-accent px-2.5 py-1 text-[11px] font-medium text-white hover:bg-accent-strong disabled:opacity-40"
               title={confirmedTitle ? "오프닝·연결·엔딩을 한 번에 씁니다" : "먼저 제목을 확정해주세요"}
             >
-              {scriptBusy ? "쓰는 중…" : "진행자 말 만들기"}
+              {scriptBusy ? "쓰는 중…" : "대본 만들기"}
             </button>
           )}
           {script && edit && (
@@ -1388,38 +1302,32 @@ export default function LongformStudio({
               disabled={scriptSaveBusy}
               className="rounded-lg border border-zinc-300 px-2.5 py-1 text-[11px] font-medium hover:bg-zinc-50 disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-900"
             >
-              {scriptSaveBusy ? "저장 중…" : "진행자 말 저장"}
-            </button>
-          )}
-          {hostScenes.length > 0 && (
-            <button
-              onClick={genHostImages}
-              disabled={hostImgBusy !== null}
-              className="rounded-lg border border-zinc-300 px-2.5 py-1 text-[11px] font-medium hover:bg-zinc-50 disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-900"
-              title="오프닝·연결·엔딩 씬의 그림을 한 번에 만듭니다"
-            >
-              {hostImgBusy === "all" ? "그림 만드는 중…" : "진행자 그림 만들기"}
-            </button>
-          )}
-          {script && (
-            <button
-              onClick={genHostScript}
-              disabled={hostBusy}
-              className="rounded-lg border border-accent/40 bg-accent/10 px-2.5 py-1 text-[11px] font-medium text-accent hover:bg-accent/15 disabled:opacity-40"
-              title="지금 대본으로 진행자 씬을 다시 펼칩니다(고친 말이 씬에 반영됩니다)"
-            >
-              {hostBusy ? "펼치는 중…" : hostScenes.length ? "진행자 씬 다시 펼치기" : "진행자 씬 만들기"}
+              {scriptSaveBusy ? "저장 중…" : "대본 저장"}
             </button>
           )}
         </div>
       </div>
-      {(scriptErr || hostErr || hostImgErr) && (
-        <p className="mt-1 text-[11px] text-red-600">{scriptErr || hostErr || hostImgErr}</p>
+      {scriptErr && <p className="mt-1 text-[11px] text-red-600">{scriptErr}</p>}
+      {scriptViolations.length > 0 && (
+        <ul className="mt-1 grid list-disc gap-0.5 pl-4 text-[10px] text-amber-600">
+          {scriptViolations.map((v, i) => (
+            <li key={i}>{v}</li>
+          ))}
+        </ul>
+      )}
+      {script && Object.keys(script.screening).length > 0 && (
+        <ul className="mt-1 grid gap-0.5 text-[10px]">
+          {Object.entries(script.screening).map(([k, v]) => (
+            <li key={k} className={/탈락/.test(v) ? "text-red-600" : "text-zinc-500"}>
+              <b>{k}</b> — {v}
+            </li>
+          ))}
+        </ul>
       )}
       {!script && (
         <p className="mt-1 text-[11px] text-amber-600">
           {confirmedTitle
-            ? "진행자 말이 아직 없어요 — 위 “진행자 말 만들기”를 눌러주세요."
+            ? "대본이 아직 없어요 — 위 “대본 만들기”를 눌러주세요."
             : "먼저 제목을 확정해주세요 — 제목이 약속한 궁금증이 오프닝·엔딩의 기준점이에요."}
         </p>
       )}
@@ -1542,6 +1450,23 @@ export default function LongformStudio({
           : hostRow("en-none", "엔딩", "대본 미생성", null)}
       </ol>
 
+      {/* ★ 진행자 씬 편집 — 숏폼 편집 화면을 그대로 쓴다(사용자 지정 2026-08-01).
+          오프닝·연결·엔딩 씬의 그림·영상·음성·칩셋·자막이 숏폼과 똑같이 뜬다.
+          따로 만들지 마라 — 만들면 또 반쪽짜리가 된다. */}
+      {hostFull && (
+        <div className="mt-6 rounded-xl border border-accent/40 p-2">
+          <p className="px-1 pb-1 text-[11px] text-zinc-500">
+            아래는 <b>오프닝 · 연결 · 엔딩</b> 편집이에요 — 숏폼과 같은 화면입니다.
+          </p>
+          <Studio
+            project={hostFull}
+            styleProfiles={studioProps.styleProfiles}
+            videoModels={studioProps.videoModels}
+            tts={studioProps.tts}
+          />
+        </div>
+      )}
+
       {/* 손보기 도구 — 재생 순서에서 바로 고치는 게 기본이지만, 이전 단계(진행자 대본 생성·
           전체 다듬기·씬 펼치기)는 그대로 보여야 한다. 접어서 안 보이게 하지 마라
           (2026-08-01: 접었더니 단계를 날린 것처럼 됐다). 접고 싶으면 사용자가 직접 접는다. */}
@@ -1551,158 +1476,9 @@ export default function LongformStudio({
           <span className="hidden group-open:inline">▾ </span>
           손보기 도구
           <span className="ml-1 text-[11px] font-normal text-zinc-500">
-            진행자 말 다시 만들기 · 전체 다듬기 · 씬 펼치기
+            전체 다듬기
           </span>
         </summary>
-      {/* [모듈 2~4] 대본 — 오프닝 2블록 · 세그먼트 순서 + 브리지 · 엔딩 3파트
-          ★ 진행자 패널보다 반드시 위에 온다 — 진행자 씬은 이 대본을 펼치는 것이라
-            "먼저 대본을 생성하라"고 안내하면서 그 버튼이 아래 있으면 안 된다(작업 순서 = 화면 순서). */}
-      <div className="mt-4 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold">진행자 말 새로 뽑기</h2>
-          <button
-            onClick={genScript}
-            disabled={scriptBusy || !confirmedTitle}
-            className="shrink-0 text-xs rounded-lg border border-accent px-3 py-1.5 text-accent hover:bg-accent/10 disabled:opacity-40"
-          >
-            {scriptBusy ? "생성 중…" : script ? "다시 생성" : "대본 생성"}
-          </button>
-        </div>
-        <p className="mt-1 text-[11px] text-zinc-500">
-          진행자가 말하는 부분을 한 번에 씁니다 — 오프닝(5~7초) · 세그먼트 순서 설계 + 연결(3~5초씩) · 엔딩(10초 이내).
-          전체 고리는 <b>엔딩 파트 A 한 곳</b>에서만 닫힙니다.
-        </p>
-        {!confirmedTitle && (
-          <p className="mt-2 text-[11px] text-amber-600">먼저 ① 제목을 확정해주세요 — 제목이 약속한 궁금증이 기준점이에요.</p>
-        )}
-        <label className="mt-2 flex items-center gap-1.5 text-[11px] text-zinc-500">
-          <input type="checkbox" checked={fixedOrder} onChange={(e) => setFixedOrder(e.target.checked)} />
-          현재 세그먼트 순서 고정(순서 제안 안 받기)
-        </label>
-        {scriptErr && <p className="mt-2 text-[11px] text-red-600">{scriptErr}</p>}
-        {scriptViolations.length > 0 && (
-          <ul className="mt-2 grid list-disc gap-0.5 pl-4 text-[10px] text-amber-600">
-            {scriptViolations.map((v, i) => (
-              <li key={i}>{v}</li>
-            ))}
-          </ul>
-        )}
-        {script && edit && (
-          <div className="mt-2 grid gap-3">
-            {/* 세그먼트 순서 */}
-            <div className="text-[11px]">
-              <p className="font-semibold text-zinc-600 dark:text-zinc-300">세그먼트 순서</p>
-              <ol className="mt-0.5 grid gap-0.5">
-                {script.segmentOrder.map((s) => (
-                  <li key={s.order} className="text-zinc-500">
-                    <b>{s.order}.</b> {s.title}
-                    {s.rationale ? ` — ${s.rationale}` : ""}
-                  </li>
-                ))}
-              </ol>
-              {script.orderNote && <p className="mt-0.5 text-amber-600">↳ {script.orderNote}</p>}
-            </div>
-
-            {/* 오프닝 */}
-            <div>
-              <p className="text-[11px] font-semibold text-accent">
-                오프닝 · {script.opening.estSeconds}초 (5~7초)
-              </p>
-              <textarea
-                value={edit.a}
-                onChange={(e) => setEdit({ ...edit, a: e.target.value })}
-                rows={2}
-                placeholder="블록 A — 제목 호응 훅"
-                className="mt-1 w-full rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-2 text-xs leading-relaxed outline-none focus:border-accent"
-              />
-              <textarea
-                value={edit.b}
-                onChange={(e) => setEdit({ ...edit, b: e.target.value })}
-                rows={3}
-                placeholder="블록 B — 로드맵 + 착지"
-                className="mt-1 w-full rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-2 text-xs leading-relaxed outline-none focus:border-accent"
-              />
-            </div>
-
-            {/* 브리지 */}
-            <div>
-              <p className="text-[11px] font-semibold text-accent">
-                연결 {script.bridges.length}개 · 각 3~5초 (방점 / 승격 / 개방 — 줄바꿈 구분)
-              </p>
-              <div className="mt-1 grid gap-2">
-                {script.bridges.map((b, i) => (
-                  <div key={i}>
-                    <p className="text-[10px] text-zinc-500">
-                      연결 {b.afterSegment + 1}/{b.afterSegment + 2} · {bridgeSeconds(b)}초
-                      {b.isMidpointReopen ? " · 🔁 중간점 고리 환기" : ""}
-                    </p>
-                    <textarea
-                      value={edit.bridges[i] ?? ""}
-                      onChange={(e) => {
-                        const next = [...edit.bridges];
-                        next[i] = e.target.value;
-                        setEdit({ ...edit, bridges: next });
-                      }}
-                      rows={3}
-                      className="mt-0.5 w-full rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-2 text-xs leading-relaxed outline-none focus:border-accent"
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* 엔딩 */}
-            <div>
-              <p className="text-[11px] font-semibold text-accent">엔딩 · {script.ending.estSeconds}초 (10초 이내)</p>
-              <textarea
-                value={edit.pa}
-                onChange={(e) => setEdit({ ...edit, pa: e.target.value })}
-                rows={2}
-                placeholder="파트 A — 고리 닫기(구체로)"
-                className="mt-1 w-full rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-2 text-xs leading-relaxed outline-none focus:border-accent"
-              />
-              <textarea
-                value={edit.pb}
-                onChange={(e) => setEdit({ ...edit, pb: e.target.value })}
-                rows={2}
-                placeholder="파트 B — 계좌 착지(중립 톤)"
-                className="mt-1 w-full rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-2 text-xs leading-relaxed outline-none focus:border-accent"
-              />
-              <p className="mt-1 rounded-lg bg-zinc-100 dark:bg-zinc-900 p-2 text-[11px] text-zinc-500">
-                파트 C(표준 구독 문구): {script.ending.partCStandard}
-              </p>
-              {script.ending.endscreenVideo && (
-                <p className="mt-1 text-[10px] text-zinc-500">
-                  엔드스크린 추천: <b>{script.ending.endscreenVideo}</b> (파트 C 낭독 중 8초)
-                </p>
-              )}
-            </div>
-
-            <div className="flex justify-end">
-              <button
-                onClick={saveScript}
-                disabled={scriptSaveBusy}
-                className="text-[11px] rounded-md bg-accent hover:bg-accent-strong text-white px-3 py-1 disabled:opacity-40"
-              >
-                {scriptSaveBusy ? "저장 중…" : "대본 저장"}
-              </button>
-            </div>
-
-            {Object.keys(script.screening).length > 0 && (
-              <div className="rounded-lg bg-accent/5 border border-accent/30 p-2 text-[10px]">
-                <p className="font-semibold text-accent">검수</p>
-                <ul className="mt-0.5 grid gap-0.5">
-                  {Object.entries(script.screening).map(([k, v]) => (
-                    <li key={k} className={/탈락/.test(v) ? "text-red-600" : "text-zinc-500"}>
-                      <b>{k}</b> — {v}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
 
       {/* 전체 다듬기 — 세그먼트 대본까지 통째로 읽고 훅 구조·순서·진행자 멘트를 손본다.
           대본이 있어야 의미가 있으므로 대본 패널 바로 뒤에 둔다. */}
@@ -1730,53 +1506,10 @@ export default function LongformStudio({
       </div>
       {!script && (
         <p className="mt-1 text-[11px] text-zinc-500">
-          전체 다듬기는 진행자 말을 만든 뒤에 쓸 수 있어요.
+          전체 다듬기는 대본을 만든 뒤에 쓸 수 있어요.
         </p>
       )}
 
-      {/* 진행자 씬 — 위 대본을 씬으로 펼친다. 반드시 대본 패널 "뒤"에 온다(작업 순서 = 화면 순서). */}
-      <div className="mt-4 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold">진행자 씬 펼치기</h2>
-          <button
-            onClick={genHostScript}
-            disabled={hostBusy || !script}
-            className="shrink-0 text-xs rounded-lg border border-accent px-3 py-1.5 text-accent hover:bg-accent/10 disabled:opacity-40"
-          >
-            {hostBusy ? "생성 중…" : hostProject ? "씬 다시 만들기" : "진행자 씬 만들기"}
-          </button>
-        </div>
-        <p className="mt-1 text-[11px] text-zinc-500">
-          위 진행자 대본을 씬으로 펼칩니다 — 오프닝 2씬 · 연결 {script?.bridges.length ?? 0}씬 · 엔딩 3씬.
-          그 뒤 <b>진행자 편집</b>에서 씬별로 이미지·영상·음성을 만드세요(오프닝 첫 씬 = 캐릭터 확정).
-        </p>
-        {!script && <p className="mt-2 text-[11px] text-amber-600">먼저 진행자 말을 만들어주세요.</p>}
-        {hostErr && <p className="mt-2 text-[11px] text-red-600">{hostErr}</p>}
-        {hostProject ? (
-          <div className="mt-2 flex items-center gap-3 rounded-lg border border-zinc-200 dark:border-zinc-800 p-2">
-            <div className="h-10 w-16 shrink-0 overflow-hidden rounded bg-zinc-100 dark:bg-zinc-900">
-              {hostProject.keyframeUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={hostProject.keyframeUrl} alt="진행자" className="h-full w-full object-cover" />
-              ) : null}
-            </div>
-            <span className="flex-1 text-xs">
-              진행자 씬 {hostProject.sceneCount}개
-              {hostProject.finalVideoUrl ? " · 완성" : ""}
-            </span>
-            <Link
-              href={`/project/${hostProject.id}`}
-              className="shrink-0 text-[11px] rounded-md border border-accent px-2 py-1 text-accent hover:bg-accent/10"
-            >
-              진행자 편집 →
-            </Link>
-          </div>
-        ) : (
-          <p className="mt-2 text-[11px] text-zinc-500">
-            아직 없음 — 위 버튼으로 대본을 씬으로 펼치세요.
-          </p>
-        )}
-      </div>
 
       </details>
 

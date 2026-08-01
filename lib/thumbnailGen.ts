@@ -137,8 +137,10 @@ export async function buildThumbnails(args: {
   thumbnailText: string;
   // 화면에서 켠 스타일 칩 + 직접 쓴 지시 — 그림에만 붙는다(문구·구도 판정은 그대로).
   styleExtra?: string;
+  styleProfileId?: string; // 숏폼 이미지와 같은 모드(스타일 프로파일)
+  quality?: "low" | "medium" | "high";
 }): Promise<LongformThumbnailPackage> {
-  const { projectId, thumbnailText, title, styleExtra } = args;
+  const { projectId, thumbnailText, title, styleExtra, styleProfileId, quality } = args;
   const prompts = await generateThumbnailPrompts(args);
   const extra = (styleExtra ?? "").trim();
   const stamp = Date.now();
@@ -155,6 +157,8 @@ export async function buildThumbnails(args: {
       const { bytes } = await generateThumbnailImage({
         projectId,
         prompt: extra ? `${p.prompt}. ${extra}` : p.prompt,
+        styleProfileId,
+        quality,
       });
       const { jpg, preview, strokePx, readable } = await composeThumbnail({
         background: bytes,

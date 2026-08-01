@@ -3,6 +3,7 @@ import { getProject, getProjectsBulk, saveProject } from "@/lib/projectStore";
 import { generateLongformScript } from "@/lib/longformScript";
 import { screenScript } from "@/lib/longformScreening";
 import { buildSections } from "@/lib/longform";
+import { syncHostScenes } from "@/lib/longformHost";
 import type { LongformConstituent } from "@/lib/longformTitleGen";
 import type { LongformOpening, LongformScriptPackage } from "@/lib/types";
 
@@ -103,6 +104,8 @@ export async function POST(req: NextRequest) {
     fresh.opening = mirrorOpening(next);
     fresh.updatedAt = Date.now();
     await saveProject(fresh);
+    // ★ 씬은 대본을 따라온다 — 사용자가 따로 "펼치기"를 누르지 않는다(숏폼과 같게).
+    await syncHostScenes(projectId).catch(() => null);
     return NextResponse.json({ ok: true, script: next, violations: screen.violations, orderApplied: false });
   }
 
@@ -171,6 +174,8 @@ export async function POST(req: NextRequest) {
     fresh.opening = mirrorOpening(pkg);
     fresh.updatedAt = Date.now();
     await saveProject(fresh);
+    // ★ 대본이 새로 나왔으면 씬도 그 자리에서 갱신한다(따로 누르는 단계를 만들지 않는다).
+    await syncHostScenes(projectId).catch(() => null);
 
     return NextResponse.json({ ok: true, script: pkg, violations, orderApplied });
   } catch (e) {
