@@ -2575,10 +2575,12 @@ export default function Studio({
   // ── 🧩 내 칩셋: 단계별 적용 ────────────────────────────────────────────────
   // 씬마다 따로 걸지 않는다(칩이 씬 수만큼 늘면 관리가 안 된다 — 사용자 지적).
   // 단계 하나에 걸면 그 단계 전체에 반영된다:
-  //   3단계 → styleBible(그림체 규약, 키프레임+전 씬 이미지에 주입)
-  //   4단계 → 전 씬 imagePrompt 의 [칩: …] 꼬리
-  //   5단계 → videoCommonPrompt(전 씬 영상에 공통으로 붙는 지시)
-  const keyframeChipFrags = chipFrags(editBible);
+  //   style    → styleBible(스타일 규약). 키프레임과 이후 모든 씬 이미지에 주입된다 — 팔레트가 여기.
+  //   keyframe → 씬0 imagePrompt. 첫 키프레임 한 장에만 걸린다.
+  //   images   → 씬1~ imagePrompt 의 [칩: …] 꼬리
+  //   videos   → videoCommonPrompt(전 씬 영상에 공통으로 붙는 지시)
+  const styleChipFrags = chipFrags(editBible);
+  const keyframeChipFrags = chipFrags(scenes[0]?.imagePrompt ?? "");
   const imageChipFrags = chipFrags(scenes.find((s) => chipFrags(s.imagePrompt ?? "").length)?.imagePrompt ?? "");
   const videoChipFrags = chipFrags(videoCommonPrompt);
 
@@ -2590,9 +2592,15 @@ export default function Studio({
 
   // 한 단계의 칩 꼬리를 통째로 새 목록으로 갈아끼운다(적용 지점이 단계마다 다르다).
   function setStageFrags(stage: ChipsetStage, next: string[]) {
-    if (stage === "keyframe") {
+    if (stage === "style") {
       setEditBible(withChipFrags(editBible, next));
       setBibleDirty(true); // 기존 디바운스 저장이 집어간다
+      styleEditedRef.current = true; // 스타일이 바뀌었으니 키프레임 프롬프트 자동 재생성
+      return;
+    }
+    if (stage === "keyframe") {
+      // 씬0(키프레임) 한 장에만. 전 씬에 걸리는 건 style 칩 몫이다.
+      patchScene(0, { imagePrompt: withChipFrags(scenes[0]?.imagePrompt ?? "", next) });
       return;
     }
     if (stage === "videos") {
@@ -2609,7 +2617,10 @@ export default function Studio({
   }
 
   function stageFrags(stage: ChipsetStage): string[] {
-    return stage === "keyframe" ? keyframeChipFrags : stage === "videos" ? videoChipFrags : imageChipFrags;
+    if (stage === "style") return styleChipFrags;
+    if (stage === "keyframe") return keyframeChipFrags;
+    if (stage === "videos") return videoChipFrags;
+    return imageChipFrags;
   }
 
   function toggleChipset(c: Chipset) {
@@ -3873,6 +3884,19 @@ export default function Studio({
         {scriptApproved && (scenes[0]?.imagePrompt ?? "").trim() && (
           <label className="mt-3 grid gap-1">
             <span className="text-[11px] text-zinc-500">씬0 이미지 프롬프트 (한글)</span>
+            <div className="mb-1">
+              <ChipsetRow
+                stage="keyframe"
+                chipsets={chipsets}
+                activeIds={activeChipIds("keyframe")}
+                onToggle={toggleChipset}
+                onAdd={addChipset}
+                onUpdate={editChipset}
+                onDelete={removeChipset}
+                disabled={busy !== null}
+                hint="이 씬0(첫 키프레임) 한 장에만 걸립니다"
+              />
+            </div>
             <textarea
               value={scenes[0]?.imagePrompt ?? ""}
               onChange={(e) => patchScene(0, { imagePrompt: e.target.value })}
@@ -3961,15 +3985,15 @@ export default function Studio({
               </span>
               <div className="mb-2">
                 <ChipsetRow
-                  stage="keyframe"
+                  stage="style"
                   chipsets={chipsets}
-                  activeIds={activeChipIds("keyframe")}
+                  activeIds={activeChipIds("style")}
                   onToggle={toggleChipset}
                   onAdd={addChipset}
                   onUpdate={editChipset}
                   onDelete={removeChipset}
                   disabled={busy !== null}
-                  hint="그림체 규약에 붙습니다 (팔레트·주인공 특징 등)"
+                  hint="스타일 규약에 붙어 모든 씬에 적용됩니다 (팔레트·주인공 특징 등)"
                 />
               </div>
               <textarea
