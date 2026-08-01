@@ -9,7 +9,7 @@
 import { getAnthropic, MODELS } from "./anthropic";
 import { anthropicCostUsd, recordCost } from "./cost";
 import { generateThumbnailImage } from "./image";
-import { composeThumbnail } from "./thumbnailCompose";
+import { encodeThumbnail } from "./thumbnailCompose";
 import { uploadAsset } from "./blob";
 import principles from "../config/longform-principles.json";
 import eyecatchConfig from "../config/eyecatch.json";
@@ -161,12 +161,8 @@ export async function buildThumbnails(args: {
         quality,
         text: thumbnailText, // 글씨를 그림 안에 같이 그린다
       });
-      const { jpg, preview, strokePx, readable } = await composeThumbnail({
-        background: bytes,
-        text: thumbnailText,
-        side: p.subjectSide === "left" ? "right" : "left",
-        drawText: false, // 글씨는 이미 그림 안에 있다 — 여기선 1280×720 JPG·168px 검증본만
-      });
+      // 글씨는 그림 안에 이미 있다 — 캔버스를 거치지 않고 sharp 로만 JPG·검증본을 만든다.
+      const { jpg, preview, strokePx, readable } = await encodeThumbnail(bytes);
       const raw = await uploadAsset(`project/${projectId}/thumb-${stamp}-${i}-raw.png`, bytes, "image/png");
       const file = await uploadAsset(`project/${projectId}/thumb-${stamp}-${i}.jpg`, jpg, "image/jpeg");
       const prev = await uploadAsset(`project/${projectId}/thumb-${stamp}-${i}-168.jpg`, preview, "image/jpeg");

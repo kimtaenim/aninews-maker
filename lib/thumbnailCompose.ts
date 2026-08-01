@@ -39,6 +39,21 @@ export interface ComposeResult {
 }
 
 // 배경 PNG + 문구 → 시안 JPG + 168px 검증본.
+// ★ 글씨가 이미 그림 안에 있을 때 쓰는 경로 — 캔버스를 아예 안 거친다.
+// 숏폼 이미지 경로처럼 받은 바이트를 sharp 로만 다룬다(캔버스 디코더가 OpenAI PNG 의
+// C2PA 청크에서 죽던 문제를 근본적으로 피한다). 1280x720 JPG + 168px 검증본만 만든다.
+export async function encodeThumbnail(background: Buffer): Promise<ComposeResult> {
+  const base = sharp(background).resize(THUMB_W, THUMB_H, { fit: "cover" });
+  let jpg = await base.clone().jpeg({ quality: 92 }).toBuffer();
+  for (const q of [80, 70, 60]) {
+    if (jpg.byteLength <= MAX_BYTES) break;
+    jpg = await base.clone().jpeg({ quality: q }).toBuffer();
+  }
+  const preview = await sharp(jpg).resize(PREVIEW_W, PREVIEW_H).jpeg({ quality: 85 }).toBuffer();
+  // 글씨를 모델이 그렸으니 획 두께를 코드가 재지 못한다 — 판독은 눈으로 본다.
+  return { jpg, preview, fontSize: 0, strokePx: 0, readable: true };
+}
+
 export async function composeThumbnail(args: {
   background: Buffer;
   text: string;
