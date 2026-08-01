@@ -4027,6 +4027,20 @@ export default function Studio({
               예: “더 따뜻한 색감으로”, “인물을 더 단순하게”. 반영 후{" "}
               <span className="font-medium">‘다시 생성’</span>을 누르면 적용됩니다.
             </p>
+            {/* 스타일 칩은 여기서도 등록·적용한다(위 '스타일 직접 조정' 칸과 같은 칩·같은 상태). */}
+            <div className="mt-2">
+              <ChipsetRow
+                stage="style"
+                chipsets={chipsets}
+                activeIds={activeChipIds("style")}
+                onToggle={toggleChipset}
+                onAdd={addChipset}
+                onUpdate={editChipset}
+                onDelete={removeChipset}
+                disabled={busy !== null}
+                hint="스타일 규약에 붙어 모든 씬에 적용됩니다 (팔레트·주인공 특징 등)"
+              />
+            </div>
             {chat.length > 0 && (
               <ul className="mt-2 grid gap-1.5 max-h-48 overflow-y-auto">
                 {chat.map((t, i) => (
