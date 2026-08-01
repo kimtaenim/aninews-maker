@@ -1,7 +1,7 @@
 // 롱폼 대본 코드 검수(순수 함수) 테스트 — npx tsx scripts/test-longform-screening.ts
 import { screenScript, speakSeconds } from "../lib/longformScreening";
 import { layoutText, strokeAt168 } from "../lib/thumbnailCompose";
-import { titleViolations, thumbnailTextViolations, promiseViolations } from "../lib/longformTitleCheck";
+import { titleViolations, thumbnailTextViolations, promiseViolations, factViolations } from "../lib/longformTitleCheck";
 import type { LongformScriptPackage } from "../lib/types";
 import shorts from "../config/script-principles.json";
 
@@ -265,6 +265,28 @@ check(
   ),
   titleViolations("삼성전자가 웃는데 진짜 수혜주는 따로 있었다", "삼성전자")
 );
+
+// ★ 제목은 검색 결과에 그대로 나간다 — 구성 편에 없는 사실을 지어내면 바로 드러난다.
+console.log("\n제목 사실 대조");
+const segSrc =
+  "DRAM 가격은 172% 폭등했다. DDR5는 두 배가 됐다. HP는 메모리 비용 직격탄을 맞았다. " +
+  "삼성전자·SK하이닉스·마이크론 빅3가 시장을 나눠 갖는다.";
+check(
+  "구성 편에 있는 숫자는 통과",
+  factViolations("DRAM 값이 172% 뛴 이유", segSrc).length === 0,
+  factViolations("DRAM 값이 172% 뛴 이유", segSrc)
+);
+check(
+  "구성 편에 없는 숫자는 탈락",
+  factViolations("DRAM 값이 300% 뛴 이유", segSrc).length > 0,
+  factViolations("DRAM 값이 300% 뛴 이유", segSrc)
+);
+check(
+  "쉼표 표기 차이는 같은 숫자로 본다",
+  factViolations("적자 1,200억의 비밀", "적자 1200억을 냈다").length === 0,
+  factViolations("적자 1,200억의 비밀", "적자 1200억을 냈다")
+);
+check("숫자 없는 제목은 통과", factViolations("배터리에 올인하는 이유?", segSrc).length === 0);
 
 console.log("\n제목 약속(title_promise) 검사");
 check(

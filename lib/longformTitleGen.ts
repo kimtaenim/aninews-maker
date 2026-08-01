@@ -12,7 +12,7 @@ import {
   LONGFORM_TITLE_SYSTEM_PROMPT,
   LONGFORM_TITLE_REVIEW_SYSTEM_PROMPT,
 } from "./longformTitlePrompt";
-import { titleViolations, thumbnailTextViolations } from "./longformTitleCheck";
+import { titleViolations, thumbnailTextViolations, factViolations } from "./longformTitleCheck";
 import { MAX_LINE_CHARS } from "./thumbnailLayout";
 // ★ 제목 원칙은 쇼츠와 같은 파일 하나다. "롱폼은 검색 지면"이라는 전제로 만든 별도 5원칙이
 // "○○ 관련주 —" 껍데기만 찍어냈다(2026-08-01 사용자 확인 — 검색 성격은 있지만 그 형태는 아님).
@@ -71,7 +71,11 @@ export function coverViolations(covers: number[], segmentCount: number): string[
   return [];
 }
 
-function parse(raw: string, segmentCount: number): Omit<LongformTitlePackage, "generatedAt"> | null {
+function parse(
+  raw: string,
+  segmentCount: number,
+  sourceText: string
+): Omit<LongformTitlePackage, "generatedAt"> | null {
   const m = raw.match(/\{[\s\S]*\}/);
   if (!m) return null;
   let j: Json;
@@ -101,13 +105,28 @@ function parse(raw: string, segmentCount: number): Omit<LongformTitlePackage, "g
         violations: [
           ...titleViolations(title, primaryKeyword),
           ...thumbnailTextViolations(thumbnailText, title),
+          // 구성 편 원문과 대조 — 제목의 숫자는 본편에 있는 것만 쓴다.
+          ...factViolations(title, sourceText),
         ],
       };
     })
     .filter((c) => c.title.length > 0);
-  if (candidates.length === 0) return null;
 
-  const ri = typeof j.recommended_index === "number" ? j.recommended_index : 0;
+  const rejected = (Array.isArray(j.rejected) ? j.rejected : [])
+    .map((r) => {
+      const o = (r ?? {}) as Json;
+      return { title: str(o.title), reason: str(o.reason) };
+    })
+    .filter((r) => r.title.length > 0);
+  // 모델이 같은 제목을 후보와 탈락에 동시에 올리는 일이 있다 — 탈락시킨 걸 고르게 두면 안 된다.
+  const rejectedTitles = new Set(rejected.map((r) => r.title.replace(/\s/g, "")));
+  const kept = candidates.filter((c) => !rejectedTitles.has(c.title.replace(/\s/g, "")));
+  if (kept.length === 0) return null;
+
+  // 추천 인덱스는 원래 후보 배열 기준이라, 걸러낸 뒤 그 제목이 어디로 갔는지 다시 찾는다.
+  const rawRi = typeof j.recommended_index === "number" ? j.recommended_index : 0;
+  const recommendedTitle = candidates[rawRi]?.title;
+  const ri = Math.max(0, kept.findIndex((c) => c.title === recommendedTitle));
   return {
     keywordCandidates: (Array.isArray(j.keyword_candidates) ? j.keyword_candidates : [])
       .filter((k): k is string => typeof k === "string")
@@ -116,15 +135,10 @@ function parse(raw: string, segmentCount: number): Omit<LongformTitlePackage, "g
     primaryKeyword,
     secondaryKeyword: str(j.secondary_keyword),
     keywordRationale: str(j.keyword_rationale),
-    candidates,
-    rejected: (Array.isArray(j.rejected) ? j.rejected : [])
-      .map((r) => {
-        const o = (r ?? {}) as Json;
-        return { title: str(o.title), reason: str(o.reason) };
-      })
-      .filter((r) => r.title.length > 0),
+    candidates: kept,
+    rejected,
     recommendation: str(j.recommendation),
-    recommendedIndex: ri >= 0 && ri < candidates.length ? ri : 0,
+    recommendedIndex: ri >= 0 && ri < kept.length ? ri : 0,
     titlePromise: str(j.title_promise),
   };
 }
@@ -161,7 +175,12 @@ export async function generateLongformTitles(args: {
       cacheWriteTokens: r.usage.cache_creation_input_tokens ?? undefined,
       model: MODELS.sonnet,
     });
-    return parse(blocks.map((b) => b.text).join("").trim(), input.constituents.length);
+    return parse(
+      blocks.map((b) => b.text).join("").trim(),
+      input.constituents.length,
+      // 사실 대조용 원문 — 구성 편 소재 전문(제목이 여기 없는 숫자를 쓰면 지어낸 것이다).
+      input.constituents.map((c) => `${c.title} ${c.topic} ${c.performance ?? ""}`).join(" ")
+    );
   };
 
   let result = await call();

@@ -75,6 +75,21 @@ export function titleViolations(title: string, primaryKeyword: string): string[]
   return out;
 }
 
+// ★ 제목이 지어낸 사실을 담았는가 — 제목은 검색 결과에 그대로 나가므로 틀리면 바로 드러난다.
+// 사람 판단이 필요한 주장(흑자/적자 등)까지는 코드로 못 잡지만, **숫자는 대조할 수 있다**.
+// 구성 편 어디에도 없는 숫자가 제목에 있으면 모델이 기억으로 채운 것이다.
+// (연도·순번 같은 흔한 수는 오탐이 많아 두 자리 이상 + 단위가 붙은 것만 본다.)
+const TITLE_NUMBERS = /\d[\d,.]*\s*(%|퍼센트|배|억|조|만|원|달러|엔|위안)/g;
+
+export function factViolations(title: string, sourceText: string): string[] {
+  const src = (sourceText ?? "").replace(/[\s,]/g, "");
+  const hits = [...((title ?? "").matchAll(TITLE_NUMBERS) ?? [])].map((m) => m[0]);
+  const missing = hits.filter((h) => !src.includes(h.replace(/[\s,]/g, "")));
+  return missing.length
+    ? [`구성 편에 없는 숫자(${missing.join("·")}) — 제목에 기억으로 채운 사실을 쓰지 말 것`]
+    : [];
+}
+
 // ★ title_promise 검사 — 이 값이 전 구간의 기준점이라, 여기에 "답"이 적히면 오프닝이 답을
 // 미리 말하고 엔딩이 그걸 반복한다(2026-08-01 실제 사고).
 //   나쁜 예: "HBM 쏠림이 일반 DRAM 공급을 줄여 가격을 끌어올리는 메커니즘을 설명한다" ← 답
