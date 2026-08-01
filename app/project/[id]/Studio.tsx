@@ -2594,15 +2594,35 @@ export default function Studio({
     const next = directive ? `${base}${base ? "\n" : ""}[스타일: ${directive}]` : base;
     patchScene(sceneIndex, { imagePrompt: next });
   }
-  // ── 🧩 내 칩셋: 단계별 적용 ────────────────────────────────────────────────
-  // 씬마다 따로 걸지 않는다(칩이 씬 수만큼 늘면 관리가 안 된다 — 사용자 지적).
-  // 단계 하나에 걸면 그 단계 전체에 반영된다:
-  //   style    → styleBible(스타일 규약). 키프레임과 이후 모든 씬 이미지에 주입된다 — 팔레트가 여기.
-  //   keyframe → 씬0 imagePrompt. 첫 키프레임 한 장에만 걸린다.
-  //   images   → 씬1~ imagePrompt 의 [칩: …] 꼬리
-  //   videos   → videoCommonPrompt(전 씬 영상에 공통으로 붙는 지시)
+  // ── 🧩 내 칩셋 ─────────────────────────────────────────────────────────────
+  // 칩 "목록"은 계정 단위 전역이다 — 어느 씬·어느 프로젝트에서 등록해도 같은 줄에 다 뜬다.
+  // 달라지는 건 "어디에 붙느냐"뿐:
+  //   style / styleChat → styleBible(스타일 규약). 전 씬 이미지에 주입된다 — 팔레트가 여기.
+  //   keyframe          → 씬0 imagePrompt. 첫 키프레임 한 장에만.
+  //   images / videos   → 그 씬의 imagePrompt / motion. 씬마다 따로 켠다.
   const styleChipFrags = chipFrags(editBible);
   const keyframeChipFrags = chipFrags(scenes[0]?.imagePrompt ?? "");
+
+  // 3단계 칩(style·styleChat·keyframe)은 씬 개념이 없어 단계 통째로 켜고 끈다.
+  const activeChipIds = (stage: ChipsetStage): string[] => {
+    const frags = stage === "keyframe" ? keyframeChipFrags : styleChipFrags;
+    return chipsets.filter((c) => c.stage === stage && frags.includes(c.text)).map((c) => c.id);
+  };
+
+  function setStageFrags(stage: ChipsetStage, next: string[]) {
+    // style·styleChat 은 목록만 따로 관리할 뿐 붙는 자리는 같다(styleBible).
+    // 꼬리는 두 목록의 문구를 함께 담으므로 서로 지우지 않는다.
+    if (stage === "style" || stage === "styleChat") {
+      setEditBible(withChipFrags(editBible, next));
+      setBibleDirty(true); // 기존 디바운스 저장이 집어간다
+      styleEditedRef.current = true; // 스타일이 바뀌었으니 키프레임 프롬프트 자동 재생성
+      return;
+    }
+    if (stage === "keyframe") {
+      patchScene(0, { imagePrompt: withChipFrags(scenes[0]?.imagePrompt ?? "", next) });
+    }
+    // images·videos 는 씬별이라 여기로 오지 않는다(toggleSceneChip 이 맡는다).
+  }
 
   // 4·5단계는 씬마다 따로 건다(칩 목록 자체는 계정 단위 그대로 — 어느 씬에서든 같은 칩을 부른다).
   //   images → 그 씬 imagePrompt   videos → 그 씬 motion
@@ -2619,50 +2639,9 @@ export default function Studio({
     const field = c.stage === "images" ? "imagePrompt" : "motion";
     patchScene(i, { [field]: withChipFrags(sceneChipTarget(c.stage, i), next) });
   }
-  // 싱크 — 이 씬의 칩 선택을 나머지 씬에 그대로 복사한다(씬마다 다시 누르지 않게).
-  // 씬0(키프레임)은 3단계 몫이라 이미지 싱크에서 뺀다.
-  function syncSceneChips(stage: ChipsetStage, from: number) {
-    const frags = chipFrags(sceneChipTarget(stage, from));
-    const field = stage === "images" ? "imagePrompt" : "motion";
-    scenes.forEach((_, i) => {
-      if (i === from) return;
-      if (stage === "images" && i === 0) return;
-      patchScene(i, { [field]: withChipFrags(sceneChipTarget(stage, i), frags) });
-    });
-  }
-  const imageChipFrags = chipFrags(scenes.find((s) => chipFrags(s.imagePrompt ?? "").length)?.imagePrompt ?? "");
-  const videoChipFrags = chipFrags(videoCommonPrompt);
-
-  const activeChipIds = (stage: ChipsetStage): string[] => {
-    const frags =
-      stage === "keyframe" ? keyframeChipFrags : stage === "images" ? imageChipFrags : videoChipFrags;
-    return chipsets.filter((c) => c.stage === stage && frags.includes(c.text)).map((c) => c.id);
-  };
-
-  // 한 단계의 칩 꼬리를 통째로 새 목록으로 갈아끼운다(적용 지점이 단계마다 다르다).
-  function setStageFrags(stage: ChipsetStage, next: string[]) {
-    // style·styleChat 은 목록만 따로 관리할 뿐 붙는 자리는 같다(styleBible).
-    // 꼬리는 두 목록의 문구를 함께 담으므로 서로 지우지 않는다.
-    if (stage === "style" || stage === "styleChat") {
-      setEditBible(withChipFrags(editBible, next));
-      setBibleDirty(true); // 기존 디바운스 저장이 집어간다
-      styleEditedRef.current = true; // 스타일이 바뀌었으니 키프레임 프롬프트 자동 재생성
-      return;
-    }
-    if (stage === "keyframe") {
-      // 씬0(키프레임) 한 장에만. 전 씬에 걸리는 건 style 칩 몫이다.
-      patchScene(0, { imagePrompt: withChipFrags(scenes[0]?.imagePrompt ?? "", next) });
-      return;
-    }
-    // images·videos 는 씬마다 따로 걸린다 — 여기(단계 통째로)는 안 쓴다.
-    // 씬별 토글은 toggleSceneChip, 다른 씬 복사는 syncSceneChips 가 맡는다.
-  }
 
   function stageFrags(stage: ChipsetStage): string[] {
-    if (stage === "style" || stage === "styleChat") return styleChipFrags;
-    if (stage === "keyframe") return keyframeChipFrags;
-    if (stage === "videos") return videoChipFrags;
-    return imageChipFrags;
+    return stage === "keyframe" ? keyframeChipFrags : styleChipFrags;
   }
 
   function toggleChipset(c: Chipset) {
@@ -4606,7 +4585,6 @@ export default function Studio({
                             onUpdate={editChipset}
                             onDelete={removeChipset}
                             onReorder={reorderChipsetsFor}
-                            onSync={() => syncSceneChips("images", i)}
                             disabled={busy !== null}
                             hint={`씬 ${i} 이미지 프롬프트에만 붙습니다`}
                           />
@@ -4928,7 +4906,6 @@ export default function Studio({
                           onUpdate={editChipset}
                           onDelete={removeChipset}
                           onReorder={reorderChipsetsFor}
-                          onSync={() => syncSceneChips("videos", i)}
                           disabled={busy !== null}
                           hint={`씬 ${i} 모션에만 붙습니다`}
                         />
