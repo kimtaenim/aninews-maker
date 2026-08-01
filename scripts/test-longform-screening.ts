@@ -288,6 +288,24 @@ check(
 );
 check("숫자 없는 제목은 통과", factViolations("배터리에 올인하는 이유?", segSrc).length === 0);
 
+// ★ 2026-08-02 실사례 — 제목 「배터리가 돈이다? 1.7조 잃고도 판 키우는 회사!」에
+// 썸네일 "1.7조 적자 왜 쏟아붓나" — 같은 숫자를 반복해 훅이 하나뿐이었다.
+console.log("\n썸네일 — 제목과 다른 각도");
+check(
+  "제목의 숫자를 반복하면 탈락",
+  thumbnailTextViolations("1.7조 적자 왜?", "배터리가 돈이다? 1.7조 잃고도 판 키우는 회사!").some((v) =>
+    v.includes("반복")
+  ),
+  thumbnailTextViolations("1.7조 적자 왜?", "배터리가 돈이다? 1.7조 잃고도 판 키우는 회사!")
+);
+check(
+  "다른 각도 문구는 통과",
+  !thumbnailTextViolations("테슬라의 미래", "배터리가 돈이다? 1.7조 잃고도 판 키우는 회사!").some((v) =>
+    v.includes("반복")
+  ),
+  thumbnailTextViolations("테슬라의 미래", "배터리가 돈이다? 1.7조 잃고도 판 키우는 회사!")
+);
+
 console.log("\n제목 약속(title_promise) 검사");
 check(
   "답으로 적힌 약속은 탈락",

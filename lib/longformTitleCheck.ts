@@ -125,5 +125,13 @@ export function thumbnailTextViolations(text: string, title: string): string[] {
   const r = readableAt168(t);
   if (!r.ok) out.push(`168px에서 안 읽힘(획 ${r.strokePx}px) — 더 짧게`);
   if (title.includes(t)) out.push("썸네일 문구가 제목과 중복");
+  // ★ 제목이 이미 말한 숫자를 썸네일이 또 말하면 훅이 하나뿐인 것과 같다(2026-08-02).
+  // 썸네일은 제목과 다른 각도로 두 번째 궁금증을 얹어야 한다.
+  const nums = (title.match(/\d[\d,.]*\s*(%|퍼센트|배|조|억|만|원|달러|엔|위안)?/g) ?? [])
+    .map((n) => n.replace(/[\s,]/g, ""))
+    .filter((n) => n.length >= 2);
+  const tNorm = t.replace(/[\s,]/g, "");
+  const dup = nums.find((n) => tNorm.includes(n));
+  if (dup) out.push(`제목의 숫자(${dup})를 썸네일이 반복 — 다른 각도의 궁금증으로`);
   return out;
 }
