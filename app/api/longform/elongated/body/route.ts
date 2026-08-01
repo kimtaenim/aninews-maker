@@ -59,6 +59,8 @@ export async function POST(req: NextRequest) {
 
   const deadline = Date.now() + START_DEADLINE_MS;
   const written = new Map<number, string>();
+  // 다시 써도 남은 위반 — 화면에 그대로 보여준다(검수 단계에서 또 잡히기 전에 알아야 한다).
+  const leftover = new Map<number, string[]>();
   // 앞 챕터 꼬리 — 이미 쓴 본문에서 가져오고, 이번에 쓴 것으로 갱신한다.
   const bodyOf = (idx: number): string =>
     written.get(idx) ?? plan.chapters.find((c) => c.index === idx)?.body ?? "";
@@ -69,7 +71,7 @@ export async function POST(req: NextRequest) {
       const chapter = plan.chapters.find((c) => c.index === idx);
       if (!chapter) continue;
       const prev = bodyOf(idx - 1);
-      const { body: text } = await generateChapterBody({
+      const { body: text, violations } = await generateChapterBody({
         projectId,
         chapter,
         plan,
@@ -79,6 +81,7 @@ export async function POST(req: NextRequest) {
         previousTail: prev ? prev.slice(-TAIL_CHARS) : undefined,
       });
       written.set(idx, text);
+      if (violations.length > 0) leftover.set(idx, violations);
     }
   } catch (e) {
     // 여기까지 쓴 것은 살려서 저장한다 — 다시 부르면 남은 챕터만 쓴다.
@@ -121,6 +124,8 @@ export async function POST(req: NextRequest) {
     ok: true,
     written: written.size,
     chars: Object.fromEntries([...written].map(([i, t]) => [i, bodyChars(t)])),
+    // 다시 써도 남은 위반 — 검수 단계에서 또 잡히기 전에 화면에 보여준다.
+    leftover: Object.fromEntries(leftover),
     pending: nextPlan.chapters.filter((c) => !(c.body ?? "").trim()).map((c) => c.index),
     plan: nextPlan,
   });

@@ -253,6 +253,8 @@ export default function ElongatedStudio({
   const [bodyBusy, setBodyBusy] = useState(false);
   const [bodyProgress, setBodyProgress] = useState("");
   const [bodyErr, setBodyErr] = useState("");
+  // 다시 써도 남은 위반(챕터 번호 → 지적). 검수에서 또 잡히기 전에 여기서 보여준다.
+  const [bodyWarn, setBodyWarn] = useState<Record<string, string[]>>({});
   const written = (plan?.chapters ?? []).filter((c) => (c.body ?? "").trim()).length;
   const totalChars = (plan?.chapters ?? []).reduce((a, c) => a + bodyChars(c.body ?? ""), 0);
 
@@ -270,7 +272,9 @@ export default function ElongatedStudio({
         });
         const d = await r.json().catch(() => ({}));
         if (!r.ok || !d.ok) throw new Error(d.error || "본문 생성 실패");
+        setBodyWarn((w) => ({ ...w, ...(d.leftover ?? {}) }));
       } else {
+        setBodyWarn({});
         let left = (plan?.chapters ?? []).filter((c) => !(c.body ?? "").trim()).length;
         for (let pass = 0; pass < 5 && left > 0; pass++) {
           setBodyProgress(`본문 쓰는 중 · ${left}챕터 남음`);
@@ -281,6 +285,7 @@ export default function ElongatedStudio({
           });
           const d = await r.json().catch(() => ({}));
           if (!r.ok || !d.ok) throw new Error(d.error || "본문 생성 실패");
+          setBodyWarn((w) => ({ ...w, ...(d.leftover ?? {}) }));
           const next = Array.isArray(d.pending) ? d.pending.length : 0;
           if (next >= left) break; // 더 진척이 없으면 멈춘다
           left = next;
@@ -764,9 +769,14 @@ export default function ElongatedStudio({
                     )}
                   </summary>
                   {c.body ? (
-                    <p className="border-t border-zinc-100 dark:border-zinc-900 px-2.5 py-2 text-xs leading-relaxed whitespace-pre-wrap">
-                      {c.body}
-                    </p>
+                    <div className="border-t border-zinc-100 dark:border-zinc-900 px-2.5 py-2">
+                      {bodyWarn[String(c.index)]?.length > 0 && (
+                        <p className="mb-1.5 text-[11px] text-red-600">
+                          다시 써도 남은 것: {bodyWarn[String(c.index)].join(", ")}
+                        </p>
+                      )}
+                      <p className="text-xs leading-relaxed whitespace-pre-wrap">{c.body}</p>
+                    </div>
                   ) : (
                     <p className="border-t border-zinc-100 dark:border-zinc-900 px-2.5 py-2 text-[11px] text-zinc-500">
                       아직 안 썼어요.
