@@ -58,6 +58,31 @@ export function titleViolations(title: string, primaryKeyword: string): string[]
   return out;
 }
 
+// ★ title_promise 검사 — 이 값이 전 구간의 기준점이라, 여기에 "답"이 적히면 오프닝이 답을
+// 미리 말하고 엔딩이 그걸 반복한다(2026-08-01 실제 사고).
+//   나쁜 예: "HBM 쏠림이 일반 DRAM 공급을 줄여 가격을 끌어올리는 메커니즘을 설명한다" ← 답
+// 원칙 원천은 config/script-principles.json scene_1 — "제목이 약속한 궁금증과 같은 질문".
+// 즉 약속은 시청자가 답을 알고 싶어지는 '질문'이어야 한다. 질문인지는 종결부로 판정한다.
+const QUESTION_TAIL = /(까요|나요|ㄹ까|을까|는가|런가|은가|인가|무엇|왜|어떻게|어디|누가)\s*[?？]?\s*$|[?？]\s*$/;
+// 답을 서술해 버리는 종결 — "…설명한다", "…이다", "…때문이다" 류.
+const ANSWER_TAIL = /(설명한다|보여준다|밝힌다|정리한다|다룬다|이다|입니다|한다|된다|예요|에요)\s*$/;
+
+export function promiseViolations(titlePromise: string): string[] {
+  const p = (titlePromise ?? "").trim();
+  if (!p) return ["제목 약속(title_promise)이 비었어요 — 오프닝·엔딩의 기준점이라 반드시 필요해요"];
+  const out: string[] = [];
+  if (!QUESTION_TAIL.test(p)) {
+    out.push(
+      "제목 약속이 질문이 아니에요 — 시청자가 답을 알고 싶어지는 질문으로 적어야 " +
+        "오프닝이 답을 미리 말하지 않아요"
+    );
+  }
+  if (ANSWER_TAIL.test(p)) {
+    out.push("제목 약속에 답이 적혀 있어요 — 답은 엔딩에서 처음 나와야 해요");
+  }
+  return out;
+}
+
 // 썸네일 문구 — 글자 수 제한은 두지 않는다. 진짜 상한은 "모바일 검색 결과 폭(168px)에서
 // 읽히는가"뿐이라, 실제 배치 계산(lib/thumbnailLayout.ts)으로 판정한다. 길면 글자가 작아지고,
 // 획이 2px 밑으로 내려가는 지점부터 안 읽힌다.

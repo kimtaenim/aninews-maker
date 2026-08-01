@@ -1,7 +1,7 @@
 // 롱폼 대본 코드 검수(순수 함수) 테스트 — npx tsx scripts/test-longform-screening.ts
 import { screenScript, speakSeconds } from "../lib/longformScreening";
 import { layoutText, strokeAt168 } from "../lib/thumbnailCompose";
-import { titleViolations, thumbnailTextViolations } from "../lib/longformTitleCheck";
+import { titleViolations, thumbnailTextViolations, promiseViolations } from "../lib/longformTitleCheck";
 import type { LongformScriptPackage } from "../lib/types";
 import shorts from "../config/script-principles.json";
 
@@ -157,6 +157,70 @@ check(
   thumbnailTextViolations("헬륨 공급 대란이 만든 진짜 수혜주는 따로 있다", "제목").some((v) => v.includes("168px")),
   thumbnailTextViolations("헬륨 공급 대란이 만든 진짜 수혜주는 따로 있다", "제목")
 );
+
+// ★ 2026-08-01 실제 사고 — 오프닝이 엔딩 답을 미리 말하고 엔딩이 그걸 반복했다.
+// 모델 자기평가는 "조기폐쇄 통과"라고 적었다. 코드로 잡는다.
+console.log("\n조기 폐쇄 — 오프닝이 답을 미리 말함");
+const echoed = pkg({
+  opening: {
+    blockAHook: "HBM을 만드느라 일반 DRAM 공급이 줄었어요. 그럼 DRAM 가격은 어떻게 됐을까요?",
+    blockBRoadmapLanding: "삼성, SK하이닉스, 마이크론이 그 중심에 있어요.",
+    estSeconds: 0,
+  },
+  ending: {
+    partAClose: "HBM 생산이 늘수록 일반 DRAM 공급이 줄어요. 그래서 DRAM 가격이 올라요.",
+    partBLanding: "",
+    partCStandard: shorts.structure.scene_8.text,
+    endscreenVideo: "",
+    estSeconds: 0,
+  },
+});
+const echoRes = screenScript(echoed, 3);
+check(
+  "실제 사고 대본이 조기 폐쇄로 잡힘",
+  echoRes.violations.some((v) => v.includes("오프닝이 엔딩 답을 미리 말함")),
+  echoRes.violations.filter((v) => v.includes("오프닝"))
+);
+check("조기폐쇄 채점 탈락 표시", echoRes.computed["조기폐쇄"].startsWith("탈락"), echoRes.computed["조기폐쇄"]);
+check(
+  "정상 대본은 조기 폐쇄 아님",
+  !screenScript(pkg(), 3).violations.some((v) => v.includes("미리 말함")),
+  screenScript(pkg(), 3).computed["조기폐쇄"]
+);
+// 소재가 같으면 명사 몇 개는 당연히 겹친다 — 그것만으로 탈락시키면 안 된다.
+check(
+  "소재어가 겹치는 정도로는 통과",
+  !screenScript(
+    pkg({
+      opening: {
+        blockAHook: "DRAM 값이 왜 이렇게 움직였을까요?",
+        blockBRoadmapLanding: "세 회사 이야기부터 봅니다.",
+        estSeconds: 0,
+      },
+      ending: {
+        partAClose: "HBM 생산이 늘수록 범용 DRAM 공급이 줄어서예요.",
+        partBLanding: "",
+        partCStandard: shorts.structure.scene_8.text,
+        endscreenVideo: "",
+        estSeconds: 0,
+      },
+    }),
+    3
+  ).violations.some((v) => v.includes("미리 말함"))
+);
+
+console.log("\n제목 약속(title_promise) 검사");
+check(
+  "답으로 적힌 약속은 탈락",
+  promiseViolations("HBM 생산 쏠림이 일반 DRAM 공급을 줄여 가격을 끌어올리는 메커니즘을 설명한다").length > 0,
+  promiseViolations("HBM 생산 쏠림이 일반 DRAM 공급을 줄여 가격을 끌어올리는 메커니즘을 설명한다")
+);
+check(
+  "질문으로 적힌 약속은 통과",
+  promiseViolations("HBM에 밀린 일반 DRAM 값은 어떻게 됐을까요?").length === 0,
+  promiseViolations("HBM에 밀린 일반 DRAM 값은 어떻게 됐을까요?")
+);
+check("빈 약속은 탈락", promiseViolations("").length > 0);
 
 console.log("\n썸네일 레이아웃");
 check("2덩어리 → 2줄", layoutText("왜 붙였나").lines.length === 2);

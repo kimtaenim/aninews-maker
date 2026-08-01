@@ -146,6 +146,8 @@ export default function LongformStudio({
       if (!r.ok || !d.ok) throw new Error(d.error || "확정 실패");
       setTitlePkg(d.title as LongformTitlePackage);
       setLfTitle(v);
+      // 제목 약속이 답으로 적히면 오프닝이 답을 미리 말한다 — 막지는 않고 여기서 알린다.
+      setPromiseWarn(Array.isArray(d.promiseWarnings) ? (d.promiseWarnings as string[]) : []);
       refreshCost();
     } catch (e) {
       setTitleErr(e instanceof Error ? e.message : "확정 실패");
@@ -153,6 +155,8 @@ export default function LongformStudio({
   }
 
   // 직접 쓴 제목 검증 — 원칙으로 진단만 받는다(확정은 따로).
+  // 제목 약속(title_promise) 경고 — 이 값이 오프닝·엔딩 전부의 기준점이라 답이 적히면 안 된다.
+  const [promiseWarn, setPromiseWarn] = useState<string[]>([]);
   const [ownTitle, setOwnTitle] = useState("");
   const [review, setReview] = useState<LongformTitleReview | null>(initialTitle?.review ?? null);
   const [reviewBusy, setReviewBusy] = useState(false);
@@ -721,6 +725,21 @@ export default function LongformStudio({
         <p className="mt-1 text-[11px] text-amber-600">
           진행자 말이 아직 없어요 — 아래 <b>진행자 대본</b>에서 먼저 만들어주세요.
         </p>
+      )}
+      {promiseWarn.length > 0 && (
+        <div className="mt-1 rounded-lg border border-amber-300 bg-amber-50 p-2 dark:border-amber-800 dark:bg-amber-950/30">
+          <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">
+            제목이 약속한 궁금증을 다시 보세요
+          </p>
+          <ul className="mt-0.5 grid list-disc gap-0.5 pl-4 text-[11px] text-amber-700 dark:text-amber-400">
+            {promiseWarn.map((w, i) => (
+              <li key={i}>{w}</li>
+            ))}
+          </ul>
+          <p className="mt-0.5 text-[10px] text-amber-600">
+            이대로 두면 오프닝이 답을 미리 말하고 엔딩이 같은 말을 반복합니다.
+          </p>
+        </div>
       )}
 
       <ol className="mt-2 grid gap-1.5">

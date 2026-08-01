@@ -70,6 +70,34 @@ const STOCK_PICK = new RegExp(
   "i"
 );
 
+// ★ 조기 폐쇄(기계 검사) — 오프닝이 엔딩 답과 같은 말을 하면 고리는 오프닝에서 이미 닫힌다.
+// 원칙 원천은 config/script-principles.json: ①은 질문을 열고(scene_1), ⑦에서 처음 닫는다(scene_7).
+// 실제 사고: 오프닝 "HBM을 만드느라 일반 DRAM 공급이 줄었어요. 그럼 가격은?" /
+//           엔딩   "HBM 생산이 늘수록 일반 DRAM 공급이 줄어요. 그래서 가격이 올라요."
+// 앞부분이 같은 문장이라 끝까지 본 사람이 새로 얻는 게 없었다. 모델 자기평가는 "통과"라고 적었다.
+const STOPWORDS = /^(그럼|그래서|그런데|이런|저런|그거|이거|해요|예요|입니다|있어요|없어요|되나요|될까요|건가요|어떻게|무엇|왜)$/;
+
+// 조사·어미를 대충 떨어낸 내용어 — 완벽한 형태소 분석이 아니라 "같은 말 반복"만 잡으면 된다.
+export function contentWords(text: string): string[] {
+  return (text ?? "")
+    .replace(/[^가-힣A-Za-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .map((w) => w.replace(/(을|를|이|가|은|는|의|에|에서|으로|로|와|과|도|만|까지|부터)$/, ""))
+    .filter((w) => w.length >= 2 && !STOPWORDS.test(w));
+}
+
+// 엔딩 답의 내용어 중 오프닝에도 나온 비율. 1에 가까울수록 같은 말을 두 번 하는 것.
+export function answerEchoRatio(openingText: string, endingAnswer: string): number {
+  const ans = [...new Set(contentWords(endingAnswer))];
+  if (ans.length < 3) return 0; // 너무 짧으면 판정하지 않는다
+  const open = new Set(contentWords(openingText));
+  const shared = ans.filter((w) => open.has(w));
+  return shared.length / ans.length;
+}
+
+// 겹침이 이 이상이면 탈락. 소재가 같으면 명사 몇 개는 당연히 겹치므로 과반을 기준으로 둔다.
+export const ANSWER_ECHO_MAX = 0.5;
+
 export interface ScriptScreenResult {
   violations: string[];
   computed: Record<string, string>; // 코드가 계산한 검수 결과(모델 screening 위에 덮어씀)
@@ -135,6 +163,20 @@ export function screenScript(pkg: LongformScriptPackage, segmentCount: number): 
     ? Math.max(...pkg.bridges.map((b) => speakSeconds(b.emphasis, b.elevation, b.opening)))
     : 0;
 
+  // ★ 조기 폐쇄 — 오프닝이 엔딩 답과 같은 말을 하면 고리가 오프닝에서 닫힌 것이다.
+  // 모델 자기평가는 연결만 보고 "조기폐쇄 통과"라고 적었다. 그래서 코드로 본다.
+  const openingText = `${pkg.opening.blockAHook} ${pkg.opening.blockBRoadmapLanding}`;
+  const echo = answerEchoRatio(openingText, pkg.ending.partAClose);
+  if (echo > ANSWER_ECHO_MAX) {
+    const shared = [...new Set(contentWords(pkg.ending.partAClose))]
+      .filter((w) => new Set(contentWords(openingText)).has(w))
+      .slice(0, 6);
+    v.push(
+      `오프닝이 엔딩 답을 미리 말함(겹침 ${Math.round(echo * 100)}%: ${shared.join("·")}) — ` +
+        "오프닝은 질문만 열고, 답은 엔딩에서 처음 닫는다"
+    );
+  }
+
   const computed: Record<string, string> = {
     진행자길이: `오프닝 ${openingSeconds}초(2씬≤${OPENING_BUDGET}) · 연결 최대 ${bridgeMax}초(1씬≤${BRIDGE_BUDGET}) · 엔딩 ${endingSeconds}초(3씬≤${ENDING_BUDGET}) — ${
       openingSeconds <= OPENING_BUDGET && endingSeconds <= ENDING_BUDGET && bridgeMax <= BRIDGE_BUDGET
@@ -145,6 +187,10 @@ export function screenScript(pkg: LongformScriptPackage, segmentCount: number): 
     연결수: pkg.bridges.length === gaps ? `통과 — ${gaps}개` : `탈락 — ${pkg.bridges.length}/${gaps}`,
     금지표현: v.some((x) => /시점 표현|물결표|전달체|수업 예고형|여운형|내부 용어/.test(x)) ? "탈락" : "통과",
     종목추천: v.some((x) => x.includes("종목 추천")) ? "탈락" : "통과",
+    조기폐쇄:
+      echo > ANSWER_ECHO_MAX
+        ? `탈락 — 오프닝이 엔딩 답과 ${Math.round(echo * 100)}% 겹침`
+        : `통과 — 겹침 ${Math.round(echo * 100)}%`,
   };
 
   return { violations: v, computed, openingSeconds, endingSeconds };

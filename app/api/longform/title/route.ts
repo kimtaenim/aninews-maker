@@ -6,6 +6,7 @@ import {
   type LongformConstituent,
   type LongformTitleInput,
 } from "@/lib/longformTitleGen";
+import { promiseViolations } from "@/lib/longformTitleCheck";
 import type { LongformTitlePackage } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -141,7 +142,13 @@ export async function POST(req: NextRequest) {
     fresh.title = title;
     fresh.updatedAt = Date.now();
     await saveProject(fresh);
-    return NextResponse.json({ ok: true, title: fresh.longformTitle });
+    // ★ 확정은 막지 않되, 제목 약속이 "답"으로 적혀 있으면 여기서 알려준다.
+    // 이 값이 오프닝·엔딩의 기준점이라, 답이 적히면 오프닝이 답을 미리 말하고 엔딩이 반복한다.
+    return NextResponse.json({
+      ok: true,
+      title: fresh.longformTitle,
+      promiseWarnings: promiseViolations(promise),
+    });
   }
 
   // ── 생성 모드 — 구성(constituents)은 body 우선, 없으면 세그먼트에서 도출.
