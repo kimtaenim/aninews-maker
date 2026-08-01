@@ -58,7 +58,19 @@ function boolMap(v: unknown): Record<string, boolean> {
   );
 }
 
-function parse(raw: string): Omit<LongformTitlePackage, "generatedAt"> | null {
+// ★ 컴필레이션 제목은 묶음 전체를 대표해야 한다(사용자 지정 2026-08-01).
+// 마지막 편의 결론을 전체의 답인 것처럼 내세우고 앞 편들을 버리는 제목이 반복해서 나왔다.
+// 모델이 적은 covers(뒷받침하는 편 번호)로 판정한다 — 한 편만 덮으면 그건 그 편의 쇼츠 제목이다.
+export function coverViolations(covers: number[], segmentCount: number): string[] {
+  if (segmentCount < 2) return []; // 오리지널 등 묶음이 아닌 경우
+  if (covers.length === 0) return ["이 제목이 어느 편을 뒷받침하는지 없음"];
+  if (covers.length === 1) {
+    return [`${covers[0]}편 하나만 뒷받침 — 컴필레이션 제목은 묶음 전체를 대표해야 함`];
+  }
+  return [];
+}
+
+function parse(raw: string, segmentCount: number): Omit<LongformTitlePackage, "generatedAt"> | null {
   const m = raw.match(/\{[\s\S]*\}/);
   if (!m) return null;
   let j: Json;
@@ -73,14 +85,19 @@ function parse(raw: string): Omit<LongformTitlePackage, "generatedAt"> | null {
       const o = (c ?? {}) as Json;
       const title = str(o.title);
       const thumbnailText = str(o.thumbnail_text);
+      const covers = (Array.isArray(o.covers) ? o.covers : [])
+        .map((n) => (typeof n === "number" ? n : Number(n)))
+        .filter((n) => Number.isInteger(n) && n >= 1 && n <= segmentCount);
       return {
         title,
         thumbnailText,
+        covers,
         principlesCheck: boolMap(o.principles_check),
         screening: boolMap(o.screening),
         violations: [
           ...titleViolations(title, primaryKeyword),
           ...thumbnailTextViolations(thumbnailText, title),
+          ...coverViolations(covers, segmentCount),
         ],
       };
     })
@@ -140,7 +157,7 @@ export async function generateLongformTitles(args: {
       cacheWriteTokens: r.usage.cache_creation_input_tokens ?? undefined,
       model: MODELS.sonnet,
     });
-    return parse(blocks.map((b) => b.text).join("").trim());
+    return parse(blocks.map((b) => b.text).join("").trim(), input.constituents.length);
   };
 
   let result = await call();
@@ -152,7 +169,9 @@ export async function generateLongformTitles(args: {
           .join("; ")
       : "";
     const note = result
-      ? `앞선 후보에서 원칙 위반이 잡혔다: ${bad}. 위반을 모두 없애고 후보 5개를 다시 조립하라. 앞 30자 안에 주 검색어를 넣고, 시점 표현과 묶음 표시어(총정리·몰아보기·N편·N가지 등)는 절대 쓰지 마라.`
+      ? `앞선 후보에서 원칙 위반이 잡혔다: ${bad}. 위반을 모두 없애고 후보 5개를 다시 조립하라. ` +
+        `시점 표현과 묶음 표시어(총정리·몰아보기·N편 등)는 쓰지 말고, '관련주·수혜주' 를 제목 앞머리에 세우지 마라. ` +
+        `그리고 이건 컴필레이션이다 — 한 편의 결론을 전체의 답으로 내세우지 말고, 구성 편들이 함께 답하는 질문으로 써라(covers 에 뒷받침하는 편을 전부 적는다).`
       : "JSON 형식이 어긋났다. 지정된 JSON 만 정확히 다시 출력하라.";
     const retry = await call(note);
     if (retry && dirtyCount(retry) < dirtyCount(result)) result = retry;

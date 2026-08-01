@@ -176,14 +176,15 @@ export interface LongformOpening {
 }
 
 // ── [롱폼] 모듈 1 — 제목 패키지 ───────────────────────────────────────────────
-// 롱폼 제목은 쇼츠 6원칙이 아니라 "검색 5원칙"으로 만든다(발견 지면이 검색·홈·추천).
-// 원칙 단일 원천 = config/longform-principles.json 의 title 섹션.
+// 제목 원칙은 쇼츠와 같은 파일 하나(config/title-principles.json)다. 예전의 "검색 5원칙"은
+// 롱폼이 검색 지면이라는 전제로 만든 것인데 전제가 틀렸고, "○○ 관련주" 껍데기만 찍어냈다.
 export interface LongformTitleCandidate {
   title: string;
-  thumbnailText: string; // 7자 이내, 제목과 비중복 괴리 — 모듈 5가 그대로 쓴다.
-  principlesCheck: Record<string, boolean>; // 5원칙 통과 여부
-  screening: Record<string, boolean>; // 검수 질문 3개
-  violations?: string[]; // 코드 검사(시점 표현·30자·묶음가치)로 잡힌 것
+  thumbnailText: string; // 제목과 비중복 괴리 — 모듈 5가 그대로 쓴다.
+  covers?: number[]; // 이 제목을 뒷받침하는 구성 편 번호(1-based). 한 편뿐이면 컴필레이션 제목이 아니다.
+  principlesCheck: Record<string, boolean>; // 제목 6원칙 통과 여부
+  screening: Record<string, boolean>; // 검수 질문
+  violations?: string[]; // 코드 검사(시점 표현·30자·묶음가치·커버 범위)로 잡힌 것
 }
 
 // 운영자가 직접 쓴 제목을 원칙으로 검증한 결과(생성 후보와 별개 — 원문을 존중해 진단만).

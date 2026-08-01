@@ -33,10 +33,10 @@ async function main() {
 
   console.log(`주 검색어: ${pkg.primaryKeyword} / 근거: ${pkg.keywordRationale}\n`);
   pkg.candidates.forEach((c, i) => {
-    const v = titleViolations(c.title, pkg.primaryKeyword);
     console.log(`${i === pkg.recommendedIndex ? "★" : " "} ${c.title}`);
     console.log(`    썸네일: ${c.thumbnailText}`);
-    if (v.length) console.log(`    ⚠ ${v.join(" / ")}`);
+    console.log(`    뒷받침하는 편: ${c.covers?.length ? c.covers.join(", ") : "(없음)"}`);
+    if (c.violations?.length) console.log(`    ⚠ ${c.violations.join(" / ")}`);
   });
   console.log(`\n추천: ${pkg.recommendation}`);
   console.log(`title_promise: ${pkg.titlePromise}`);
