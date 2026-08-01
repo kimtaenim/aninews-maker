@@ -9,6 +9,7 @@ import {
   bodyChars,
   formatSeconds as fmtSec,
   multiplier,
+  stretchWarning,
   won,
   wonRange,
   type ElongatedCostEstimate,
@@ -40,6 +41,7 @@ export default function ElongatedStudio({
   spentKrw,
   chapterBudget,
   sceneCount,
+  maxMultiplier,
 }: {
   project: { id: string; title: string };
   track: ElongatedTrack;
@@ -53,6 +55,7 @@ export default function ElongatedStudio({
   spentKrw: string; // 지금까지 쓴 돈(서버 계산 초기값)
   chapterBudget: number; // 챕터 하나의 목표 글자 수(초과 시 빨간 표시)
   sceneCount: number; // 이미 펼쳐 둔 씬 수(0이면 아직 렌더로 안 보냈다)
+  maxMultiplier: number; // 권장 배수 상한 — 넘으면 경고만 한다
 }) {
   const router = useRouter();
 
@@ -92,6 +95,7 @@ export default function ElongatedStudio({
   const pendingOk = pendingSec >= minSec && pendingSec <= maxSec;
 
   const x = multiplier(cur.sourceSeconds, cur.targetSec);
+  const stretch = stretchWarning(cur.sourceSeconds, cur.targetSec, maxMultiplier);
 
   async function saveLength() {
     if (!pendingOk) return;
@@ -443,6 +447,20 @@ export default function ElongatedStudio({
           영상이 전체의 대부분이에요. 웹검색 도구 사용료는 아직 합계에 안 잡힙니다.
         </p>
       </div>
+
+      {/* 너무 늘리면 원본 비중이 작아져 본문 대부분을 새 사실로 채워야 한다 */}
+      {stretch.over && (
+        <div className="mt-2 rounded-2xl border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2">
+          <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
+            ⚠ 원본의 {stretch.times}배 — 좀 많이 늘리는 거예요
+          </p>
+          <p className="mt-1 text-[11px] text-amber-700/90 dark:text-amber-400/90">
+            원본 내용이 완성본의 {stretch.sourceShare}%밖에 안 돼요. 나머지는 새로 찾은 사실로
+            채워야 하는데, 채울 게 모자라면 대본에 근거 없는 숫자가 섞입니다. {maxMultiplier}배
+            안쪽을 권해요 — ② 목표 길이에서 줄일 수 있어요.
+          </p>
+        </div>
+      )}
 
       {/* ── ① 원본 대본 (읽기 전용) ── */}
       <section className="mt-6">

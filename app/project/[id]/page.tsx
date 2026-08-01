@@ -15,6 +15,7 @@ import {
   CUSTOM_MAX_SEC,
   CUSTOM_MIN_SEC,
   PRESETS,
+  MAX_RECOMMENDED_MULTIPLIER,
   chapterCharBudget,
   chapterCount,
   estimateElongatedCost,
@@ -59,6 +60,7 @@ export default async function ProjectStudioPage({
           track.plan?.chapters.length ?? chapterCount(track.targetSec, sourceScenes.length)
         )}
         sceneCount={(project.scenes ?? []).length}
+        maxMultiplier={MAX_RECOMMENDED_MULTIPLIER}
         estimate={estimateElongatedCost(track.targetSec)}
         estimatesByPreset={Object.fromEntries(
           PRESETS.map((p) => [p.targetSec, estimateElongatedCost(p.targetSec)])

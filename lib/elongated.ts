@@ -41,6 +41,7 @@ interface RawConfig {
   min_completion: number;
   chapter_target_sec: number;
   chapter_min_count: number;
+  max_recommended_multiplier: number;
   search_max_uses_per_block: number;
   search_max_uses_cap: number;
   fact_model: "haiku" | "sonnet" | "opus";
@@ -64,6 +65,8 @@ export const BLOCK_TYPE_IDS: string[] = cfg.block_types.map((b) => b.id);
 export const REQUIRED_BLOCK: string = cfg.required_block;
 export const GRADES: string[] = cfg.grades;
 export const CHAPTER_TOLERANCE = cfg.chapter_length_tolerance;
+// 이 배수를 넘으면 원본 비중이 너무 작아진다 — 차단은 안 하고 화면에서 경고만 한다.
+export const MAX_RECOMMENDED_MULTIPLIER = cfg.max_recommended_multiplier;
 /** 챕터 하나의 검색 예산 — 대목 수에 비례하되 상한을 둔다(너무 조이면 카드가 0건이 된다). */
 export function searchBudget(blockCount: number): number {
   return Math.max(1, Math.min(cfg.search_max_uses_cap, blockCount * cfg.search_max_uses_per_block));

@@ -9,6 +9,9 @@
   "custom_min_sec": 60,
   "custom_max_sec": 1800,
 
+  "_comment_multiplier": "권장 배수 상한. 이걸 넘으면 원본이 차지하는 비중이 너무 작아져 본문의 대부분을 새로 찾은 사실로 채워야 하고, 모델이 분량을 채우려고 카드에 없는 숫자를 지어낸다(실측: 7배로 늘렸더니 카드 밖 숫자 5건 + 투자 조언 톤). 차단이 아니라 경고만 한다.",
+  "max_recommended_multiplier": 4,
+
   "_comment_performance": "원본 성적 기준. 조회수·완주율 데이터가 시스템에 아직 없어 지금은 아무도 읽지 않는다(경고 배지 미구현). 성적을 넣게 되면 이 값으로 판정한다.",
   "min_views": 500,
   "min_completion": 70,

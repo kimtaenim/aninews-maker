@@ -6,6 +6,7 @@ import {
   formatSeconds as fmtSec,
   multiplier,
   estimateCost,
+  stretchWarning,
   won,
   wonRange,
   type CostRates,
@@ -37,12 +38,14 @@ export default function ElongatedNewForm({
   minSec,
   maxSec,
   rates,
+  maxMultiplier,
 }: {
   shorts: ShortItem[];
   presets: Preset[];
   minSec: number;
   maxSec: number;
   rates: CostRates;
+  maxMultiplier: number;
 }) {
   const router = useRouter();
   const [items, setItems] = useState<ShortItem[]>(shorts);
@@ -69,6 +72,11 @@ export default function ElongatedNewForm({
   const targetOk = targetSec >= minSec && targetSec <= maxSec;
   // 길이를 고르는 자리에서 바로 돈이 보여야 한다 — 8분은 영상비만 5만 원대다.
   const est = useMemo(() => (targetOk ? estimateCost(targetSec, rates) : null), [targetOk, targetSec, rates]);
+  // 너무 늘리면 원본 비중이 작아져 본문 대부분을 새 사실로 채워야 한다 — 경고만 한다.
+  const stretch = useMemo(
+    () => (selected ? stretchWarning(selected.speakSec, targetSec, maxMultiplier) : null),
+    [selected, targetSec, maxMultiplier]
+  );
 
   async function runSearch(nextQ: string) {
     setSearching(true);
@@ -214,9 +222,17 @@ export default function ElongatedNewForm({
       <div className="mt-2 flex flex-wrap items-center gap-2">
         {presets.map((p, i) => {
           const e = estimateCost(p.targetSec, rates);
+          // 고른 원본 기준 배수를 칩에 같이 띄운다 — 고르기 전에 무리한 배수인지 보여야 한다.
+          const w = selected ? stretchWarning(selected.speakSec, p.targetSec, maxMultiplier) : null;
           return (
             <button key={p.name} type="button" onClick={() => setPresetIdx(i)} className={chip(presetIdx === i)}>
               {p.name}
+              {w && (
+                <span className={w.over ? "ml-1 text-amber-600" : "ml-1 opacity-70"}>
+                  {w.over ? "⚠ " : ""}
+                  {w.times}배
+                </span>
+              )}
               <span className="ml-1 opacity-70">약 {won(e.totalKrw[0])}~</span>
             </button>
           );
@@ -255,6 +271,19 @@ export default function ElongatedNewForm({
           </span>
         )}
       </p>
+
+      {stretch?.over && (
+        <div className="mt-3 rounded-2xl border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2">
+          <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
+            ⚠ 원본의 {stretch.times}배 — 좀 많이 늘리는 거예요
+          </p>
+          <p className="mt-1 text-[11px] text-amber-700/90 dark:text-amber-400/90">
+            원본 내용이 완성본의 {stretch.sourceShare}%밖에 안 돼요. 나머지는 새로 찾은 사실로
+            채워야 하는데, 채울 게 모자라면 대본에 근거 없는 숫자가 섞입니다. {maxMultiplier}배
+            안쪽을 권해요.
+          </p>
+        </div>
+      )}
 
       {est && (
         <div className="mt-3 rounded-2xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/60 dark:bg-amber-950/20 px-3 py-2">

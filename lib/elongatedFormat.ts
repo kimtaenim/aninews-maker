@@ -90,6 +90,21 @@ export function bodyChars(body: string): number {
   return stripCardRefs(body).replace(/\[\[|\]\]/g, "").replace(/\s+/g, " ").trim().length;
 }
 
+/**
+ * 배수가 크면 원본이 차지하는 비중이 작아진다 — 본문의 대부분을 새로 찾은 사실로 채워야 하고,
+ * 모델이 분량을 채우려고 카드에 없는 숫자를 지어낸다(실측: 7배에서 카드 밖 숫자 5건).
+ * 원본 비중(%)과 권장 초과 여부를 같이 돌려준다. 차단이 아니라 화면 경고용.
+ */
+export function stretchWarning(
+  sourceSec: number,
+  targetSec: number,
+  maxMultiplier: number
+): { over: boolean; times: number; sourceShare: number } {
+  const times = multiplier(sourceSec, targetSec);
+  const share = times > 0 ? Math.round((1 / times) * 100) : 0;
+  return { over: times > maxMultiplier, times, sourceShare: share };
+}
+
 export const won = (n: number) => `₩${n.toLocaleString("ko-KR")}`;
 export const wonRange = (r: [number, number]) =>
   r[0] === r[1] ? won(r[0]) : `${won(r[0])}~${won(r[1])}`;
