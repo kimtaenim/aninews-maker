@@ -22,6 +22,8 @@ import Spinner from "@/components/Spinner";
 import ScenePreview from "./ScenePreview";
 import type { ScriptReviewResult } from "@/lib/scriptReview";
 import type { CritiqueFix } from "@/lib/scriptCritique";
+import type { Chipset, ChipsetStage } from "@/lib/chipsets";
+import ChipsetRow from "./ChipsetRow";
 import { LOOP_ALIGN_PROMPT, LOOP_ALIGN_LABEL, CRITIQUE_LABEL } from "@/lib/scriptButtons";
 import SceneVideoThumb, { useActiveRow } from "./SceneVideoThumb";
 import CaptionControls from "./CaptionControls";
@@ -401,6 +403,69 @@ export default function Studio({
   const defaultMotionScale: "subtle" | "large" = initial.mode === "cliche" ? "large" : "subtle";
   // 씬별 선택한 카메라 워크(하이라이트용). 고르면 그 씬 모션 프롬프트를 프리셋으로 채운다.
   const [cameraMove, setCameraMove] = useState<Record<number, string>>({});
+  // 🧩 내 칩셋 — 사용자가 단계별로 등록해 두고 다음 프로젝트에서도 부르는 프롬프트 조각.
+  // 계정 단위 저장(Redis chipsets:<email>)이라 프로젝트를 넘나든다. 뉴스·클리셰 공통.
+  const [chipsets, setChipsets] = useState<Chipset[]>([]);
+  useEffect(() => {
+    fetch("/api/chipsets")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.ok && Array.isArray(d.chipsets)) setChipsets(d.chipsets as Chipset[]);
+      })
+      .catch(() => {});
+  }, []);
+
+  async function addChipset(input: { stage: ChipsetStage; label: string; text: string }) {
+    try {
+      const r = await fetch("/api/chipsets", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      const d = await r.json();
+      if (!r.ok || !d.ok) return (d?.error as string) || "칩 저장 실패";
+      setChipsets(d.chipsets as Chipset[]);
+      return null;
+    } catch {
+      return "칩 저장 실패";
+    }
+  }
+
+  async function removeChipset(id: string) {
+    try {
+      const r = await fetch(`/api/chipsets?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      const d = await r.json();
+      if (d?.ok) setChipsets(d.chipsets as Chipset[]);
+    } catch {
+      /* 무시 */
+    }
+  }
+  // 쓴 시각 기록(정렬용) — 실패해도 상관없다.
+  function touchChipset(id: string) {
+    fetch("/api/chipsets", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ used: [id] }),
+    }).catch(() => {});
+  }
+
+  // 칩 내용은 프롬프트 끝의 [칩: …] 꼬리에 모아 붙인다. 기본 스타일 칩의 [스타일: …] 과
+  // 자리를 나눠 써서 서로 덮어쓰지 않는다. 켜짐 여부는 꼬리에 그 문구가 있는지로 판정 —
+  // 별도 상태를 저장하지 않으므로 새로고침해도 그대로다.
+  const CHIP_TAIL = /\s*\[칩:\s*([^\]]*)\]\s*$/;
+  function chipFrags(s: string): string[] {
+    const m = (s ?? "").match(CHIP_TAIL);
+    return m ? m[1].split(" · ").map((x) => x.trim()).filter(Boolean) : [];
+  }
+  function withChipFrags(s: string, frags: string[]): string {
+    const base = (s ?? "").replace(CHIP_TAIL, "").trimEnd();
+    if (frags.length === 0) return base;
+    return `${base}${base ? "\n" : ""}[칩: ${frags.join(" · ")}]`;
+  }
+  function toggleFrag(frags: string[], text: string): string[] {
+    return frags.includes(text) ? frags.filter((f) => f !== text) : [...frags, text];
+  }
+
   // 4단계 스타일 칩 — 씬별 { 그룹키: 선택 칩id }. 그룹당 하나만. 프롬프트 [스타일: …] 반영.
   const [imgChips, setImgChips] = useState<Record<number, Record<string, string>>>({});
 
@@ -2481,6 +2546,44 @@ export default function Studio({
     const next = directive ? `${base}${base ? "\n" : ""}[스타일: ${directive}]` : base;
     patchScene(sceneIndex, { imagePrompt: next });
   }
+  // ── 🧩 내 칩셋: 단계별 적용 ────────────────────────────────────────────────
+  // 씬마다 따로 걸지 않는다(칩이 씬 수만큼 늘면 관리가 안 된다 — 사용자 지적).
+  // 단계 하나에 걸면 그 단계 전체에 반영된다:
+  //   3단계 → styleBible(그림체 규약, 키프레임+전 씬 이미지에 주입)
+  //   4단계 → 전 씬 imagePrompt 의 [칩: …] 꼬리
+  //   5단계 → videoCommonPrompt(전 씬 영상에 공통으로 붙는 지시)
+  const keyframeChipFrags = chipFrags(editBible);
+  const imageChipFrags = chipFrags(scenes.find((s) => chipFrags(s.imagePrompt ?? "").length)?.imagePrompt ?? "");
+  const videoChipFrags = chipFrags(videoCommonPrompt);
+
+  const activeChipIds = (stage: ChipsetStage): string[] => {
+    const frags =
+      stage === "keyframe" ? keyframeChipFrags : stage === "images" ? imageChipFrags : videoChipFrags;
+    return chipsets.filter((c) => c.stage === stage && frags.includes(c.text)).map((c) => c.id);
+  };
+
+  function toggleChipset(c: Chipset) {
+    touchChipset(c.id);
+    if (c.stage === "keyframe") {
+      const next = withChipFrags(editBible, toggleFrag(keyframeChipFrags, c.text));
+      setEditBible(next);
+      setBibleDirty(true); // 기존 디바운스 저장이 집어간다
+      return;
+    }
+    if (c.stage === "videos") {
+      const next = withChipFrags(videoCommonPrompt, toggleFrag(videoChipFrags, c.text));
+      setVideoCommonPrompt(next);
+      saveVideoCommonPrompt(next);
+      return;
+    }
+    // images — 전 씬에 같은 꼬리를 건다(씬0=키프레임은 3단계 몫이라 제외).
+    const next = toggleFrag(imageChipFrags, c.text);
+    scenes.forEach((s, i) => {
+      if (i === 0) return;
+      patchScene(i, { imagePrompt: withChipFrags(s.imagePrompt ?? "", next) });
+    });
+  }
+
   // 칩 토글 — 그룹 내에선 하나만(다시 누르면 해제, 다른 칩 누르면 교체). 그룹 간엔 조합.
   function toggleImgChip(sceneIndex: number, groupKey: string, chipId: string) {
     const cur = { ...(imgChips[sceneIndex] ?? {}) };
@@ -3813,6 +3916,18 @@ export default function Studio({
               <span className="text-[11px] font-medium text-zinc-500">
                 스타일·팔레트·프롬프트 (직접 편집 — 영문)
               </span>
+              <div className="mb-2">
+                <ChipsetRow
+                  stage="keyframe"
+                  chipsets={chipsets}
+                  activeIds={activeChipIds("keyframe")}
+                  onToggle={toggleChipset}
+                  onAdd={addChipset}
+                  onDelete={removeChipset}
+                  disabled={busy !== null}
+                  hint="그림체 규약에 붙습니다 (팔레트·주인공 특징 등)"
+                />
+              </div>
               <textarea
                 value={editBible}
                 onChange={(e) => {
@@ -4006,6 +4121,20 @@ export default function Studio({
             {imagesApproved && <span className="ml-2 text-xs text-accent">승인됨</span>}
           </h2>
         </div>
+        {keyframeApproved && (
+          <div className="mt-2">
+            <ChipsetRow
+              stage="images"
+              chipsets={chipsets}
+              activeIds={activeChipIds("images")}
+              onToggle={toggleChipset}
+              onAdd={addChipset}
+              onDelete={removeChipset}
+              disabled={busy !== null}
+              hint="전 씬 이미지 프롬프트에 붙습니다 (소품·구도 등)"
+            />
+          </div>
+        )}
         {keyframeApproved && extraScenes.length > 0 && (
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <button
@@ -4473,7 +4602,17 @@ export default function Studio({
         )}
         {imagesApproved && (
           <div className="mt-2 grid gap-1">
-            <span className="text-xs font-medium text-zinc-600 dark:text-zinc-300">
+            <ChipsetRow
+              stage="videos"
+              chipsets={chipsets}
+              activeIds={activeChipIds("videos")}
+              onToggle={toggleChipset}
+              onAdd={addChipset}
+              onDelete={removeChipset}
+              disabled={busy !== null}
+              hint="공통 영상 지시에 붙습니다 (카메라·속도감 등)"
+            />
+            <span className="mt-1 text-xs font-medium text-zinc-600 dark:text-zinc-300">
               🎬 공통 영상 지시 <span className="font-normal text-zinc-400">(전 씬 공통)</span>
             </span>
             <textarea
