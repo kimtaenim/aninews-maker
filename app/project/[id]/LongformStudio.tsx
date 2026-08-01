@@ -11,6 +11,8 @@ import type {
   LongformTitleReview,
 } from "@/lib/types";
 import type { LongformReviewResult } from "@/lib/longformReview";
+import type { Chipset, ChipsetStage } from "@/lib/chipsets";
+import ChipsetRow from "./ChipsetRow";
 import { speakSeconds } from "@/lib/longformScreening";
 
 // 브리지 낭독 길이(초) — 타임라인에 진행자 구간 길이를 그대로 보여주기 위해.
@@ -351,6 +353,149 @@ export default function LongformStudio({
     }
   }
 
+  // 🧩 내 칩셋 — 계정 단위로 저장해 둔 프롬프트 조각(쇼츠 Studio 와 같은 것을 그대로 쓴다).
+  // 썸네일도 그림을 만드는 일이라 스타일 칩이 필요하다(사용자 지정 2026-08-01).
+  const [chipsets, setChipsets] = useState<Chipset[]>([]);
+  const [thumbChips, setThumbChips] = useState<string[]>([]); // 켜 둔 칩 id
+  const [thumbExtra, setThumbExtra] = useState(""); // 직접 쓴 그림 지시
+  const [thumbTextEdit, setThumbTextEdit] = useState(""); // 썸네일 문구 직접 수정
+  useEffect(() => {
+    fetch("/api/chipsets")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.ok && Array.isArray(d.chipsets)) setChipsets(d.chipsets as Chipset[]);
+      })
+      .catch(() => {});
+  }, []);
+
+  async function addChipset(input: { stage: ChipsetStage; label: string; text: string }) {
+    try {
+      const r = await fetch("/api/chipsets", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      const d = await r.json();
+      if (!r.ok || !d.ok) return (d?.error as string) || "칩 저장 실패";
+      setChipsets(d.chipsets as Chipset[]);
+      return null;
+    } catch {
+      return "칩 저장 실패";
+    }
+  }
+  async function editChipset(id: string, patch: { label: string; text: string }) {
+    try {
+      const r = await fetch("/api/chipsets", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id, ...patch }),
+      });
+      const d = await r.json();
+      if (!r.ok || !d.ok) return (d?.error as string) || "칩 수정 실패";
+      setChipsets(d.chipsets as Chipset[]);
+      return null;
+    } catch {
+      return "칩 수정 실패";
+    }
+  }
+  async function removeChipset(id: string) {
+    try {
+      const r = await fetch(`/api/chipsets?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      const d = await r.json();
+      if (d?.ok) setChipsets(d.chipsets as Chipset[]);
+      setThumbChips((prev) => prev.filter((x) => x !== id));
+    } catch {
+      /* 무시 */
+    }
+  }
+  async function reorderChipsetsFor(stage: ChipsetStage, ids: string[]) {
+    setChipsets((prev) => {
+      const rank = new Map(ids.map((id, i) => [id, i]));
+      return [...prev].sort((a, b) => {
+        if (a.stage !== stage || b.stage !== stage) return 0;
+        return (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0);
+      });
+    });
+    try {
+      await fetch("/api/chipsets", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ reorder: { stage, ids } }),
+      });
+    } catch {
+      /* 무시 — 화면 순서는 이미 바뀌었다 */
+    }
+  }
+
+  // ── 진행자 그림 — 오프닝·연결·엔딩 씬의 그림을 이 화면에서 만든다.
+  // 예전엔 진행자 프로젝트로 넘어가야 했다(사용자 지적 2026-08-01: 만들 자리가 없다).
+  // 씬0 은 키프레임 경로, 나머지는 씬 이미지 경로 — 쇼츠와 같은 API 를 그대로 쓴다.
+  const [hostImgBusy, setHostImgBusy] = useState<null | "all" | number>(null);
+  const [hostImgErr, setHostImgErr] = useState("");
+
+  async function post(url: string, body: unknown) {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) throw new Error(d.error || "요청 실패");
+    return d as Record<string, unknown>;
+  }
+
+  // 진행자 씬 그림 한 번에 — 키프레임(첫 후보) → 승인 → 나머지 씬 일괄.
+  async function genHostImages() {
+    if (!hostProject) return;
+    setHostImgBusy("all");
+    setHostImgErr("");
+    try {
+      const id = hostProject.id;
+      const chipText = chipsets.filter((c) => thumbChips.includes(c.id)).map((c) => c.text);
+      const hasKeyframe = !!hostProject.keyframeUrl;
+      if (!hasKeyframe) {
+        const kf = await post("/api/image/keyframe", { projectId: id });
+        const urls = (kf.urls as string[]) ?? [];
+        if (!urls.length) throw new Error("키프레임 후보가 안 나왔어요");
+        await post("/api/image/keyframe/select", { projectId: id, url: urls[0] });
+        await post("/api/step/approve", { projectId: id, step: "keyframe" });
+      }
+      const rest = hostScenes.filter((s) => s.index > 0 && !s.imageUrl).map((s) => s.index);
+      if (rest.length) await post("/api/image/scenes-batch", { projectId: id, sceneIndexes: rest });
+      if (chipText.length) {
+        /* 칩은 씬 프롬프트에 이미 반영되지 않는다 — 여기선 알림만(별도 지시는 씬 편집에서). */
+      }
+      router.refresh();
+    } catch (e) {
+      setHostImgErr(e instanceof Error ? e.message : "진행자 그림 생성 실패");
+    } finally {
+      setHostImgBusy(null);
+    }
+  }
+
+  // 그 씬 하나만 다시 — 씬0 은 키프레임이라 후보를 다시 뽑고 첫 장을 쓴다.
+  async function genHostSceneImage(index: number) {
+    if (!hostProject) return;
+    setHostImgBusy(index);
+    setHostImgErr("");
+    try {
+      const id = hostProject.id;
+      if (index === 0) {
+        const kf = await post("/api/image/keyframe", { projectId: id });
+        const urls = (kf.urls as string[]) ?? [];
+        if (!urls.length) throw new Error("키프레임 후보가 안 나왔어요");
+        await post("/api/image/keyframe/select", { projectId: id, url: urls[0] });
+      } else {
+        await post("/api/image/scene", { projectId: id, sceneIndex: index });
+      }
+      router.refresh();
+    } catch (e) {
+      setHostImgErr(e instanceof Error ? e.message : "그림 생성 실패");
+    } finally {
+      setHostImgBusy(null);
+    }
+  }
+
   // ── [모듈 5] 썸네일 — 시안 3종 + 168px 축소 검증본.
   const [thumb, setThumb] = useState<LongformThumbnailPackage | null>(initialThumbnail);
   const [thumbBusy, setThumbBusy] = useState(false);
@@ -363,7 +508,17 @@ export default function LongformStudio({
       const r = await fetch("/api/longform/thumbnail", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ projectId: project.id }),
+        body: JSON.stringify({
+          projectId: project.id,
+          // 켜 둔 스타일 칩 + 직접 쓴 지시를 그림 프롬프트 뒤에 붙인다.
+          styleExtra: [
+            ...chipsets.filter((c) => thumbChips.includes(c.id)).map((c) => c.text),
+            thumbExtra.trim(),
+          ]
+            .filter(Boolean)
+            .join(". "),
+          ...(thumbTextEdit.trim() ? { text: thumbTextEdit.trim() } : {}),
+        }),
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok || !d.ok) throw new Error(d.error || "썸네일 생성 실패");
@@ -640,6 +795,16 @@ export default function LongformStudio({
               ? "씬 미생성"
               : "대본 미생성"}
         </span>
+        {hostProject && scene && (
+          <button
+            onClick={() => genHostSceneImage(scene.index)}
+            disabled={hostImgBusy !== null}
+            className="shrink-0 rounded border border-zinc-300 px-1.5 py-0.5 text-[10px] hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-900"
+            title="이 씬 그림만 다시 만듭니다"
+          >
+            {hostImgBusy === scene.index ? "…" : scene.imageUrl ? "그림 다시" : "그림 만들기"}
+          </button>
+        )}
         {hostProject && scene && (
           <Link
             href={`/project/${hostProject.id}`}
@@ -1087,6 +1252,48 @@ export default function LongformStudio({
           168px 축소본으로 소형 판독을 검증해요.
         </p>
         {!confirmedTitle && <p className="mt-2 text-[11px] text-amber-600">먼저 ① 제목을 확정해주세요.</p>}
+
+        {/* 그림 조정 — 썸네일도 그림을 만드는 일이라 스타일 칩과 직접 지시가 필요하다.
+            칩은 쇼츠 Studio 와 같은 계정 칩셋을 그대로 쓴다(따로 만들지 않는다). */}
+        <div className="mt-2 grid gap-1.5">
+          <ChipsetRow
+            stage="style"
+            chipsets={chipsets}
+            activeIds={thumbChips}
+            onToggle={(c) =>
+              setThumbChips((prev) => (prev.includes(c.id) ? prev.filter((x) => x !== c.id) : [...prev, c.id]))
+            }
+            onAdd={addChipset}
+            onUpdate={editChipset}
+            onDelete={removeChipset}
+            onReorder={reorderChipsetsFor}
+            disabled={thumbBusy}
+            hint="켜 둔 칩이 썸네일 그림 프롬프트 뒤에 붙습니다"
+          />
+          <div className="grid gap-1.5 sm:grid-cols-2">
+            <label className="grid gap-0.5">
+              <span className="text-[10px] text-zinc-500">썸네일 글씨 (비우면 제목에서 정한 문구)</span>
+              <input
+                value={thumbTextEdit}
+                onChange={(e) => setThumbTextEdit(e.target.value)}
+                placeholder={titlePkg?.finalThumbnailText ?? ""}
+                disabled={thumbBusy}
+                className="rounded-md border border-zinc-200 bg-transparent px-2 py-1 text-[11px] dark:border-zinc-800"
+              />
+            </label>
+            <label className="grid gap-0.5">
+              <span className="text-[10px] text-zinc-500">그림 지시 직접 쓰기 (영문·한글 모두 가능)</span>
+              <input
+                value={thumbExtra}
+                onChange={(e) => setThumbExtra(e.target.value)}
+                placeholder="예: 어두운 배경, 클로즈업"
+                disabled={thumbBusy}
+                className="rounded-md border border-zinc-200 bg-transparent px-2 py-1 text-[11px] dark:border-zinc-800"
+              />
+            </label>
+          </div>
+        </div>
+
         {thumbErr && <p className="mt-2 text-[11px] text-red-600">{thumbErr}</p>}
         {thumb && (
           <div className="mt-2 grid gap-2">
@@ -1184,6 +1391,16 @@ export default function LongformStudio({
               {scriptSaveBusy ? "저장 중…" : "진행자 말 저장"}
             </button>
           )}
+          {hostScenes.length > 0 && (
+            <button
+              onClick={genHostImages}
+              disabled={hostImgBusy !== null}
+              className="rounded-lg border border-zinc-300 px-2.5 py-1 text-[11px] font-medium hover:bg-zinc-50 disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-900"
+              title="오프닝·연결·엔딩 씬의 그림을 한 번에 만듭니다"
+            >
+              {hostImgBusy === "all" ? "그림 만드는 중…" : "진행자 그림 만들기"}
+            </button>
+          )}
           {script && (
             <button
               onClick={genHostScript}
@@ -1196,8 +1413,8 @@ export default function LongformStudio({
           )}
         </div>
       </div>
-      {(scriptErr || hostErr) && (
-        <p className="mt-1 text-[11px] text-red-600">{scriptErr || hostErr}</p>
+      {(scriptErr || hostErr || hostImgErr) && (
+        <p className="mt-1 text-[11px] text-red-600">{scriptErr || hostErr || hostImgErr}</p>
       )}
       {!script && (
         <p className="mt-1 text-[11px] text-amber-600">
@@ -1342,7 +1559,7 @@ export default function LongformStudio({
             "먼저 대본을 생성하라"고 안내하면서 그 버튼이 아래 있으면 안 된다(작업 순서 = 화면 순서). */}
       <div className="mt-4 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold">진행자 말 — 통째로 다시 쓰기</h2>
+          <h2 className="text-sm font-semibold">진행자 말 새로 뽑기</h2>
           <button
             onClick={genScript}
             disabled={scriptBusy || !confirmedTitle}

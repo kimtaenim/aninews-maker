@@ -135,9 +135,12 @@ export async function buildThumbnails(args: {
   titlePromise: string;
   firstSegmentTopic: string;
   thumbnailText: string;
+  // 화면에서 켠 스타일 칩 + 직접 쓴 지시 — 그림에만 붙는다(문구·구도 판정은 그대로).
+  styleExtra?: string;
 }): Promise<LongformThumbnailPackage> {
-  const { projectId, thumbnailText, title } = args;
+  const { projectId, thumbnailText, title, styleExtra } = args;
   const prompts = await generateThumbnailPrompts(args);
+  const extra = (styleExtra ?? "").trim();
   const stamp = Date.now();
 
   const variants: LongformThumbnailVariant[] = [];
@@ -149,7 +152,10 @@ export async function buildThumbnails(args: {
       prompt: p.prompt,
     };
     try {
-      const { bytes } = await generateThumbnailImage({ projectId, prompt: p.prompt });
+      const { bytes } = await generateThumbnailImage({
+        projectId,
+        prompt: extra ? `${p.prompt}. ${extra}` : p.prompt,
+      });
       const { jpg, preview, strokePx, readable } = await composeThumbnail({
         background: bytes,
         text: thumbnailText,
