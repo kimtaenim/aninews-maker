@@ -687,176 +687,6 @@ export default function LongformStudio({
         가로 16:9 롱폼 — 아래 순서 그대로 이어붙습니다. 칸마다 진행자 말을 고치고, 각 편은 편집에서 완성하세요.
       </p>
 
-      {/* ★ 재생 순서 = 이 화면의 뼈대. 오프닝 → 세그1 → 연결 → 세그2 → … → 엔딩 순으로,
-          진행자 구간은 씬 단위로 펼쳐 그 자리에서 대본을 고친다. 제목·썸네일 등 나머지 도구는
-          이 아래에 접어 둔다(사용자 지정 2026-07-26: 머릿속 구조가 곧 화면 구조여야 한다). */}
-      <div className="mt-4 flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold">
-          재생 순서 <span className="text-[11px] font-normal text-zinc-500">
-            (편 {readyCount}/{segs.length} · 진행자 씬 {hostVideoDone}/{hostScenes.length || 0})
-          </span>
-        </h2>
-        <div className="flex shrink-0 items-center gap-2">
-          {script && edit && (
-            <button
-              onClick={saveScript}
-              disabled={scriptSaveBusy}
-              className="rounded-lg border border-zinc-300 px-2.5 py-1 text-[11px] font-medium hover:bg-zinc-50 disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-900"
-            >
-              {scriptSaveBusy ? "저장 중…" : "진행자 말 저장"}
-            </button>
-          )}
-          {script && (
-            <button
-              onClick={genHostScript}
-              disabled={hostBusy}
-              className="rounded-lg border border-accent/40 bg-accent/10 px-2.5 py-1 text-[11px] font-medium text-accent hover:bg-accent/15 disabled:opacity-40"
-              title="지금 대본으로 진행자 씬을 다시 펼칩니다(고친 말이 씬에 반영됩니다)"
-            >
-              {hostBusy ? "펼치는 중…" : hostScenes.length ? "진행자 씬 다시 펼치기" : "진행자 씬 만들기"}
-            </button>
-          )}
-        </div>
-      </div>
-      {(scriptErr || hostErr) && (
-        <p className="mt-1 text-[11px] text-red-600">{scriptErr || hostErr}</p>
-      )}
-      {!script && (
-        <p className="mt-1 text-[11px] text-amber-600">
-          진행자 말이 아직 없어요 — 아래 <b>진행자 대본</b>에서 먼저 만들어주세요.
-        </p>
-      )}
-      {promiseWarn.length > 0 && (
-        <div className="mt-1 rounded-lg border border-amber-300 bg-amber-50 p-2 dark:border-amber-800 dark:bg-amber-950/30">
-          <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">
-            제목이 약속한 궁금증을 다시 보세요
-          </p>
-          <ul className="mt-0.5 grid list-disc gap-0.5 pl-4 text-[11px] text-amber-700 dark:text-amber-400">
-            {promiseWarn.map((w, i) => (
-              <li key={i}>{w}</li>
-            ))}
-          </ul>
-          <p className="mt-0.5 text-[10px] text-amber-600">
-            이대로 두면 오프닝이 답을 미리 말하고 엔딩이 같은 말을 반복합니다.
-          </p>
-        </div>
-      )}
-
-      <ol className="mt-2 grid gap-1.5">
-        {/* 오프닝 — 씬 2개 */}
-        {script && edit
-          ? [
-              hostRow("op-a", "오프닝 1", edit.a, (v) => setEdit({ ...edit, a: v }), openingScenes[0]),
-              hostRow("op-b", "오프닝 2", edit.b, (v) => setEdit({ ...edit, b: v }), openingScenes[1]),
-            ]
-          : hostRow("op-none", "오프닝", "대본 미생성", null)}
-
-        {segs.map((s, i) => {
-          const isLast = i === segs.length - 1;
-          return (
-            <li key={s.id} className="grid gap-1.5">
-              <div className="flex items-center gap-2 rounded-xl border border-zinc-200 p-2 dark:border-zinc-800">
-                <div className="flex shrink-0 flex-col">
-                  <button
-                    onClick={() => moveSeg(i, -1)}
-                    disabled={i === 0 || reordering}
-                    aria-label="위로"
-                    className="text-[10px] leading-none text-zinc-500 hover:text-accent disabled:opacity-30"
-                  >
-                    ▲
-                  </button>
-                  <button
-                    onClick={() => moveSeg(i, 1)}
-                    disabled={isLast || reordering}
-                    aria-label="아래로"
-                    className="text-[10px] leading-none text-zinc-500 hover:text-accent disabled:opacity-30"
-                  >
-                    ▼
-                  </button>
-                </div>
-                <span className="shrink-0 rounded bg-zinc-200 px-1.5 py-0.5 text-[9px] font-bold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
-                  {i + 1}편
-                </span>
-                <div className="h-10 w-16 shrink-0 overflow-hidden rounded bg-zinc-100 dark:bg-zinc-900">
-                  {s.keyframeUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={s.keyframeUrl} alt={s.title} className="h-full w-full object-cover" />
-                  ) : null}
-                </div>
-                <span className="line-clamp-2 flex-1 text-xs">{s.title}</span>
-                <span
-                  className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                    s.finalVideoUrl
-                      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                      : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                  }`}
-                >
-                  {s.finalVideoUrl ? "완성" : "미완성"}
-                </span>
-                <Link
-                  href={`/project/${s.id}`}
-                  className="shrink-0 rounded-md border border-zinc-300 px-2 py-0.5 text-[11px] hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
-                >
-                  편집
-                </Link>
-              </div>
-
-              {/* 연결 — 마지막 편 뒤엔 없다(엔딩으로 간다) */}
-              {!isLast &&
-                (script && edit && edit.bridges[i] !== undefined
-                  ? hostRow(
-                      `br-${i}`,
-                      `연결 ${i + 1}→${i + 2}`,
-                      edit.bridges[i],
-                      (v) => {
-                        const next = [...edit.bridges];
-                        next[i] = v;
-                        setEdit({ ...edit, bridges: next });
-                      },
-                      connectorScene(i),
-                      "줄바꿈으로 세 역할 구분 — 앞줄부터 방점 / 승격 / 개방"
-                    )
-                  : hostRow(`br-${i}-none`, `연결 ${i + 1}→${i + 2}`, "대본 미생성", null))}
-            </li>
-          );
-        })}
-
-        {/* 엔딩 — 답 · (여운) · 구독 고정 문구 */}
-        {script && edit
-          ? [
-              hostRow("en-a", "엔딩 답", edit.pa, (v) => setEdit({ ...edit, pa: v }), closingScenes[0]),
-              hostRow(
-                "en-b",
-                "엔딩 여운",
-                edit.pb,
-                (v) => setEdit({ ...edit, pb: v }),
-                hasLanding ? closingScenes[1] : undefined,
-                "비워두는 게 기본입니다 — 투자 조언은 절대 넣지 않습니다"
-              ),
-              hostRow(
-                "en-c",
-                "구독",
-                script.ending.partCStandard,
-                null,
-                closingScenes[hasLanding ? 2 : 1],
-                "채널 고정 문구 — 고치지 않습니다"
-              ),
-            ]
-          : hostRow("en-none", "엔딩", "대본 미생성", null)}
-      </ol>
-
-      {/* 제작 도구 — 위 재생 순서가 뼈대이고, 이것들은 그 뼈대를 만드는 도구다.
-          기능은 그대로 두고 접기만 한다(기존 기능 삭제 금지). 아직 제목·대본이 없으면 펼쳐 둔다. */}
-      <details open={!confirmedTitle || !script} className="mt-5 group">
-        <summary className="cursor-pointer list-none rounded-xl border border-zinc-200 px-3 py-2 text-sm font-semibold hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900">
-          <span className="group-open:hidden">▸ </span>
-          <span className="hidden group-open:inline">▾ </span>
-          제작 도구
-          <span className="ml-1 text-[11px] font-normal text-zinc-500">
-            제목 · 진행자 대본 · 전체 다듬기 · 진행자 씬 · 썸네일
-          </span>
-        </summary>
-
       {/* [모듈 1] 롱폼 제목 — 검색 5원칙 */}
       <div className="mt-4 rounded-xl border border-accent/40 bg-accent/5 p-3">
         <div className="flex items-center justify-between gap-2">
@@ -1239,6 +1069,273 @@ export default function LongformStudio({
         </div>
       )}
 
+
+      {/* [모듈 5] 썸네일 */}
+      <div className="mt-4 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold">④ 썸네일</h2>
+          <button
+            onClick={genThumbnail}
+            disabled={thumbBusy || !confirmedTitle}
+            className="shrink-0 text-xs rounded-lg border border-accent px-3 py-1.5 text-accent hover:bg-accent/10 disabled:opacity-40"
+          >
+            {thumbBusy ? "생성 중…" : thumb ? "다시 생성" : "썸네일 생성"}
+          </button>
+        </div>
+        <p className="mt-1 text-[11px] text-zinc-500">
+          구도 3종으로 감정 실린 캐릭터 이미지를 만들고, 모듈 ①의 썸네일 문구를 후처리로 얹습니다(1280×720 JPG).
+          168px 축소본으로 소형 판독을 검증해요.
+        </p>
+        {!confirmedTitle && <p className="mt-2 text-[11px] text-amber-600">먼저 ① 제목을 확정해주세요.</p>}
+        {thumbErr && <p className="mt-2 text-[11px] text-red-600">{thumbErr}</p>}
+        {thumb && (
+          <div className="mt-2 grid gap-2">
+            <p className="text-[11px]">
+              <span className="font-semibold text-accent">글씨:</span> {thumb.textUsed}
+            </p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              {thumb.variants.map((v, i) => (
+                <div
+                  key={i}
+                  className={`rounded-lg border p-1.5 ${thumb.selected && thumb.selected === v.fileUrl ? "border-accent bg-accent/10" : "border-zinc-200 dark:border-zinc-800"}`}
+                >
+                  {v.fileUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={v.fileUrl} alt={`시안 ${i + 1}`} className="w-full rounded aspect-[16/9] object-cover" />
+                  ) : (
+                    <div className="aspect-[16/9] w-full rounded bg-zinc-100 dark:bg-zinc-900" />
+                  )}
+                  <p className="mt-1 text-[10px] text-zinc-500 line-clamp-2">{v.composition}</p>
+                  <div className="mt-1 flex items-center gap-1.5">
+                    {v.previewUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={v.previewUrl} alt="168px 검증본" width={84} className="rounded border border-zinc-300 dark:border-zinc-700" />
+                    )}
+                    <div className="flex flex-col gap-1">
+                      {v.fileUrl && (
+                        <a
+                          href={v.fileUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 text-[10px] hover:bg-zinc-100 dark:hover:bg-zinc-900"
+                        >
+                          ⬇ 원본
+                        </a>
+                      )}
+                      {v.fileUrl && (
+                        <button
+                          onClick={() => selectThumbnail(v.fileUrl!)}
+                          className="rounded-md bg-accent px-2 py-0.5 text-[10px] font-medium text-white hover:bg-accent-strong"
+                        >
+                          {thumb.selected === v.fileUrl ? "✓ 선택됨" : "선택"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {typeof v.strokePx === "number" && v.strokePx < 2 && (
+                    <p className="mt-1 text-[10px] text-amber-600">⚠ 168px에서 획이 얇아요({v.strokePx}px)</p>
+                  )}
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] text-zinc-500">
+              업로드할 때 유튜브 스튜디오 <b>테스트 및 비교</b>에 시안 3종을 걸어 시청 데이터로 승자를 고르세요(원칙 7).
+            </p>
+            {Object.keys(thumb.screening).length > 0 && (
+              <ul className="grid gap-0.5 text-[10px] text-zinc-500">
+                {Object.entries(thumb.screening).map(([k, v]) => (
+                  <li key={k} className={/탈락/.test(v) ? "text-red-600" : ""}>
+                    <b>{k}</b> — {v}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </div>
+
+
+      {/* ★ 재생 순서 = 이 화면의 뼈대. 오프닝 → 세그1 → 연결 → 세그2 → … → 엔딩 순으로,
+          진행자 구간은 씬 단위로 펼쳐 그 자리에서 대본을 고친다. 제목·썸네일 등 나머지 도구는
+          이 아래에 접어 둔다(사용자 지정 2026-07-26: 머릿속 구조가 곧 화면 구조여야 한다). */}
+      <div className="mt-4 flex items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold">
+          재생 순서 <span className="text-[11px] font-normal text-zinc-500">
+            (편 {readyCount}/{segs.length} · 진행자 씬 {hostVideoDone}/{hostScenes.length || 0})
+          </span>
+        </h2>
+        <div className="flex shrink-0 items-center gap-2">
+          {!script && (
+            <button
+              onClick={genScript}
+              disabled={scriptBusy || !confirmedTitle}
+              className="rounded-lg bg-accent px-2.5 py-1 text-[11px] font-medium text-white hover:bg-accent-strong disabled:opacity-40"
+              title={confirmedTitle ? "오프닝·연결·엔딩을 한 번에 씁니다" : "먼저 제목을 확정해주세요"}
+            >
+              {scriptBusy ? "쓰는 중…" : "진행자 말 만들기"}
+            </button>
+          )}
+          {script && edit && (
+            <button
+              onClick={saveScript}
+              disabled={scriptSaveBusy}
+              className="rounded-lg border border-zinc-300 px-2.5 py-1 text-[11px] font-medium hover:bg-zinc-50 disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-900"
+            >
+              {scriptSaveBusy ? "저장 중…" : "진행자 말 저장"}
+            </button>
+          )}
+          {script && (
+            <button
+              onClick={genHostScript}
+              disabled={hostBusy}
+              className="rounded-lg border border-accent/40 bg-accent/10 px-2.5 py-1 text-[11px] font-medium text-accent hover:bg-accent/15 disabled:opacity-40"
+              title="지금 대본으로 진행자 씬을 다시 펼칩니다(고친 말이 씬에 반영됩니다)"
+            >
+              {hostBusy ? "펼치는 중…" : hostScenes.length ? "진행자 씬 다시 펼치기" : "진행자 씬 만들기"}
+            </button>
+          )}
+        </div>
+      </div>
+      {(scriptErr || hostErr) && (
+        <p className="mt-1 text-[11px] text-red-600">{scriptErr || hostErr}</p>
+      )}
+      {!script && (
+        <p className="mt-1 text-[11px] text-amber-600">
+          {confirmedTitle
+            ? "진행자 말이 아직 없어요 — 위 “진행자 말 만들기”를 눌러주세요."
+            : "먼저 제목을 확정해주세요 — 제목이 약속한 궁금증이 오프닝·엔딩의 기준점이에요."}
+        </p>
+      )}
+      {promiseWarn.length > 0 && (
+        <div className="mt-1 rounded-lg border border-amber-300 bg-amber-50 p-2 dark:border-amber-800 dark:bg-amber-950/30">
+          <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">
+            제목이 약속한 궁금증을 다시 보세요
+          </p>
+          <ul className="mt-0.5 grid list-disc gap-0.5 pl-4 text-[11px] text-amber-700 dark:text-amber-400">
+            {promiseWarn.map((w, i) => (
+              <li key={i}>{w}</li>
+            ))}
+          </ul>
+          <p className="mt-0.5 text-[10px] text-amber-600">
+            이대로 두면 오프닝이 답을 미리 말하고 엔딩이 같은 말을 반복합니다.
+          </p>
+        </div>
+      )}
+
+      <ol className="mt-2 grid gap-1.5">
+        {/* 오프닝 — 씬 2개 */}
+        {script && edit
+          ? [
+              hostRow("op-a", "오프닝 1", edit.a, (v) => setEdit({ ...edit, a: v }), openingScenes[0]),
+              hostRow("op-b", "오프닝 2", edit.b, (v) => setEdit({ ...edit, b: v }), openingScenes[1]),
+            ]
+          : hostRow("op-none", "오프닝", "대본 미생성", null)}
+
+        {segs.map((s, i) => {
+          const isLast = i === segs.length - 1;
+          return (
+            <li key={s.id} className="grid gap-1.5">
+              <div className="flex items-center gap-2 rounded-xl border border-zinc-200 p-2 dark:border-zinc-800">
+                <div className="flex shrink-0 flex-col">
+                  <button
+                    onClick={() => moveSeg(i, -1)}
+                    disabled={i === 0 || reordering}
+                    aria-label="위로"
+                    className="text-[10px] leading-none text-zinc-500 hover:text-accent disabled:opacity-30"
+                  >
+                    ▲
+                  </button>
+                  <button
+                    onClick={() => moveSeg(i, 1)}
+                    disabled={isLast || reordering}
+                    aria-label="아래로"
+                    className="text-[10px] leading-none text-zinc-500 hover:text-accent disabled:opacity-30"
+                  >
+                    ▼
+                  </button>
+                </div>
+                <span className="shrink-0 rounded bg-zinc-200 px-1.5 py-0.5 text-[9px] font-bold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+                  {i + 1}편
+                </span>
+                <div className="h-10 w-16 shrink-0 overflow-hidden rounded bg-zinc-100 dark:bg-zinc-900">
+                  {s.keyframeUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={s.keyframeUrl} alt={s.title} className="h-full w-full object-cover" />
+                  ) : null}
+                </div>
+                <span className="line-clamp-2 flex-1 text-xs">{s.title}</span>
+                <span
+                  className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                    s.finalVideoUrl
+                      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                      : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                  }`}
+                >
+                  {s.finalVideoUrl ? "완성" : "미완성"}
+                </span>
+                <Link
+                  href={`/project/${s.id}`}
+                  className="shrink-0 rounded-md border border-zinc-300 px-2 py-0.5 text-[11px] hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                >
+                  편집
+                </Link>
+              </div>
+
+              {/* 연결 — 마지막 편 뒤엔 없다(엔딩으로 간다) */}
+              {!isLast &&
+                (script && edit && edit.bridges[i] !== undefined
+                  ? hostRow(
+                      `br-${i}`,
+                      `연결 ${i + 1}→${i + 2}`,
+                      edit.bridges[i],
+                      (v) => {
+                        const next = [...edit.bridges];
+                        next[i] = v;
+                        setEdit({ ...edit, bridges: next });
+                      },
+                      connectorScene(i),
+                      "줄바꿈으로 세 역할 구분 — 앞줄부터 방점 / 승격 / 개방"
+                    )
+                  : hostRow(`br-${i}-none`, `연결 ${i + 1}→${i + 2}`, "대본 미생성", null))}
+            </li>
+          );
+        })}
+
+        {/* 엔딩 — 답 · (여운) · 구독 고정 문구 */}
+        {script && edit
+          ? [
+              hostRow("en-a", "엔딩 답", edit.pa, (v) => setEdit({ ...edit, pa: v }), closingScenes[0]),
+              hostRow(
+                "en-b",
+                "엔딩 여운",
+                edit.pb,
+                (v) => setEdit({ ...edit, pb: v }),
+                hasLanding ? closingScenes[1] : undefined,
+                "비워두는 게 기본입니다 — 투자 조언은 절대 넣지 않습니다"
+              ),
+              hostRow(
+                "en-c",
+                "구독",
+                script.ending.partCStandard,
+                null,
+                closingScenes[hasLanding ? 2 : 1],
+                "채널 고정 문구 — 고치지 않습니다"
+              ),
+            ]
+          : hostRow("en-none", "엔딩", "대본 미생성", null)}
+      </ol>
+
+      {/* 손보기 도구 — 재생 순서 화면에서 바로 고치는 게 기본이고, 이 아래는 통째로
+          다시 만들거나 검수할 때만 연다(기능은 그대로 둔다 — 삭제 금지). */}
+      <details className="mt-5 group">
+        <summary className="cursor-pointer list-none rounded-xl border border-zinc-200 px-3 py-2 text-sm font-semibold hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900">
+          <span className="group-open:hidden">▸ </span>
+          <span className="hidden group-open:inline">▾ </span>
+          손보기 도구
+          <span className="ml-1 text-[11px] font-normal text-zinc-500">
+            진행자 말 다시 만들기 · 전체 다듬기 · 씬 펼치기
+          </span>
+        </summary>
       {/* [모듈 2~4] 대본 — 오프닝 2블록 · 세그먼트 순서 + 브리지 · 엔딩 3파트
           ★ 진행자 패널보다 반드시 위에 온다 — 진행자 씬은 이 대본을 펼치는 것이라
             "먼저 대본을 생성하라"고 안내하면서 그 버튼이 아래 있으면 안 된다(작업 순서 = 화면 순서). */}
@@ -1463,91 +1560,8 @@ export default function LongformStudio({
         )}
       </div>
 
-      {/* [모듈 5] 썸네일 */}
-      <div className="mt-4 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold">④ 썸네일</h2>
-          <button
-            onClick={genThumbnail}
-            disabled={thumbBusy || !confirmedTitle}
-            className="shrink-0 text-xs rounded-lg border border-accent px-3 py-1.5 text-accent hover:bg-accent/10 disabled:opacity-40"
-          >
-            {thumbBusy ? "생성 중…" : thumb ? "다시 생성" : "썸네일 생성"}
-          </button>
-        </div>
-        <p className="mt-1 text-[11px] text-zinc-500">
-          구도 3종으로 감정 실린 캐릭터 이미지를 만들고, 모듈 ①의 썸네일 문구를 후처리로 얹습니다(1280×720 JPG).
-          168px 축소본으로 소형 판독을 검증해요.
-        </p>
-        {!confirmedTitle && <p className="mt-2 text-[11px] text-amber-600">먼저 ① 제목을 확정해주세요.</p>}
-        {thumbErr && <p className="mt-2 text-[11px] text-red-600">{thumbErr}</p>}
-        {thumb && (
-          <div className="mt-2 grid gap-2">
-            <p className="text-[11px]">
-              <span className="font-semibold text-accent">글씨:</span> {thumb.textUsed}
-            </p>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-              {thumb.variants.map((v, i) => (
-                <div
-                  key={i}
-                  className={`rounded-lg border p-1.5 ${thumb.selected && thumb.selected === v.fileUrl ? "border-accent bg-accent/10" : "border-zinc-200 dark:border-zinc-800"}`}
-                >
-                  {v.fileUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={v.fileUrl} alt={`시안 ${i + 1}`} className="w-full rounded aspect-[16/9] object-cover" />
-                  ) : (
-                    <div className="aspect-[16/9] w-full rounded bg-zinc-100 dark:bg-zinc-900" />
-                  )}
-                  <p className="mt-1 text-[10px] text-zinc-500 line-clamp-2">{v.composition}</p>
-                  <div className="mt-1 flex items-center gap-1.5">
-                    {v.previewUrl && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={v.previewUrl} alt="168px 검증본" width={84} className="rounded border border-zinc-300 dark:border-zinc-700" />
-                    )}
-                    <div className="flex flex-col gap-1">
-                      {v.fileUrl && (
-                        <a
-                          href={v.fileUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 text-[10px] hover:bg-zinc-100 dark:hover:bg-zinc-900"
-                        >
-                          ⬇ 원본
-                        </a>
-                      )}
-                      {v.fileUrl && (
-                        <button
-                          onClick={() => selectThumbnail(v.fileUrl!)}
-                          className="rounded-md bg-accent px-2 py-0.5 text-[10px] font-medium text-white hover:bg-accent-strong"
-                        >
-                          {thumb.selected === v.fileUrl ? "✓ 선택됨" : "선택"}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  {typeof v.strokePx === "number" && v.strokePx < 2 && (
-                    <p className="mt-1 text-[10px] text-amber-600">⚠ 168px에서 획이 얇아요({v.strokePx}px)</p>
-                  )}
-                </div>
-              ))}
-            </div>
-            <p className="text-[10px] text-zinc-500">
-              업로드할 때 유튜브 스튜디오 <b>테스트 및 비교</b>에 시안 3종을 걸어 시청 데이터로 승자를 고르세요(원칙 7).
-            </p>
-            {Object.keys(thumb.screening).length > 0 && (
-              <ul className="grid gap-0.5 text-[10px] text-zinc-500">
-                {Object.entries(thumb.screening).map(([k, v]) => (
-                  <li key={k} className={/탈락/.test(v) ? "text-red-600" : ""}>
-                    <b>{k}</b> — {v}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-      </div>
-
       </details>
+
 
       {/* 합성 — 섹션이 있으면 섹션별 부분 합성 + 최종 이어붙이기, 없으면 레거시 단일 합성 */}
       {hasSections ? (
