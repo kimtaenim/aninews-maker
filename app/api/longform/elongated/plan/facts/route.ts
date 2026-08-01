@@ -64,6 +64,9 @@ export async function POST(req: NextRequest) {
     chapter: number;
     facts: Map<number, Omit<FactCard, "id">[]>; // 원래 대목 인덱스 → 사실
     missing: Map<number, string>;
+    // 호출 자체가 실패했는가. 실패는 "찾아봤는데 없음"과 다르다 — 찾은 것으로 표시하면
+    // 다시 찾기 대상에서 빠져 영영 빈 채로 남는다(실제로 그렇게 됐다).
+    failed: boolean;
   };
   const done: Done[] = [];
   let cursor = 0;
@@ -95,13 +98,15 @@ export async function POST(req: NextRequest) {
           const m = found.missing.get(k);
           if (m) missing.set(x.bi, m);
         });
-        done.push({ chapter: ci, facts, missing });
+        done.push({ chapter: ci, facts, missing, failed: !found.searched });
       } catch (e) {
+        // 호출 자체가 실패한 것은 "근거를 못 찾음"과 다르다 — 원문은 로그로, 화면엔 짧게.
+        const raw = e instanceof Error ? e.message : String(e);
+        console.error(`[elongated-facts] chapter ${ci} 실패:`, raw);
+        const short = `찾기 실패 — ${raw.slice(0, 120)}`;
         const missing = new Map<number, string>();
-        picked.forEach((x) =>
-          missing.set(x.bi, e instanceof Error ? e.message : "사실 찾기 실패")
-        );
-        done.push({ chapter: ci, facts: new Map(), missing });
+        picked.forEach((x) => missing.set(x.bi, short));
+        done.push({ chapter: ci, facts: new Map(), missing, failed: true });
       }
     }
   }
@@ -140,7 +145,8 @@ export async function POST(req: NextRequest) {
         ...b,
         factIds: idsByBlock.get(`${c.index}:${bi}`) ?? [],
         missing: d.missing.get(bi) || undefined,
-        searchedAt: now,
+        // 실패는 미검색으로 남긴다 — 다시 찾기 대상에서 빠지면 안 된다.
+        ...(d.failed ? {} : { searchedAt: now }),
       };
     });
     return { ...c, blocks };

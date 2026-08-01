@@ -25,12 +25,23 @@ interface SegInfo {
   finalVideoUrl?: string;
 }
 
+interface HostScene {
+  index: number;
+  hostSlot?: "opening" | "connector" | "closing";
+  connectorAfter?: number;
+  narration: string;
+  imageUrl?: string;
+  videoUrl?: string;
+  durationSec: number;
+}
+
 interface HostProject {
   id: string;
   title: string;
   keyframeUrl?: string;
   sceneCount: number;
   finalVideoUrl?: string;
+  scenes?: HostScene[];
 }
 
 // 롱폼 전용 화면 — 제작 파이프라인(모듈 1 제목 → 2~4 대본 → 5 썸네일)과 세그먼트 완성
@@ -590,6 +601,64 @@ export default function LongformStudio({
     }
   }
 
+  // ── 재생 순서 작업판 — 실제로 나가는 순서(오프닝 → 세그 → 연결 → … → 엔딩)가 화면의 뼈대다.
+  // 진행자 구간은 별도 프로젝트의 씬이라, 여기서 씬 단위로 상태를 같이 봐야 진행이 읽힌다.
+  const hostScenes = hostProject?.scenes ?? [];
+  const openingScenes = hostScenes.filter((s) => s.hostSlot === "opening");
+  const closingScenes = hostScenes.filter((s) => s.hostSlot === "closing");
+  const connectorScene = (i: number) =>
+    hostScenes.find((s) => s.hostSlot === "connector" && (s.connectorAfter ?? 0) === i);
+  const hostVideoDone = hostScenes.filter((s) => !!s.videoUrl).length;
+  // 엔딩 마지막 줄(구독)은 고정 문구다 — 여운이 비어 있으면 그 자리 씬이 없다(빈 씬을 안 만든다).
+  const hasLanding = !!script?.ending.partBLanding.trim();
+
+  // 진행자 한 줄 — 대본을 그 자리에서 고치고, 그 씬의 그림·영상 상태를 함께 본다.
+  const hostRow = (
+    key: string,
+    label: string,
+    value: string,
+    onChange: ((v: string) => void) | null,
+    scene?: HostScene,
+    note?: string
+  ) => (
+    <div
+      key={key}
+      className="ml-6 rounded-lg border border-dashed border-accent/40 bg-accent/[0.03] px-2 py-1.5"
+    >
+      <div className="flex items-center gap-2">
+        <span className="shrink-0 rounded bg-accent/15 px-1.5 py-0.5 text-[9px] font-bold text-accent">
+          {label}
+        </span>
+        <span className="flex-1 text-[10px] text-zinc-500">
+          {scene
+            ? `${scene.imageUrl ? "🖼" : "·"} ${scene.videoUrl ? "🎬" : "·"} ${scene.durationSec}s`
+            : script
+              ? "씬 미생성"
+              : "대본 미생성"}
+        </span>
+        {hostProject && scene && (
+          <Link
+            href={`/project/${hostProject.id}`}
+            className="shrink-0 text-[10px] text-zinc-500 underline hover:text-accent"
+          >
+            씬 편집
+          </Link>
+        )}
+      </div>
+      {onChange ? (
+        <textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          rows={2}
+          className="mt-1 w-full rounded-md border border-zinc-200 bg-transparent p-1.5 text-[11px] dark:border-zinc-800"
+        />
+      ) : (
+        <p className="mt-1 text-[11px] text-zinc-600 dark:text-zinc-300">{value}</p>
+      )}
+      {note && <p className="mt-0.5 text-[10px] text-zinc-400">{note}</p>}
+    </div>
+  );
+
   return (
     <main className="px-4 py-8 md:max-w-2xl md:mx-auto">
       <div className="flex items-center justify-between gap-2">
@@ -611,9 +680,163 @@ export default function LongformStudio({
         </div>
       </div>
       <p className="mt-2 text-xs text-zinc-500">
-        가로 16:9 롱폼 — 아래 세그먼트를 각각 완성한 뒤 <b>롱폼 합성</b>을 누르면 세그먼트 완성본을
-        순서대로 이어붙이고 사이·마지막에 진행자가 이어주고 구독을 유도합니다.
+        가로 16:9 롱폼 — 아래 순서 그대로 이어붙습니다. 칸마다 진행자 말을 고치고, 각 편은 편집에서 완성하세요.
       </p>
+
+      {/* ★ 재생 순서 = 이 화면의 뼈대. 오프닝 → 세그1 → 연결 → 세그2 → … → 엔딩 순으로,
+          진행자 구간은 씬 단위로 펼쳐 그 자리에서 대본을 고친다. 제목·썸네일 등 나머지 도구는
+          이 아래에 접어 둔다(사용자 지정 2026-07-26: 머릿속 구조가 곧 화면 구조여야 한다). */}
+      <div className="mt-4 flex items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold">
+          재생 순서 <span className="text-[11px] font-normal text-zinc-500">
+            (편 {readyCount}/{segs.length} · 진행자 씬 {hostVideoDone}/{hostScenes.length || 0})
+          </span>
+        </h2>
+        <div className="flex shrink-0 items-center gap-2">
+          {script && edit && (
+            <button
+              onClick={saveScript}
+              disabled={scriptSaveBusy}
+              className="rounded-lg border border-zinc-300 px-2.5 py-1 text-[11px] font-medium hover:bg-zinc-50 disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-900"
+            >
+              {scriptSaveBusy ? "저장 중…" : "진행자 말 저장"}
+            </button>
+          )}
+          {script && (
+            <button
+              onClick={genHostScript}
+              disabled={hostBusy}
+              className="rounded-lg border border-accent/40 bg-accent/10 px-2.5 py-1 text-[11px] font-medium text-accent hover:bg-accent/15 disabled:opacity-40"
+              title="지금 대본으로 진행자 씬을 다시 펼칩니다(고친 말이 씬에 반영됩니다)"
+            >
+              {hostBusy ? "펼치는 중…" : hostScenes.length ? "진행자 씬 다시 펼치기" : "진행자 씬 만들기"}
+            </button>
+          )}
+        </div>
+      </div>
+      {(scriptErr || hostErr) && (
+        <p className="mt-1 text-[11px] text-red-600">{scriptErr || hostErr}</p>
+      )}
+      {!script && (
+        <p className="mt-1 text-[11px] text-amber-600">
+          진행자 말이 아직 없어요 — 아래 <b>진행자 대본</b>에서 먼저 만들어주세요.
+        </p>
+      )}
+
+      <ol className="mt-2 grid gap-1.5">
+        {/* 오프닝 — 씬 2개 */}
+        {script && edit
+          ? [
+              hostRow("op-a", "오프닝 1", edit.a, (v) => setEdit({ ...edit, a: v }), openingScenes[0]),
+              hostRow("op-b", "오프닝 2", edit.b, (v) => setEdit({ ...edit, b: v }), openingScenes[1]),
+            ]
+          : hostRow("op-none", "오프닝", "대본 미생성", null)}
+
+        {segs.map((s, i) => {
+          const isLast = i === segs.length - 1;
+          return (
+            <li key={s.id} className="grid gap-1.5">
+              <div className="flex items-center gap-2 rounded-xl border border-zinc-200 p-2 dark:border-zinc-800">
+                <div className="flex shrink-0 flex-col">
+                  <button
+                    onClick={() => moveSeg(i, -1)}
+                    disabled={i === 0 || reordering}
+                    aria-label="위로"
+                    className="text-[10px] leading-none text-zinc-500 hover:text-accent disabled:opacity-30"
+                  >
+                    ▲
+                  </button>
+                  <button
+                    onClick={() => moveSeg(i, 1)}
+                    disabled={isLast || reordering}
+                    aria-label="아래로"
+                    className="text-[10px] leading-none text-zinc-500 hover:text-accent disabled:opacity-30"
+                  >
+                    ▼
+                  </button>
+                </div>
+                <span className="shrink-0 rounded bg-zinc-200 px-1.5 py-0.5 text-[9px] font-bold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+                  {i + 1}편
+                </span>
+                <div className="h-10 w-16 shrink-0 overflow-hidden rounded bg-zinc-100 dark:bg-zinc-900">
+                  {s.keyframeUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={s.keyframeUrl} alt={s.title} className="h-full w-full object-cover" />
+                  ) : null}
+                </div>
+                <span className="line-clamp-2 flex-1 text-xs">{s.title}</span>
+                <span
+                  className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                    s.finalVideoUrl
+                      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                      : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                  }`}
+                >
+                  {s.finalVideoUrl ? "완성" : "미완성"}
+                </span>
+                <Link
+                  href={`/project/${s.id}`}
+                  className="shrink-0 rounded-md border border-zinc-300 px-2 py-0.5 text-[11px] hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                >
+                  편집
+                </Link>
+              </div>
+
+              {/* 연결 — 마지막 편 뒤엔 없다(엔딩으로 간다) */}
+              {!isLast &&
+                (script && edit && edit.bridges[i] !== undefined
+                  ? hostRow(
+                      `br-${i}`,
+                      `연결 ${i + 1}→${i + 2}`,
+                      edit.bridges[i],
+                      (v) => {
+                        const next = [...edit.bridges];
+                        next[i] = v;
+                        setEdit({ ...edit, bridges: next });
+                      },
+                      connectorScene(i),
+                      "줄바꿈으로 세 역할 구분 — 앞줄부터 방점 / 승격 / 개방"
+                    )
+                  : hostRow(`br-${i}-none`, `연결 ${i + 1}→${i + 2}`, "대본 미생성", null))}
+            </li>
+          );
+        })}
+
+        {/* 엔딩 — 답 · (여운) · 구독 고정 문구 */}
+        {script && edit
+          ? [
+              hostRow("en-a", "엔딩 답", edit.pa, (v) => setEdit({ ...edit, pa: v }), closingScenes[0]),
+              hostRow(
+                "en-b",
+                "엔딩 여운",
+                edit.pb,
+                (v) => setEdit({ ...edit, pb: v }),
+                hasLanding ? closingScenes[1] : undefined,
+                "비워두는 게 기본입니다 — 투자 조언은 절대 넣지 않습니다"
+              ),
+              hostRow(
+                "en-c",
+                "구독",
+                script.ending.partCStandard,
+                null,
+                closingScenes[hasLanding ? 2 : 1],
+                "채널 고정 문구 — 고치지 않습니다"
+              ),
+            ]
+          : hostRow("en-none", "엔딩", "대본 미생성", null)}
+      </ol>
+
+      {/* 제작 도구 — 위 재생 순서가 뼈대이고, 이것들은 그 뼈대를 만드는 도구다.
+          기능은 그대로 두고 접기만 한다(기존 기능 삭제 금지). 아직 제목·대본이 없으면 펼쳐 둔다. */}
+      <details open={!confirmedTitle || !script} className="mt-5 group">
+        <summary className="cursor-pointer list-none rounded-xl border border-zinc-200 px-3 py-2 text-sm font-semibold hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900">
+          <span className="group-open:hidden">▸ </span>
+          <span className="hidden group-open:inline">▾ </span>
+          제작 도구
+          <span className="ml-1 text-[11px] font-normal text-zinc-500">
+            제목 · 진행자 대본 · 전체 다듬기 · 진행자 씬 · 썸네일
+          </span>
+        </summary>
 
       {/* [모듈 1] 롱폼 제목 — 검색 5원칙 */}
       <div className="mt-4 rounded-xl border border-accent/40 bg-accent/5 p-3">
@@ -1305,122 +1528,7 @@ export default function LongformStudio({
         )}
       </div>
 
-      {/* 재생 순서 타임라인 — 오프닝 → 세그1 → 연결1/2 → 세그2 → … → 마지막 세그 → 엔딩.
-          실제 영상이 나가는 순서 그대로 보여준다(세그먼트 목록만 따로 보면 순서가 안 보임). */}
-      <div className="mt-5 flex items-center justify-between">
-        <h2 className="text-sm font-semibold">재생 순서 ({readyCount}/{segs.length} 세그먼트 완성)</h2>
-        {script && (
-          <span className="text-[10px] text-zinc-500">
-            진행자 오프닝 {script.opening.estSeconds}s · 엔딩 {script.ending.estSeconds}s
-          </span>
-        )}
-      </div>
-      <ol className="mt-2 grid gap-1.5">
-        {/* 오프닝 */}
-        <li className="flex items-center gap-2 rounded-xl border border-accent/40 bg-accent/5 p-2">
-          <span className="shrink-0 rounded bg-accent px-1.5 py-0.5 text-[9px] font-bold text-white">
-            오프닝
-          </span>
-          <span className="flex-1 text-[11px] line-clamp-2 text-zinc-600 dark:text-zinc-300">
-            {script ? `${script.opening.blockAHook} ${script.opening.blockBRoadmapLanding}` : "대본 미생성"}
-          </span>
-          {script && (
-            <span className="shrink-0 text-[10px] text-zinc-500">{script.opening.estSeconds}s</span>
-          )}
-        </li>
-
-        {segs.map((s, i) => {
-          const bridge = script?.bridges.find((b) => b.afterSegment === i);
-          const isLast = i === segs.length - 1;
-          return (
-            <li key={s.id} className="grid gap-1.5">
-              {/* 세그먼트 */}
-              <div className="flex items-center gap-2 rounded-xl border border-zinc-200 dark:border-zinc-800 p-2">
-                <div className="flex flex-col shrink-0">
-                  <button
-                    onClick={() => moveSeg(i, -1)}
-                    disabled={i === 0 || reordering}
-                    aria-label="위로"
-                    className="leading-none text-[10px] text-zinc-500 hover:text-accent disabled:opacity-30"
-                  >
-                    ▲
-                  </button>
-                  <button
-                    onClick={() => moveSeg(i, 1)}
-                    disabled={isLast || reordering}
-                    aria-label="아래로"
-                    className="leading-none text-[10px] text-zinc-500 hover:text-accent disabled:opacity-30"
-                  >
-                    ▼
-                  </button>
-                </div>
-                <span className="shrink-0 rounded bg-zinc-200 dark:bg-zinc-800 px-1.5 py-0.5 text-[9px] font-bold text-zinc-600 dark:text-zinc-300">
-                  세그 {i + 1}
-                </span>
-                <div className="h-10 w-16 shrink-0 overflow-hidden rounded bg-zinc-100 dark:bg-zinc-900">
-                  {s.keyframeUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={s.keyframeUrl} alt={s.title} className="h-full w-full object-cover" />
-                  ) : null}
-                </div>
-                <span className="flex-1 text-xs line-clamp-2">{s.title}</span>
-                <span
-                  className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                    s.finalVideoUrl
-                      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                      : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                  }`}
-                >
-                  {s.finalVideoUrl ? "완성" : "미완성"}
-                </span>
-                <Link
-                  href={`/project/${s.id}`}
-                  className="shrink-0 text-[11px] rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-900"
-                >
-                  편집
-                </Link>
-              </div>
-
-              {/* 연결 i/i+1 — 마지막 세그먼트 뒤엔 연결이 없다(엔딩으로 간다) */}
-              {!isLast && (
-                <div className="ml-6 flex items-center gap-2 rounded-lg border border-dashed border-accent/40 bg-accent/[0.03] px-2 py-1.5">
-                  <span className="shrink-0 rounded bg-accent/15 px-1.5 py-0.5 text-[9px] font-bold text-accent">
-                    연결 {i + 1}/{i + 2}
-                  </span>
-                  <span className="flex-1 text-[11px] line-clamp-1 text-zinc-600 dark:text-zinc-300">
-                    {bridge
-                      ? [bridge.emphasis, bridge.elevation, bridge.opening].filter(Boolean).join(" ")
-                      : "대본 미생성"}
-                  </span>
-                  {bridge?.isMidpointReopen && (
-                    <span className="shrink-0 text-[9px] text-accent">🔁 고리 환기</span>
-                  )}
-                  {bridge && (
-                    <span className="shrink-0 text-[10px] text-zinc-500">
-                      {bridgeSeconds(bridge)}s
-                    </span>
-                  )}
-                </div>
-              )}
-            </li>
-          );
-        })}
-
-        {/* 엔딩 */}
-        <li className="flex items-center gap-2 rounded-xl border border-accent/40 bg-accent/5 p-2">
-          <span className="shrink-0 rounded bg-accent px-1.5 py-0.5 text-[9px] font-bold text-white">
-            엔딩
-          </span>
-          <span className="flex-1 text-[11px] line-clamp-2 text-zinc-600 dark:text-zinc-300">
-            {script
-              ? `${script.ending.partAClose} ${script.ending.partBLanding} ${script.ending.partCStandard}`
-              : "대본 미생성"}
-          </span>
-          {script && (
-            <span className="shrink-0 text-[10px] text-zinc-500">{script.ending.estSeconds}s</span>
-          )}
-        </li>
-      </ol>
+      </details>
 
       {/* 합성 — 섹션이 있으면 섹션별 부분 합성 + 최종 이어붙이기, 없으면 레거시 단일 합성 */}
       {hasSections ? (

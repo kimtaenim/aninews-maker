@@ -25,15 +25,20 @@ import {
 // 단계에서 표시·미세조정에 쓴다.
 export default async function ProjectStudioPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ stage?: string }>;
 }) {
   const { id } = await params;
+  const { stage } = await searchParams;
   const project = await getProject(id);
   if (!project) notFound();
 
   // 확장판 — 쇼츠 한 편을 늘린 롱폼. 세그먼트가 없고 elongated 트랙을 갖는다. 전용 화면으로.
-  if (isElongated(project)) {
+  // ?stage=render 면 그림·영상·합성을 하려는 것이므로 기존 스튜디오를 그대로 띄운다
+  // (확장판 전용 렌더 경로를 만들지 않는다 — 씬만 펼쳐 주고 그 뒤는 기존 파이프라인).
+  if (isElongated(project) && stage !== "render") {
     const track = project.elongated!;
     const source = await getProject(track.sourceProjectId);
     const sourceScenes = (source?.scenes ?? [])
@@ -53,6 +58,7 @@ export default async function ProjectStudioPage({
           track.targetSec,
           track.plan?.chapters.length ?? chapterCount(track.targetSec, sourceScenes.length)
         )}
+        sceneCount={(project.scenes ?? []).length}
         estimate={estimateElongatedCost(track.targetSec)}
         estimatesByPreset={Object.fromEntries(
           PRESETS.map((p) => [p.targetSec, estimateElongatedCost(p.targetSec)])
@@ -86,6 +92,17 @@ export default async function ProjectStudioPage({
           keyframeUrl: host.keyframeUrl,
           sceneCount: (host.scenes ?? []).length,
           finalVideoUrl: host.finalVideoUrl,
+          // 재생 순서 화면이 진행자 구간을 씬 단위로 그린다 — 어느 씬이 그림·영상까지
+          // 됐는지 여기서 보여야 세그먼트와 같은 눈으로 진행 상황이 읽힌다.
+          scenes: (host.scenes ?? []).map((s) => ({
+            index: s.index,
+            hostSlot: s.hostSlot,
+            connectorAfter: s.connectorAfter,
+            narration: s.narration,
+            imageUrl: s.imageUrl,
+            videoUrl: s.videoUrl,
+            durationSec: s.durationSec,
+          })),
         }
       : null;
     return (

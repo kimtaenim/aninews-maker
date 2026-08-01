@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProject, saveProject } from "@/lib/projectStore";
 import { bodyChars, generateChapterBody } from "@/lib/elongatedBody";
+import { elongatedSourceScenes } from "@/lib/elongated";
 import type { ElongatedPlan, Project } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
       { status: 422 }
     );
   }
-  const sourceScenes = source.scenes.filter((s) => !s.skipped).map((s) => s.narration ?? "");
+  const sourceScenes = elongatedSourceScenes(source.scenes).map((s) => s.narration ?? "");
 
   const targets =
     body.all === true

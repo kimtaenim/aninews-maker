@@ -21,7 +21,8 @@ import {
 } from "./cost";
 import { estimateCost, type CostRates, type ElongatedCostEstimate } from "./elongatedFormat";
 import { emptySteps } from "./projectStore";
-import type { ElongatedTrack, FactCard, Project, StepKind, StepState } from "./types";
+import { hasSubscribeOutro } from "./outro";
+import type { ElongatedTrack, FactCard, Project, Scene, StepKind, StepState } from "./types";
 
 export interface ElongatedPreset {
   name: string;
@@ -40,8 +41,10 @@ interface RawConfig {
   min_completion: number;
   chapter_target_sec: number;
   chapter_min_count: number;
-  search_max_uses: number;
+  search_max_uses_per_block: number;
+  search_max_uses_cap: number;
   fact_model: "haiku" | "sonnet" | "opus";
+  fact_extract_model: "haiku" | "sonnet" | "opus";
   chapter_length_tolerance: number;
   target_length_tolerance: number;
   block_types: { id: string; desc: string }[];
@@ -61,16 +64,31 @@ export const BLOCK_TYPE_IDS: string[] = cfg.block_types.map((b) => b.id);
 export const REQUIRED_BLOCK: string = cfg.required_block;
 export const GRADES: string[] = cfg.grades;
 export const CHAPTER_TOLERANCE = cfg.chapter_length_tolerance;
-export const SEARCH_MAX_USES = cfg.search_max_uses;
-// 사실 수집에 쓸 모델 — 수집은 판단이 아니라 옮겨 적기라 기본은 가장 싼 것.
-export const FACT_MODEL: "haiku" | "sonnet" | "opus" = cfg.fact_model ?? "haiku";
+/** 챕터 하나의 검색 예산 — 대목 수에 비례하되 상한을 둔다(너무 조이면 카드가 0건이 된다). */
+export function searchBudget(blockCount: number): number {
+  return Math.max(1, Math.min(cfg.search_max_uses_cap, blockCount * cfg.search_max_uses_per_block));
+}
+// ★ 웹 검색을 도는 모델은 haiku 가 될 수 없다 — web_search 도구를 지원하지 않아 400 이 난다.
+export const FACT_MODEL: "haiku" | "sonnet" | "opus" = cfg.fact_model ?? "sonnet";
+// 검색 결과를 JSON 으로 옮겨 적기만 하는 2차 호출 — 도구가 없어 haiku 로 충분하다.
+export const FACT_EXTRACT_MODEL: "haiku" | "sonnet" | "opus" = cfg.fact_extract_model ?? "haiku";
 export const TARGET_TOLERANCE = cfg.target_length_tolerance;
 
 // ── 길이 계산 ────────────────────────────────────────────────────────────────
 
-/** 원본 쇼츠의 낭독 길이(초) — 씬 나레이션 글자 수 기준(건너뛴 씬 제외). */
-export function sourceSeconds(scenes: { narration?: string; skipped?: boolean }[]): number {
-  return speakSeconds(...(scenes ?? []).filter((s) => !s.skipped).map((s) => s.narration ?? ""));
+/**
+ * 확장판이 읽을 원본 씬들 — 건너뛴 씬과 구독 마무리 씬을 뺀다.
+ * 구독 마무리는 롱폼 끝에 따로 붙는 것이라 챕터로 만들면 안 된다(컴필레이션의 buildSegment 와
+ * 같은 규칙). 실제로 이걸 안 뺐더니 32자짜리 "마무리" 챕터가 생겨 챕터 균등 검수에 걸렸다.
+ */
+export function elongatedSourceScenes(scenes: Scene[]): Scene[] {
+  const live = (scenes ?? []).filter((s) => !s.skipped);
+  return hasSubscribeOutro(live) ? live.slice(0, -1) : live;
+}
+
+/** 원본 쇼츠의 낭독 길이(초) — 씬 나레이션 글자 수 기준(건너뛴 씬·구독 마무리 제외). */
+export function sourceSeconds(scenes: Scene[]): number {
+  return speakSeconds(...elongatedSourceScenes(scenes).map((s) => s.narration ?? ""));
 }
 
 // 배수·초 표기·비용 계산은 클라이언트도 쓰므로 순수 모듈에 두고 여기서 다시 내보낸다.

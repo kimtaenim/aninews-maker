@@ -17,11 +17,13 @@
   "chapter_target_sec": 110,
   "chapter_min_count": 3,
 
-  "_comment_search": "챕터 하나의 사실을 찾을 때 쓸 웹 검색 횟수 상한. 검색 결과가 토큰으로 들어와 매 턴 재전송되므로 이 값이 비용의 주범이다(실측 2026-07-26).",
-  "search_max_uses": 2,
+  "_comment_search": "검색 횟수 상한 — 덧붙일 대목 하나당 몇 번까지, 챕터 전체로 몇 번까지. 검색 결과가 토큰으로 들어와 매 턴 재전송되므로 이 값이 비용의 주범이다. 다만 너무 조이면 모델이 '검색 불가'를 내고 카드가 0건이 된다(챕터당 2회로 묶었더니 실제로 그랬다 — 2026-07-26).",
+  "search_max_uses_per_block": 2,
+  "search_max_uses_cap": 6,
 
-  "_comment_fact_model": "사실 수집·정리에 쓸 모델(haiku | sonnet | opus). 수집은 판단이 아니라 옮겨 적기라 haiku 로 충분하다. 단가가 sonnet 의 1/3(입력 $1 vs $3 / 100만 토큰). 카드 품질이 떨어지면 sonnet 으로 올린다.",
-  "fact_model": "haiku",
+  "_comment_fact_model": "웹 검색을 도는 모델. ★haiku 는 web_search 도구를 못 쓴다 — 400 invalid_request 로 전부 실패한다(2026-07-26 실측). sonnet 또는 opus 만 쓸 것. 검색 결과를 JSON 으로 옮겨 적는 2차 호출은 도구가 없어서 fact_extract_model 로 따로 싸게 돌린다.",
+  "fact_model": "sonnet",
+  "fact_extract_model": "haiku",
 
   "chapter_length_tolerance": 0.3,
   "target_length_tolerance": 0.2,

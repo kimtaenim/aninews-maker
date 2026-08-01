@@ -56,6 +56,26 @@ export function norm(s: string): string {
   return (s ?? "").replace(/[\s,]/g, "").toLowerCase();
 }
 
+const ESCAPE = /[.*+?^${}()|[\]\\]/g;
+
+/**
+ * 토큰이 그 텍스트에 있는가.
+ * 숫자는 본문이 반올림해 쓰는 게 자연스럽다 — 카드가 "3,992.44달러"인데 본문이 "3,992달러"라고
+ * 쓴 것을 불일치로 잡으면 안 된다(실측에서 실제로 나왔다). 그래서 숫자+단위 토큰은
+ * "같은 숫자로 시작하고 소수점 이하만 더 있으며 단위가 같은" 경우까지 일치로 본다.
+ * 단위 바로 뒤가 다른 숫자면 매칭되지 않으므로 35달러가 350달러에 걸리지는 않는다.
+ */
+export function matchesText(token: string, text: string): boolean {
+  const t = norm(token);
+  if (!t) return false;
+  if (text.includes(t)) return true;
+  const m = /^(\d+(?:\.\d+)?)(.*)$/.exec(t);
+  if (!m) return false;
+  const [, digits, unit] = m;
+  const re = new RegExp(`${digits.replace(ESCAPE, "\\$&")}(?:\\.\\d+)?${unit.replace(ESCAPE, "\\$&")}`);
+  return re.test(text);
+}
+
 // 대조에서 뺄 것 — 숫자 하나짜리(순서·개수 표현)와 흔한 라틴 조각.
 const TRIVIAL_LATIN = new Set(["ai", "it", "tv", "us", "uk", "eu", "ok", "vs", "no"]);
 function isTrivial(token: string): boolean {
@@ -127,11 +147,10 @@ export function runFactCheck(input: FactCheckInput): ElongatedFactCheckItem[] {
         ids.map((id) => cardById.get(id)?.fact ?? "").join(" ")
       );
       for (const token of extractTokens(sentence)) {
-        const k = norm(token);
         // 원본이 이미 한 말이면 통과 — 원본 대본은 확정된 사실 기반이다.
-        if (sourceText.includes(k)) continue;
-        if (citedText.includes(k)) continue;
-        const elsewhere = allCardsText.includes(k);
+        if (matchesText(token, sourceText)) continue;
+        if (matchesText(token, citedText)) continue;
+        const elsewhere = matchesText(token, allCardsText);
         items.push({
           chapter: c.index,
           sentence: sentence.replace(CARD_REF, "").trim(),

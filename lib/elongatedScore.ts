@@ -73,13 +73,21 @@ function gradedFacts(plan: ElongatedPlan, sourceScenes: string[]): { pass: boole
       };
 }
 
-/** ⑤ 시황·전망·투자 조언 문장이 없는가 — 쇼츠와 같은 금지 규칙을 그대로 쓴다. */
+/**
+ * ⑤ 시황·전망·투자 조언 문장이 없는가 — 쇼츠와 같은 금지 규칙을 그대로 쓴다.
+ * 단 "시점 표현"은 뺀다. 쇼츠에서 연도를 금지하는 이유는 영상이 낡아 보이기 때문인데,
+ * 확장판 본문은 사실 카드가 말하는 과거 사건의 연도를 인용해야 한다(그게 근거다).
+ * 실측에서 카드 인용 연도가 전부 탈락으로 잡혔다 — 항목 이름도 "시황·전망"이지 시점이 아니다.
+ */
+const SKIP_LABELS = new Set(["시점 표현"]);
+
 function noForecast(plan: ElongatedPlan): { pass: boolean; evidence: string } {
   const hits: string[] = [];
   for (const c of plan.chapters) {
     const body = stripCardRefs(c.body ?? "");
     if (!body) continue;
     for (const b of BANNED) {
+      if (SKIP_LABELS.has(b.label)) continue;
       const m = b.re.exec(body);
       if (m) hits.push(`${c.index}번 ${b.label}("${m[0]}")`);
     }

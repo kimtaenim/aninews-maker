@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getProject, saveProject } from "@/lib/projectStore";
 import { runFactCheck } from "@/lib/elongatedFactCheck";
 import { scoreElongated } from "@/lib/elongatedScore";
+import { elongatedSourceScenes } from "@/lib/elongated";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest) {
   }
 
   const source = await getProject(track.sourceProjectId);
-  const sourceScenes = (source?.scenes ?? []).filter((s) => !s.skipped).map((s) => s.narration ?? "");
+  const sourceScenes = elongatedSourceScenes(source?.scenes ?? []).map((s) => s.narration ?? "");
 
   try {
     const now = Date.now();

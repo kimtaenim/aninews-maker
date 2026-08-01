@@ -118,6 +118,52 @@ console.log("\n[6-2] 근거 표시가 다음 문장 머리로 밀려도 앞 문�
   ok("불일치 0건", items.length === 0, items);
 }
 
+console.log("\n[6-3] 근거 표시 하나가 앞 문장 여러 개를 받친다(실측에서 나온 형태)");
+{
+  const items = runFactCheck({
+    chapters: [
+      chapter(
+        "사실 이런 일이 처음은 아니에요. 1944년에 금 1온스를 35달러에 묶었죠. 금이 돈의 닻이던 시절이에요. [F-001]"
+      ),
+    ],
+    facts: FACTS,
+    sourceScenes: SOURCE,
+  });
+  ok("불일치 0건", items.length === 0, items);
+}
+
+console.log("\n[6-4] 근거 표시 뒤에 나온 새 숫자는 그 표시로 덮이지 않는다");
+{
+  const items = runFactCheck({
+    chapters: [chapter("1944년에 35달러에 묶었어요. [F-001] 그리고 42만 건이 몰렸어요.")],
+    facts: FACTS,
+    sourceScenes: SOURCE,
+  });
+  ok("42만 건을 잡는다", items.some((i) => norm(i.token).includes("42만")), items);
+}
+
+console.log("\n[6-5] 본문이 반올림해 써도 일치로 본다(카드 3,992.44달러 vs 본문 3,992달러)");
+{
+  const facts = [card("F-009", "금 현물은 온스당 3,992.44달러로 마감했다.")];
+  const items = runFactCheck({
+    chapters: [chapter("온스당 3,992달러까지 내려앉았어요. [F-009]")],
+    facts,
+    sourceScenes: SOURCE,
+  });
+  ok("불일치 0건", items.length === 0, items);
+}
+
+console.log("\n[6-6] 자릿수가 다른 숫자는 여전히 잡는다(35달러 vs 350달러)");
+{
+  const facts = [card("F-020", "금 1온스를 350달러에 고정했다.")];
+  const items = runFactCheck({
+    chapters: [chapter("금 1온스를 35달러에 묶었어요. [F-020]")],
+    facts,
+    sourceScenes: [],
+  });
+  ok("35달러를 잡는다", items.some((i) => norm(i.token) === "35달러"), items);
+}
+
 console.log("\n[7] 토큰 추출 — 쉼표·단위·라틴 고유명사");
 {
   const t = extractTokens("ASML 이 5,594달러에서 28%가 빠졌어요. [F-002]");

@@ -38,6 +38,7 @@ export default function ElongatedStudio({
   estimatesByPreset,
   spentKrw,
   chapterBudget,
+  sceneCount,
 }: {
   project: { id: string; title: string };
   track: ElongatedTrack;
@@ -50,6 +51,7 @@ export default function ElongatedStudio({
   estimatesByPreset: Record<number, CostEstimate>; // targetSec → 예상비(프리셋 칩에 표시)
   spentKrw: string; // 지금까지 쓴 돈(서버 계산 초기값)
   chapterBudget: number; // 챕터 하나의 목표 글자 수(초과 시 빨간 표시)
+  sceneCount: number; // 이미 펼쳐 둔 씬 수(0이면 아직 렌더로 안 보냈다)
 }) {
   const router = useRouter();
 
@@ -121,6 +123,7 @@ export default function ElongatedStudio({
   const [approveBusy, setApproveBusy] = useState(false);
   const [togglingBusy, setTogglingBusy] = useState(false);
   const [planErr, setPlanErr] = useState("");
+  const [planWarn, setPlanWarn] = useState<string[]>([]);
 
   // 아직 사실을 안 찾은 대목(켜 둔 것만) — 사실 찾기가 돌 대상.
   const pending = useMemo(
@@ -200,6 +203,8 @@ export default function ElongatedStudio({
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok || !d.ok) throw new Error(d.error || "확장 설계 실패");
+      // 투자 조언 톤이 남았으면 승인 전에 보여준다(다시 설계하거나 그 대목을 끄면 된다).
+      setPlanWarn(Array.isArray(d.violations) ? (d.violations as string[]) : []);
       router.refresh();
       void refreshCost();
     } catch (e) {
@@ -313,6 +318,46 @@ export default function ElongatedStudio({
       setCheckErr(e instanceof Error ? e.message : "검수 실패");
     } finally {
       setCheckBusy("");
+    }
+  }
+
+  // ── ⑥ 렌더로 보내기 ──
+  interface ExpiringCard {
+    id: string;
+    fact: string;
+    sourceName: string;
+    sourceUrl: string;
+    sourceDate: string;
+    fetchedAt: string;
+  }
+  const [sendBusy, setSendBusy] = useState(false);
+  const [sendErr, setSendErr] = useState("");
+  const [confirmList, setConfirmList] = useState<ExpiringCard[] | null>(null);
+
+  async function sendToRender(confirmed: boolean) {
+    setSendBusy(true);
+    setSendErr("");
+    try {
+      const r = await fetch("/api/longform/elongated/scenes", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          projectId: project.id,
+          ...(confirmed ? { confirmedExpiring: true } : {}),
+        }),
+      });
+      const d = await r.json().catch(() => ({}));
+      // 재확인이 필요한 사실이 있으면 목록을 먼저 띄운다(동의 없이 넘기지 않는다).
+      if (r.status === 409 && d?.needsConfirm) {
+        setConfirmList(d.expiring as ExpiringCard[]);
+        return;
+      }
+      if (!r.ok || !d.ok) throw new Error(d.error || "렌더로 보내기 실패");
+      router.refresh();
+    } catch (e) {
+      setSendErr(e instanceof Error ? e.message : "렌더로 보내기 실패");
+    } finally {
+      setSendBusy(false);
     }
   }
 
@@ -607,6 +652,13 @@ export default function ElongatedStudio({
               </ul>
             </details>
 
+            {planWarn.length > 0 && (
+              <p className="text-[11px] text-red-600">
+                투자 조언 톤이 남았어요 — {planWarn.join(", ")}. 그 대목의 체크를 풀거나 다시
+                설계해 주세요.
+              </p>
+            )}
+
             {/* 사실 찾기 — 대목 하나씩 웹에서 확인 */}
             {pending.length > 0 && (
               <div className="flex items-center gap-2">
@@ -823,10 +875,78 @@ export default function ElongatedStudio({
         {checkErr && <p className="mt-2 text-xs text-red-600">{checkErr}</p>}
       </section>
 
-      {/* ⑥ 렌더로 보내기 — 이어서 붙습니다 */}
-      <p className="mt-6 text-center text-[11px] text-zinc-400">
-        다음 단계(렌더로 보내기)는 이어서 붙습니다.
-      </p>
+      {/* ── ⑥ 렌더로 보내기 ── */}
+      <section className="mt-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 px-3 py-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold">⑥ 렌더로 보내기</h2>
+          <button
+            type="button"
+            onClick={() => sendToRender(false)}
+            disabled={sendBusy || written === 0 || written < (plan?.chapters.length ?? 0)}
+            className="rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white text-xs font-medium px-3 py-1.5"
+          >
+            {sendBusy ? "보내는 중…" : sceneCount > 0 ? "씬 다시 만들기" : "렌더로 보내기"}
+          </button>
+        </div>
+        <p className="mt-1.5 text-[11px] text-zinc-500">
+          본문을 4~7초 씬으로 나눠 그림·영상·목소리 화면으로 넘겨요. 근거 표시는 여기서 지워집니다.
+        </p>
+        {sceneCount > 0 && (
+          <p className="mt-2 text-xs">
+            씬 {sceneCount}개 준비됨 ·{" "}
+            <Link href={`/project/${project.id}?stage=render`} className="text-accent underline">
+              그림·영상·합성 화면으로
+            </Link>
+          </p>
+        )}
+        {sendErr && <p className="mt-2 text-xs text-red-600">{sendErr}</p>}
+      </section>
+
+      {/* 게시 전 재확인 목록 — 가격·시세류 사실은 시간이 지나면 틀려진다 */}
+      {confirmList && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="max-h-[80vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white dark:bg-zinc-950 p-4 shadow-xl">
+            <h3 className="text-sm font-semibold">⏰ 게시 전 재확인 목록</h3>
+            <p className="mt-1 text-[11px] text-zinc-500">
+              시간이 지나면 틀려지는 사실이에요. 지금도 맞는지 확인한 뒤 진행해 주세요.
+            </p>
+            <ul className="mt-3 grid gap-2">
+              {confirmList.map((f) => (
+                <li key={f.id} className="text-[11px] leading-relaxed">
+                  <span className="text-zinc-400">{f.id}</span> {f.fact}
+                  <span className="text-zinc-400">
+                    {" "}
+                    — {f.sourceName} {f.sourceDate} (수집 {f.fetchedAt}){" "}
+                    <a href={f.sourceUrl} target="_blank" rel="noreferrer" className="text-accent underline">
+                      링크
+                    </a>
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmList(null)}
+                className="rounded-lg border border-zinc-200 dark:border-zinc-800 px-3 py-1.5 text-xs text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-900"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmList(null);
+                  void sendToRender(true);
+                }}
+                disabled={sendBusy}
+                className="rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white text-xs font-medium px-3 py-1.5"
+              >
+                확인했어요 · 진행
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

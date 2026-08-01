@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProject, saveProject } from "@/lib/projectStore";
 import { generateElongatedPlan, missingBlocks, pendingBlocks } from "@/lib/elongatedPlan";
+import { elongatedSourceScenes } from "@/lib/elongated";
 
 export const runtime = "nodejs";
 export const maxDuration = 120; // 검색 없는 설계 — 길지 않다
@@ -34,11 +35,11 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { plan } = await generateElongatedPlan({
+    const { plan, violations } = await generateElongatedPlan({
       projectId,
       input: {
         sourceTitle: source.title,
-        sourceScenes: source.scenes.filter((s) => !s.skipped).map((s) => s.narration ?? ""),
+        sourceScenes: elongatedSourceScenes(source.scenes).map((s) => s.narration ?? ""),
         sourceSeconds: track.sourceSeconds,
         targetSec: track.targetSec,
         blockTypes: track.blockTypes,
@@ -59,7 +60,13 @@ export async function POST(req: NextRequest) {
     fresh.updatedAt = now;
     await saveProject(fresh);
 
-    return NextResponse.json({ ok: true, plan, pending: pendingBlocks(plan), missing: missingBlocks(plan) });
+    return NextResponse.json({
+      ok: true,
+      plan,
+      violations,
+      pending: pendingBlocks(plan),
+      missing: missingBlocks(plan),
+    });
   } catch (e) {
     return NextResponse.json(
       { ok: false, error: e instanceof Error ? e.message : "확장 설계 실패" },
