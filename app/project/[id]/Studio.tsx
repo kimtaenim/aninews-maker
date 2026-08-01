@@ -431,11 +431,37 @@ export default function Studio({
     }
   }
 
+  // 수정 — 내용이 바뀌면 이미 프롬프트에 박힌 옛 문구도 새 문구로 갈아준다.
+  // 안 그러면 그 칩이 꺼진 것으로 보이고 옛 문구가 프롬프트에 남는다.
+  async function editChipset(id: string, patch: { label: string; text: string }) {
+    const before = chipsets.find((c) => c.id === id);
+    try {
+      const r = await fetch("/api/chipsets", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id, ...patch }),
+      });
+      const d = await r.json();
+      if (!r.ok || !d.ok) return (d?.error as string) || "칩 수정 실패";
+      setChipsets(d.chipsets as Chipset[]);
+      const next = patch.text.trim();
+      if (before && before.text !== next) {
+        replaceStageFrag(before.stage, before.text, next);
+      }
+      return null;
+    } catch {
+      return "칩 수정 실패";
+    }
+  }
+
+  // 삭제 — 프롬프트에 박힌 그 문구도 같이 걷어낸다(칩이 없어졌는데 문구만 남으면 끌 수가 없다).
   async function removeChipset(id: string) {
+    const before = chipsets.find((c) => c.id === id);
     try {
       const r = await fetch(`/api/chipsets?id=${encodeURIComponent(id)}`, { method: "DELETE" });
       const d = await r.json();
       if (d?.ok) setChipsets(d.chipsets as Chipset[]);
+      if (before) replaceStageFrag(before.stage, before.text, null);
     } catch {
       /* 무시 */
     }
@@ -2562,26 +2588,43 @@ export default function Studio({
     return chipsets.filter((c) => c.stage === stage && frags.includes(c.text)).map((c) => c.id);
   };
 
-  function toggleChipset(c: Chipset) {
-    touchChipset(c.id);
-    if (c.stage === "keyframe") {
-      const next = withChipFrags(editBible, toggleFrag(keyframeChipFrags, c.text));
-      setEditBible(next);
+  // 한 단계의 칩 꼬리를 통째로 새 목록으로 갈아끼운다(적용 지점이 단계마다 다르다).
+  function setStageFrags(stage: ChipsetStage, next: string[]) {
+    if (stage === "keyframe") {
+      setEditBible(withChipFrags(editBible, next));
       setBibleDirty(true); // 기존 디바운스 저장이 집어간다
       return;
     }
-    if (c.stage === "videos") {
-      const next = withChipFrags(videoCommonPrompt, toggleFrag(videoChipFrags, c.text));
-      setVideoCommonPrompt(next);
-      saveVideoCommonPrompt(next);
+    if (stage === "videos") {
+      const v = withChipFrags(videoCommonPrompt, next);
+      setVideoCommonPrompt(v);
+      saveVideoCommonPrompt(v);
       return;
     }
     // images — 전 씬에 같은 꼬리를 건다(씬0=키프레임은 3단계 몫이라 제외).
-    const next = toggleFrag(imageChipFrags, c.text);
     scenes.forEach((s, i) => {
       if (i === 0) return;
       patchScene(i, { imagePrompt: withChipFrags(s.imagePrompt ?? "", next) });
     });
+  }
+
+  function stageFrags(stage: ChipsetStage): string[] {
+    return stage === "keyframe" ? keyframeChipFrags : stage === "videos" ? videoChipFrags : imageChipFrags;
+  }
+
+  function toggleChipset(c: Chipset) {
+    touchChipset(c.id);
+    setStageFrags(c.stage, toggleFrag(stageFrags(c.stage), c.text));
+  }
+
+  // 칩 내용이 바뀌거나(next) 칩이 지워졌을 때(next=null) 프롬프트의 옛 문구를 정리한다.
+  function replaceStageFrag(stage: ChipsetStage, oldText: string, next: string | null) {
+    const cur = stageFrags(stage);
+    if (!cur.includes(oldText)) return; // 안 켜져 있었으면 건드릴 것 없다
+    const updated = next
+      ? cur.map((f) => (f === oldText ? next : f))
+      : cur.filter((f) => f !== oldText);
+    setStageFrags(stage, updated);
   }
 
   // 칩 토글 — 그룹 내에선 하나만(다시 누르면 해제, 다른 칩 누르면 교체). 그룹 간엔 조합.
@@ -3923,6 +3966,7 @@ export default function Studio({
                   activeIds={activeChipIds("keyframe")}
                   onToggle={toggleChipset}
                   onAdd={addChipset}
+                  onUpdate={editChipset}
                   onDelete={removeChipset}
                   disabled={busy !== null}
                   hint="그림체 규약에 붙습니다 (팔레트·주인공 특징 등)"
@@ -4129,6 +4173,7 @@ export default function Studio({
               activeIds={activeChipIds("images")}
               onToggle={toggleChipset}
               onAdd={addChipset}
+              onUpdate={editChipset}
               onDelete={removeChipset}
               disabled={busy !== null}
               hint="전 씬 이미지 프롬프트에 붙습니다 (소품·구도 등)"
@@ -4608,6 +4653,7 @@ export default function Studio({
               activeIds={activeChipIds("videos")}
               onToggle={toggleChipset}
               onAdd={addChipset}
+              onUpdate={editChipset}
               onDelete={removeChipset}
               disabled={busy !== null}
               hint="공통 영상 지시에 붙습니다 (카메라·속도감 등)"

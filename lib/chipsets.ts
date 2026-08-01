@@ -78,6 +78,31 @@ export async function addChipset(
   return { ok: true, chipset };
 }
 
+// 수정 — 이름·내용을 바꾼다. 이름을 바꾸면 addChipset 의 "같은 이름 덮어쓰기"로는
+// 잡히지 않으므로 id 로 직접 고치는 경로가 따로 필요하다.
+export async function updateChipset(
+  email: string,
+  id: string,
+  patch: { label?: string; text?: string }
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const rows = await listChipsets(email);
+  const idx = rows.findIndex((c) => c.id === id);
+  if (idx < 0) return { ok: false, error: "칩을 찾을 수 없어요" };
+
+  const label = (patch.label ?? rows[idx].label).trim().slice(0, CHIPSET_LABEL_MAX);
+  const text = (patch.text ?? rows[idx].text).trim().slice(0, CHIPSET_TEXT_MAX);
+  if (!label) return { ok: false, error: "칩 이름을 입력해주세요" };
+  if (!text) return { ok: false, error: "칩 내용을 입력해주세요" };
+  // 같은 단계에 같은 이름이 이미 있으면(자기 자신 제외) 막는다 — 어느 칩인지 헷갈린다.
+  if (rows.some((c, i) => i !== idx && c.stage === rows[idx].stage && c.label === label)) {
+    return { ok: false, error: `이 단계에 "${label}" 칩이 이미 있어요` };
+  }
+
+  rows[idx] = { ...rows[idx], label, text };
+  await getRedis().set(KEY(email), rows);
+  return { ok: true };
+}
+
 export async function deleteChipset(email: string, id: string): Promise<void> {
   const rows = await listChipsets(email);
   await getRedis().set(
