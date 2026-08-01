@@ -690,7 +690,7 @@ export default function LongformStudio({
       {/* [모듈 1] 롱폼 제목 — 검색 5원칙 */}
       <div className="mt-4 rounded-xl border border-accent/40 bg-accent/5 p-3">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold">① 제목 (검색 5원칙)</h2>
+          <h2 className="text-sm font-semibold">제목</h2>
           <button
             onClick={genLongTitle}
             disabled={titleBusy}
@@ -700,8 +700,8 @@ export default function LongformStudio({
           </button>
         </div>
         <p className="mt-1 text-[11px] text-zinc-500">
-          검색어 후보 → 주 검색어 + 묶음 가치 + 괴리 꼬리로 후보 5개. <b>제목을 확정해야</b> 다음 모듈(대본·썸네일)이
-          돌아갑니다 — 제목이 바뀌면 이후가 전부 바뀌니까요.
+          어긋나는 두 사실로 궁금하게 만들되 답은 주지 않습니다. 구성한 편들에 실제로 있는 사실만 씁니다.
+          <b> 제목을 확정해야</b> 썸네일과 진행자 말을 만들 수 있어요 — 제목이 약속한 궁금증이 그 뒤 전부의 기준점이라서요.
         </p>
         {titleErr && <p className="mt-2 text-[11px] text-red-600">{titleErr}</p>}
         {titlePkg && (
@@ -1325,9 +1325,10 @@ export default function LongformStudio({
           : hostRow("en-none", "엔딩", "대본 미생성", null)}
       </ol>
 
-      {/* 손보기 도구 — 재생 순서 화면에서 바로 고치는 게 기본이고, 이 아래는 통째로
-          다시 만들거나 검수할 때만 연다(기능은 그대로 둔다 — 삭제 금지). */}
-      <details className="mt-5 group">
+      {/* 손보기 도구 — 재생 순서에서 바로 고치는 게 기본이지만, 이전 단계(진행자 대본 생성·
+          전체 다듬기·씬 펼치기)는 그대로 보여야 한다. 접어서 안 보이게 하지 마라
+          (2026-08-01: 접었더니 단계를 날린 것처럼 됐다). 접고 싶으면 사용자가 직접 접는다. */}
+      <details open className="mt-5 group">
         <summary className="cursor-pointer list-none rounded-xl border border-zinc-200 px-3 py-2 text-sm font-semibold hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900">
           <span className="group-open:hidden">▸ </span>
           <span className="hidden group-open:inline">▾ </span>
