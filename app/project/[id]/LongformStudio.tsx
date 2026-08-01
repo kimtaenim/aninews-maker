@@ -13,6 +13,7 @@ import type {
 import type { LongformReviewResult } from "@/lib/longformReview";
 import type { Chipset, ChipsetStage } from "@/lib/chipsets";
 import ChipsetRow from "./ChipsetRow";
+import Spinner from "@/components/Spinner";
 import Studio from "./Studio";
 import type { Project } from "@/lib/types";
 import { speakSeconds } from "@/lib/longformScreening";
@@ -1276,6 +1277,20 @@ export default function LongformStudio({
         </div>
 
         {thumbErr && <p className="mt-2 text-[11px] text-red-600">{thumbErr}</p>}
+
+        {/* 생성 중 — 숏폼 키프레임과 같은 자리 3개 + 스피너 */}
+        {thumbBusy && (
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="flex aspect-[16/9] items-center justify-center rounded-xl border border-dashed border-zinc-300 text-zinc-400 dark:border-zinc-700"
+              >
+                <Spinner className="size-5" />
+              </div>
+            ))}
+          </div>
+        )}
         {thumb && (
           <div className="mt-2 grid gap-2">
             <p className="text-[11px]">
