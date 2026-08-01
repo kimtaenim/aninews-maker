@@ -4203,21 +4203,20 @@ export default function Studio({
             {imagesApproved && <span className="ml-2 text-xs text-accent">승인됨</span>}
           </h2>
         </div>
-        {keyframeApproved && (
-          <div className="mt-2">
-            <ChipsetRow
-              stage="images"
-              chipsets={chipsets}
-              activeIds={activeChipIds("images")}
-              onToggle={toggleChipset}
-              onAdd={addChipset}
-              onUpdate={editChipset}
-              onDelete={removeChipset}
-              disabled={busy !== null}
-              hint="전 씬 이미지 프롬프트에 붙습니다 (소품·구도 등)"
-            />
-          </div>
-        )}
+        {/* 칩 등록은 승인 여부와 무관하다 — 승인 전에도 보이게(전엔 승인해야 나타났다). */}
+        <div className="mt-2">
+          <ChipsetRow
+            stage="images"
+            chipsets={chipsets}
+            activeIds={activeChipIds("images")}
+            onToggle={toggleChipset}
+            onAdd={addChipset}
+            onUpdate={editChipset}
+            onDelete={removeChipset}
+            disabled={busy !== null}
+            hint="씬1~ 이미지 프롬프트에 붙습니다 (소품·구도 등)"
+          />
+        </div>
         {keyframeApproved && extraScenes.length > 0 && (
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <button
@@ -4683,19 +4682,22 @@ export default function Studio({
             </span>
           </label>
         )}
+        {/* 칩 등록은 승인 여부와 무관하다 — 승인 전에도 보이게. */}
+        <div className="mt-2">
+          <ChipsetRow
+            stage="videos"
+            chipsets={chipsets}
+            activeIds={activeChipIds("videos")}
+            onToggle={toggleChipset}
+            onAdd={addChipset}
+            onUpdate={editChipset}
+            onDelete={removeChipset}
+            disabled={busy !== null}
+            hint="공통 영상 지시에 붙습니다 (카메라·속도감 등)"
+          />
+        </div>
         {imagesApproved && (
           <div className="mt-2 grid gap-1">
-            <ChipsetRow
-              stage="videos"
-              chipsets={chipsets}
-              activeIds={activeChipIds("videos")}
-              onToggle={toggleChipset}
-              onAdd={addChipset}
-              onUpdate={editChipset}
-              onDelete={removeChipset}
-              disabled={busy !== null}
-              hint="공통 영상 지시에 붙습니다 (카메라·속도감 등)"
-            />
             <span className="mt-1 text-xs font-medium text-zinc-600 dark:text-zinc-300">
               🎬 공통 영상 지시 <span className="font-normal text-zinc-400">(전 씬 공통)</span>
             </span>
