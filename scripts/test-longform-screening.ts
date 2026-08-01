@@ -209,6 +209,40 @@ check(
   ).violations.some((v) => v.includes("미리 말함"))
 );
 
+// ★ 제목은 궁금하게 만드는 게 일이다 — 답을 제목에서 말하면 볼 이유가 없다.
+console.log("\n제목이 답을 말했는가");
+const spoiled = pkg({
+  titleUsed: "DRAM 값이 172% 뛴 진짜 범인, HBM이었다!",
+  ending: {
+    partAClose: "DRAM 값이 172% 뛴 범인은 HBM이었어요.",
+    partBLanding: "",
+    partCStandard: shorts.structure.scene_8.text,
+    endscreenVideo: "",
+    estSeconds: 0,
+  },
+});
+check(
+  "제목이 엔딩 답과 겹치면 잡힘",
+  screenScript(spoiled, 3).violations.some((v) => v.includes("제목이 답을 말함")),
+  screenScript(spoiled, 3).violations.filter((v) => v.includes("제목"))
+);
+check(
+  "괴리만 세운 제목은 통과",
+  !screenScript(
+    pkg({
+      titleUsed: "SK하이닉스가 HBM에 올인하자, DDR5 값이 두 배 됐다?",
+      ending: {
+        partAClose: "범용 라인을 줄인 자리에서 값이 뛴 거예요.",
+        partBLanding: "",
+        partCStandard: shorts.structure.scene_8.text,
+        endscreenVideo: "",
+        estSeconds: 0,
+      },
+    }),
+    3
+  ).violations.some((v) => v.includes("제목이 답을 말함"))
+);
+
 // ★ 2026-08-01 사용자 지정 — "○○ 관련주 —" 껍데기 제목 금지.
 console.log("\n제목 앞머리 검색어 꼬리표");
 check(

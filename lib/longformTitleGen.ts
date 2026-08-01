@@ -94,10 +94,12 @@ function parse(raw: string, segmentCount: number): Omit<LongformTitlePackage, "g
         covers,
         principlesCheck: boolMap(o.principles_check),
         screening: boolMap(o.screening),
+        // ★ covers 는 표시만 한다 — 탈락 조건으로 쓰면 "세 편 다 담아라"는 압력이 되어
+        // 제목이 설명문으로 늘어지고 궁금증이 죽는다(2026-08-01). 궁금증이 있어야 본다.
+        coverNote: coverViolations(covers, segmentCount)[0],
         violations: [
           ...titleViolations(title, primaryKeyword),
           ...thumbnailTextViolations(thumbnailText, title),
-          ...coverViolations(covers, segmentCount),
         ],
       };
     })

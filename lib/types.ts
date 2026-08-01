@@ -181,7 +181,8 @@ export interface LongformOpening {
 export interface LongformTitleCandidate {
   title: string;
   thumbnailText: string; // 제목과 비중복 괴리 — 모듈 5가 그대로 쓴다.
-  covers?: number[]; // 이 제목을 뒷받침하는 구성 편 번호(1-based). 한 편뿐이면 컴필레이션 제목이 아니다.
+  covers?: number[]; // 이 제목을 뒷받침하는 구성 편 번호(1-based).
+  coverNote?: string; // 한 편만 뒷받침할 때의 안내. ★탈락시키지 않는다 — 다 담으라고 밀면 설명문이 된다.
   principlesCheck: Record<string, boolean>; // 제목 6원칙 통과 여부
   screening: Record<string, boolean>; // 검수 질문
   violations?: string[]; // 코드 검사(시점 표현·30자·묶음가치·커버 범위)로 잡힌 것

@@ -163,6 +163,17 @@ export function screenScript(pkg: LongformScriptPackage, segmentCount: number): 
     ? Math.max(...pkg.bridges.map((b) => speakSeconds(b.emphasis, b.elevation, b.opening)))
     : 0;
 
+  // ★ 제목이 답을 말해버렸는가 — 제목은 궁금하게 만드는 게 일이다. 답을 제목에서 주면
+  // 클릭할 이유가 없다(원칙 ③ 괴리로 민다 / ⑦씬에서 답을 처음 닫는다).
+  // 제목 단계에서는 답이 없어 판정할 수 없다 — 엔딩 답이 나온 여기서 본다.
+  const titleEcho = answerEchoRatio(pkg.titleUsed, pkg.ending.partAClose);
+  if (titleEcho > ANSWER_ECHO_MAX) {
+    v.push(
+      `제목이 답을 말함(엔딩 답과 ${Math.round(titleEcho * 100)}% 겹침) — ` +
+        "제목은 괴리만 세우고 답은 본편에서 준다"
+    );
+  }
+
   // ★ 조기 폐쇄 — 오프닝이 엔딩 답과 같은 말을 하면 고리가 오프닝에서 닫힌 것이다.
   // 모델 자기평가는 연결만 보고 "조기폐쇄 통과"라고 적었다. 그래서 코드로 본다.
   const openingText = `${pkg.opening.blockAHook} ${pkg.opening.blockBRoadmapLanding}`;
