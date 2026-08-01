@@ -690,7 +690,7 @@ export default function LongformStudio({
       {/* [모듈 1] 롱폼 제목 — 검색 5원칙 */}
       <div className="mt-4 rounded-xl border border-accent/40 bg-accent/5 p-3">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold">제목</h2>
+          <h2 className="text-sm font-semibold">① 제목</h2>
           <button
             onClick={genLongTitle}
             disabled={titleBusy}
@@ -1073,7 +1073,7 @@ export default function LongformStudio({
       {/* [모듈 5] 썸네일 */}
       <div className="mt-4 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold">④ 썸네일</h2>
+          <h2 className="text-sm font-semibold">② 썸네일</h2>
           <button
             onClick={genThumbnail}
             disabled={thumbBusy || !confirmedTitle}
@@ -1083,7 +1083,7 @@ export default function LongformStudio({
           </button>
         </div>
         <p className="mt-1 text-[11px] text-zinc-500">
-          구도 3종으로 감정 실린 캐릭터 이미지를 만들고, 모듈 ①의 썸네일 문구를 후처리로 얹습니다(1280×720 JPG).
+          구도 3종으로 감정 실린 캐릭터 이미지를 만들고, ① 제목에서 정한 썸네일 문구를 후처리로 얹습니다(1280×720 JPG).
           168px 축소본으로 소형 판독을 검증해요.
         </p>
         {!confirmedTitle && <p className="mt-2 text-[11px] text-amber-600">먼저 ① 제목을 확정해주세요.</p>}
@@ -1160,7 +1160,7 @@ export default function LongformStudio({
           이 아래에 접어 둔다(사용자 지정 2026-07-26: 머릿속 구조가 곧 화면 구조여야 한다). */}
       <div className="mt-4 flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold">
-          재생 순서 <span className="text-[11px] font-normal text-zinc-500">
+          ③ 재생 순서 <span className="text-[11px] font-normal text-zinc-500">
             (편 {readyCount}/{segs.length} · 진행자 씬 {hostVideoDone}/{hostScenes.length || 0})
           </span>
         </h2>
@@ -1342,7 +1342,7 @@ export default function LongformStudio({
             "먼저 대본을 생성하라"고 안내하면서 그 버튼이 아래 있으면 안 된다(작업 순서 = 화면 순서). */}
       <div className="mt-4 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold">② 진행자 대본 (오프닝·연결·엔딩)</h2>
+          <h2 className="text-sm font-semibold">진행자 말 — 통째로 다시 쓰기</h2>
           <button
             onClick={genScript}
             disabled={scriptBusy || !confirmedTitle}
@@ -1356,7 +1356,7 @@ export default function LongformStudio({
           전체 고리는 <b>엔딩 파트 A 한 곳</b>에서만 닫힙니다.
         </p>
         {!confirmedTitle && (
-          <p className="mt-2 text-[11px] text-amber-600">먼저 ① 제목을 확정해주세요 — title_promise 가 기준점이에요.</p>
+          <p className="mt-2 text-[11px] text-amber-600">먼저 ① 제목을 확정해주세요 — 제목이 약속한 궁금증이 기준점이에요.</p>
         )}
         <label className="mt-2 flex items-center gap-1.5 text-[11px] text-zinc-500">
           <input type="checkbox" checked={fixedOrder} onChange={(e) => setFixedOrder(e.target.checked)} />
@@ -1513,14 +1513,14 @@ export default function LongformStudio({
       </div>
       {!script && (
         <p className="mt-1 text-[11px] text-zinc-500">
-          전체 다듬기는 ② 진행자 대본을 만든 뒤에 쓸 수 있어요.
+          전체 다듬기는 진행자 말을 만든 뒤에 쓸 수 있어요.
         </p>
       )}
 
       {/* 진행자 씬 — 위 대본을 씬으로 펼친다. 반드시 대본 패널 "뒤"에 온다(작업 순서 = 화면 순서). */}
       <div className="mt-4 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold">③ 진행자 씬</h2>
+          <h2 className="text-sm font-semibold">진행자 씬 펼치기</h2>
           <button
             onClick={genHostScript}
             disabled={hostBusy || !script}
@@ -1533,7 +1533,7 @@ export default function LongformStudio({
           위 진행자 대본을 씬으로 펼칩니다 — 오프닝 2씬 · 연결 {script?.bridges.length ?? 0}씬 · 엔딩 3씬.
           그 뒤 <b>진행자 편집</b>에서 씬별로 이미지·영상·음성을 만드세요(오프닝 첫 씬 = 캐릭터 확정).
         </p>
-        {!script && <p className="mt-2 text-[11px] text-amber-600">먼저 위 ② 진행자 대본을 생성해주세요.</p>}
+        {!script && <p className="mt-2 text-[11px] text-amber-600">먼저 진행자 말을 만들어주세요.</p>}
         {hostErr && <p className="mt-2 text-[11px] text-red-600">{hostErr}</p>}
         {hostProject ? (
           <div className="mt-2 flex items-center gap-3 rounded-lg border border-zinc-200 dark:border-zinc-800 p-2">
