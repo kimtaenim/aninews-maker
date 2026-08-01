@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProject, saveProject } from "@/lib/projectStore";
-import { bodyChars, generateChapterBody } from "@/lib/elongatedBody";
+import { bodyChars, generateChapterBody, screenBody } from "@/lib/elongatedBody";
 import { elongatedSourceScenes } from "@/lib/elongated";
 import type { ElongatedPlan, Project } from "@/lib/types";
 
@@ -129,4 +129,55 @@ export async function POST(req: NextRequest) {
     pending: nextPlan.chapters.filter((c) => !(c.body ?? "").trim()).map((c) => c.index),
     plan: nextPlan,
   });
+}
+
+// 손으로 고친 본문 저장 — 모델이 못 고치는 것은 사람이 고친다(남은 위반은 화면에 떠 있다).
+//   PATCH { projectId, chapter, body }  → { ok, chars, violations }
+export async function PATCH(req: NextRequest) {
+  let input: { projectId?: string; chapter?: unknown; body?: unknown };
+  try {
+    input = await req.json();
+  } catch {
+    return NextResponse.json({ ok: false, error: "invalid JSON" }, { status: 400 });
+  }
+  const projectId = (input.projectId ?? "").trim();
+  const idx = Math.trunc(Number(input.chapter));
+  const text = typeof input.body === "string" ? input.body : "";
+  if (!projectId || !Number.isInteger(idx)) {
+    return NextResponse.json({ ok: false, error: "projectId·chapter 필요" }, { status: 400 });
+  }
+
+  const project = await getProject(projectId);
+  const track = project?.elongated;
+  const plan = track?.plan;
+  if (!project || !track || !plan) {
+    return NextResponse.json({ ok: false, error: "설계가 아직 없어요" }, { status: 404 });
+  }
+  const chapter = plan.chapters.find((c) => c.index === idx);
+  if (!chapter) return NextResponse.json({ ok: false, error: "그 챕터가 없어요" }, { status: 404 });
+
+  const source = await getProject(track.sourceProjectId);
+  const sourceScenes = elongatedSourceScenes(source?.scenes ?? []).map((s) => s.narration ?? "");
+  const violations = text.trim()
+    ? screenBody({ chapter, body: text, facts: track.facts, sourceScenes })
+    : [];
+
+  const now = Date.now();
+  const chapters = plan.chapters.map((c) =>
+    c.index === idx ? { ...c, body: text, bodyGeneratedAt: now } : c
+  );
+  await saveProject({
+    ...project,
+    elongated: {
+      ...track,
+      plan: { ...plan, chapters },
+      // 본문이 바뀌면 이전 본문 기준의 검수 결과는 의미가 없다.
+      factCheck: undefined,
+      score: undefined,
+      updatedAt: now,
+    },
+    updatedAt: now,
+  });
+
+  return NextResponse.json({ ok: true, chars: bodyChars(text), violations });
 }

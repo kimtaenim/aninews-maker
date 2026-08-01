@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import AutoTextarea from "./AutoTextarea";
 import type { ElongatedTrack } from "@/lib/types";
 import {
   bodyChars,
@@ -255,6 +256,38 @@ export default function ElongatedStudio({
   const [bodyErr, setBodyErr] = useState("");
   // 다시 써도 남은 위반(챕터 번호 → 지적). 검수에서 또 잡히기 전에 여기서 보여준다.
   const [bodyWarn, setBodyWarn] = useState<Record<string, string[]>>({});
+  // 손으로 고치는 중인 본문(챕터 번호 → 텍스트). 저장 전까지만 들고 있는다.
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [saveBusy, setSaveBusy] = useState<number | null>(null);
+
+  // 모델이 못 고치는 것은 사람이 고친다. 저장하면 같은 판정으로 다시 검사해 남은 것을 보여준다.
+  async function saveBody(chapter: number) {
+    const key = String(chapter);
+    const text = draft[key];
+    if (text === undefined) return;
+    setSaveBusy(chapter);
+    setBodyErr("");
+    try {
+      const r = await fetch("/api/longform/elongated/body", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId: project.id, chapter, body: text }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) throw new Error(d.error || "저장 실패");
+      setBodyWarn((w) => ({ ...w, [key]: (d.violations as string[]) ?? [] }));
+      setDraft((dr) => {
+        const n = { ...dr };
+        delete n[key];
+        return n;
+      });
+      router.refresh();
+    } catch (e) {
+      setBodyErr(e instanceof Error ? e.message : "저장 실패");
+    } finally {
+      setSaveBusy(null);
+    }
+  }
   const written = (plan?.chapters ?? []).filter((c) => (c.body ?? "").trim()).length;
   const totalChars = (plan?.chapters ?? []).reduce((a, c) => a + bodyChars(c.body ?? ""), 0);
 
@@ -413,7 +446,7 @@ export default function ElongatedStudio({
 
       {/* ── ① 원본 대본 (읽기 전용) ── */}
       <section className="mt-6">
-        <details className="rounded-2xl border border-zinc-200 dark:border-zinc-800">
+        <details open className="rounded-2xl border border-zinc-200 dark:border-zinc-800">
           <summary className="cursor-pointer select-none px-3 py-2.5 text-sm font-semibold">
             ① 원본 대본
             <span className="ml-2 text-[11px] font-normal text-zinc-500">
@@ -628,7 +661,7 @@ export default function ElongatedStudio({
             </ol>
 
             {/* 사실 카드 */}
-            <details className="rounded-xl border border-zinc-100 dark:border-zinc-900">
+            <details open className="rounded-xl border border-zinc-100 dark:border-zinc-900">
               <summary className="cursor-pointer select-none px-2.5 py-1.5 text-xs font-medium">
                 사실 카드 {cur.facts.length}건
                 {expiring.length > 0 && (
@@ -743,12 +776,15 @@ export default function ElongatedStudio({
         ) : (
           <div className="mt-2 grid gap-2">
             {plan.chapters.map((c) => {
-              const chars = bodyChars(c.body ?? "");
+              const key = String(c.index);
+              const shown = draft[key] ?? c.body ?? "";
+              const chars = bodyChars(shown);
               const over = chars > Math.round(chapterBudget * 1.3);
+              const dirty = draft[key] !== undefined && draft[key] !== (c.body ?? "");
               return (
-                <details key={c.index} className="rounded-xl border border-zinc-100 dark:border-zinc-900">
-                  <summary className="cursor-pointer select-none flex items-center gap-2 px-2.5 py-1.5 text-xs">
-                    <span className="flex-1 truncate">
+                <div key={c.index} className="rounded-xl border border-zinc-100 dark:border-zinc-900 px-2.5 py-2">
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="flex-1 truncate font-medium">
                       {c.index}. {c.title}
                     </span>
                     <span className={over ? "text-red-600 font-medium" : "text-zinc-400"}>
@@ -757,32 +793,59 @@ export default function ElongatedStudio({
                     {c.body && (
                       <button
                         type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          void writeBody(c.index);
-                        }}
+                        onClick={() => void writeBody(c.index)}
                         disabled={bodyBusy}
                         className="shrink-0 rounded border border-zinc-200 dark:border-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-900 disabled:opacity-40"
                       >
                         다시 쓰기
                       </button>
                     )}
-                  </summary>
-                  {c.body ? (
-                    <div className="border-t border-zinc-100 dark:border-zinc-900 px-2.5 py-2">
-                      {bodyWarn[String(c.index)]?.length > 0 && (
-                        <p className="mb-1.5 text-[11px] text-red-600">
-                          다시 써도 남은 것: {bodyWarn[String(c.index)].join(", ")}
-                        </p>
-                      )}
-                      <p className="text-xs leading-relaxed whitespace-pre-wrap">{c.body}</p>
-                    </div>
-                  ) : (
-                    <p className="border-t border-zinc-100 dark:border-zinc-900 px-2.5 py-2 text-[11px] text-zinc-500">
-                      아직 안 썼어요.
+                  </div>
+
+                  {bodyWarn[key]?.length > 0 && (
+                    <p className="mt-1.5 text-[11px] text-red-600">
+                      고쳐야 할 것: {bodyWarn[key].join(", ")}
                     </p>
                   )}
-                </details>
+
+                  {c.body || draft[key] !== undefined ? (
+                    <>
+                      <AutoTextarea
+                        value={shown}
+                        onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))}
+                        className="mt-1.5 w-full rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1.5 text-xs leading-relaxed outline-none focus:border-accent"
+                        minRows={4}
+                      />
+                      {dirty && (
+                        <div className="mt-1.5 flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void saveBody(c.index)}
+                            disabled={saveBusy === c.index}
+                            className="rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white text-[11px] font-medium px-2.5 py-1"
+                          >
+                            {saveBusy === c.index ? "저장 중…" : "저장"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setDraft((d) => {
+                                const n = { ...d };
+                                delete n[key];
+                                return n;
+                              })
+                            }
+                            className="rounded-lg border border-zinc-200 dark:border-zinc-800 px-2.5 py-1 text-[11px] text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-900"
+                          >
+                            되돌리기
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <p className="mt-1.5 text-[11px] text-zinc-500">아직 안 썼어요.</p>
+                  )}
+                </div>
               );
             })}
             <p className="text-[10px] text-zinc-400">
