@@ -2603,6 +2603,33 @@ export default function Studio({
   //   videos   → videoCommonPrompt(전 씬 영상에 공통으로 붙는 지시)
   const styleChipFrags = chipFrags(editBible);
   const keyframeChipFrags = chipFrags(scenes[0]?.imagePrompt ?? "");
+
+  // 4·5단계는 씬마다 따로 건다(칩 목록 자체는 계정 단위 그대로 — 어느 씬에서든 같은 칩을 부른다).
+  //   images → 그 씬 imagePrompt   videos → 그 씬 motion
+  function sceneChipTarget(stage: ChipsetStage, i: number): string {
+    return stage === "images" ? scenes[i]?.imagePrompt ?? "" : scenes[i]?.motion ?? "";
+  }
+  function sceneChipIds(stage: ChipsetStage, i: number): string[] {
+    const frags = chipFrags(sceneChipTarget(stage, i));
+    return chipsets.filter((c) => c.stage === stage && frags.includes(c.text)).map((c) => c.id);
+  }
+  function toggleSceneChip(c: Chipset, i: number) {
+    touchChipset(c.id);
+    const next = toggleFrag(chipFrags(sceneChipTarget(c.stage, i)), c.text);
+    const field = c.stage === "images" ? "imagePrompt" : "motion";
+    patchScene(i, { [field]: withChipFrags(sceneChipTarget(c.stage, i), next) });
+  }
+  // 싱크 — 이 씬의 칩 선택을 나머지 씬에 그대로 복사한다(씬마다 다시 누르지 않게).
+  // 씬0(키프레임)은 3단계 몫이라 이미지 싱크에서 뺀다.
+  function syncSceneChips(stage: ChipsetStage, from: number) {
+    const frags = chipFrags(sceneChipTarget(stage, from));
+    const field = stage === "images" ? "imagePrompt" : "motion";
+    scenes.forEach((_, i) => {
+      if (i === from) return;
+      if (stage === "images" && i === 0) return;
+      patchScene(i, { [field]: withChipFrags(sceneChipTarget(stage, i), frags) });
+    });
+  }
   const imageChipFrags = chipFrags(scenes.find((s) => chipFrags(s.imagePrompt ?? "").length)?.imagePrompt ?? "");
   const videoChipFrags = chipFrags(videoCommonPrompt);
 
@@ -2627,17 +2654,8 @@ export default function Studio({
       patchScene(0, { imagePrompt: withChipFrags(scenes[0]?.imagePrompt ?? "", next) });
       return;
     }
-    if (stage === "videos") {
-      const v = withChipFrags(videoCommonPrompt, next);
-      setVideoCommonPrompt(v);
-      saveVideoCommonPrompt(v);
-      return;
-    }
-    // images — 전 씬에 같은 꼬리를 건다(씬0=키프레임은 3단계 몫이라 제외).
-    scenes.forEach((s, i) => {
-      if (i === 0) return;
-      patchScene(i, { imagePrompt: withChipFrags(s.imagePrompt ?? "", next) });
-    });
+    // images·videos 는 씬마다 따로 걸린다 — 여기(단계 통째로)는 안 쓴다.
+    // 씬별 토글은 toggleSceneChip, 다른 씬 복사는 syncSceneChips 가 맡는다.
   }
 
   function stageFrags(stage: ChipsetStage): string[] {
@@ -2654,6 +2672,19 @@ export default function Studio({
 
   // 칩 내용이 바뀌거나(next) 칩이 지워졌을 때(next=null) 프롬프트의 옛 문구를 정리한다.
   function replaceStageFrag(stage: ChipsetStage, oldText: string, next: string | null) {
+    // 씬별로 걸리는 칩은 씬을 전부 돌며 그 문구를 고치거나 걷어낸다.
+    if (stage === "images" || stage === "videos") {
+      const field = stage === "images" ? "imagePrompt" : "motion";
+      scenes.forEach((_, i) => {
+        const cur = chipFrags(sceneChipTarget(stage, i));
+        if (!cur.includes(oldText)) return;
+        const updated = next
+          ? cur.map((f) => (f === oldText ? next : f))
+          : cur.filter((f) => f !== oldText);
+        patchScene(i, { [field]: withChipFrags(sceneChipTarget(stage, i), updated) });
+      });
+      return;
+    }
     const cur = stageFrags(stage);
     if (!cur.includes(oldText)) return; // 안 켜져 있었으면 건드릴 것 없다
     const updated = next
@@ -4233,22 +4264,6 @@ export default function Studio({
             {imagesApproved && <span className="ml-2 text-xs text-accent">승인됨</span>}
           </h2>
         </div>
-        {/* 칩 등록은 승인 여부와 무관하다 — 승인 전에도 보이게(전엔 승인해야 나타났다). */}
-        <div className="mt-2">
-          <ChipsetRow
-            stage="images"
-            chipsets={chipsets}
-            activeIds={activeChipIds("images")}
-            onToggle={toggleChipset}
-            onAdd={addChipset}
-            onUpdate={editChipset}
-            onDelete={removeChipset}
-
-            onReorder={reorderChipsetsFor}
-            disabled={busy !== null}
-            hint="씬1~ 이미지 프롬프트에 붙습니다 (소품·구도 등)"
-          />
-        </div>
         {keyframeApproved && extraScenes.length > 0 && (
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <button
@@ -4581,6 +4596,20 @@ export default function Studio({
                               })
                             )}
                           </div>
+                          {/* 스타일 칩 아래 — 이 씬에만 걸리는 내 칩. ⇄ 로 다른 씬에 복사. */}
+                          <ChipsetRow
+                            stage="images"
+                            chipsets={chipsets}
+                            activeIds={sceneChipIds("images", i)}
+                            onToggle={(c) => toggleSceneChip(c, i)}
+                            onAdd={addChipset}
+                            onUpdate={editChipset}
+                            onDelete={removeChipset}
+                            onReorder={reorderChipsetsFor}
+                            onSync={() => syncSceneChips("images", i)}
+                            disabled={busy !== null}
+                            hint={`씬 ${i} 이미지 프롬프트에만 붙습니다`}
+                          />
                           <span className="text-[10px] text-zinc-400">이미지 프롬프트 (한글)</span>
                           <textarea
                             value={ed?.imagePrompt ?? ""}
@@ -4714,22 +4743,6 @@ export default function Studio({
             </span>
           </label>
         )}
-        {/* 칩 등록은 승인 여부와 무관하다 — 승인 전에도 보이게. */}
-        <div className="mt-2">
-          <ChipsetRow
-            stage="videos"
-            chipsets={chipsets}
-            activeIds={activeChipIds("videos")}
-            onToggle={toggleChipset}
-            onAdd={addChipset}
-            onUpdate={editChipset}
-            onDelete={removeChipset}
-
-            onReorder={reorderChipsetsFor}
-            disabled={busy !== null}
-            hint="공통 영상 지시에 붙습니다 (카메라·속도감 등)"
-          />
-        </div>
         {imagesApproved && (
           <div className="mt-2 grid gap-1">
             <span className="mt-1 text-xs font-medium text-zinc-600 dark:text-zinc-300">
@@ -4905,6 +4918,20 @@ export default function Studio({
                             </button>
                           ))}
                         </div>
+                        {/* 카메라 워크 아래 — 이 씬에만 걸리는 내 칩. ⇄ 로 다른 씬에 복사. */}
+                        <ChipsetRow
+                          stage="videos"
+                          chipsets={chipsets}
+                          activeIds={sceneChipIds("videos", i)}
+                          onToggle={(c) => toggleSceneChip(c, i)}
+                          onAdd={addChipset}
+                          onUpdate={editChipset}
+                          onDelete={removeChipset}
+                          onReorder={reorderChipsetsFor}
+                          onSync={() => syncSceneChips("videos", i)}
+                          disabled={busy !== null}
+                          hint={`씬 ${i} 모션에만 붙습니다`}
+                        />
                         <span className="text-[10px] text-zinc-400">비디오 모션 프롬프트 (영문)</span>
                         <textarea
                           value={scenes[i]?.motion ?? ""}

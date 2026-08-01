@@ -17,6 +17,8 @@ export default function ChipsetRow({
   onUpdate,
   onDelete,
   onReorder,
+  onSync,
+  syncLabel,
   disabled,
   hint,
 }: {
@@ -28,6 +30,9 @@ export default function ChipsetRow({
   onUpdate: (id: string, patch: { label: string; text: string }) => Promise<string | null>;
   onDelete: (id: string) => Promise<void>;
   onReorder: (stage: ChipsetStage, ids: string[]) => Promise<void>;
+  // 씬별로 거는 줄에서만 쓴다 — 이 씬의 칩 선택을 나머지 씬에 복사.
+  onSync?: () => void;
+  syncLabel?: string;
   disabled?: boolean;
   hint?: string;
 }) {
@@ -184,6 +189,17 @@ export default function ChipsetRow({
             className="text-[10px] rounded-md border border-zinc-300 dark:border-zinc-700 px-1.5 py-0.5 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900"
           >
             {panel === "manage" ? "닫기" : `⚙ 관리 (${mine.length})`}
+          </button>
+        )}
+        {onSync && mine.length > 0 && (
+          <button
+            type="button"
+            onClick={onSync}
+            disabled={disabled}
+            title="이 씬에서 켠 칩을 나머지 씬에도 똑같이 적용합니다"
+            className="text-[10px] rounded-md border border-accent px-1.5 py-0.5 text-accent hover:bg-accent/10 disabled:opacity-40"
+          >
+            {syncLabel ?? "⇄ 다른 씬에도"}
           </button>
         )}
       </div>
