@@ -13,7 +13,9 @@ import {
   LONGFORM_TITLE_REVIEW_SYSTEM_PROMPT,
 } from "./longformTitlePrompt";
 import { titleViolations, thumbnailTextViolations } from "./longformTitleCheck";
-import principles from "../config/longform-principles.json";
+// ★ 제목 원칙은 쇼츠와 같은 파일 하나다. "롱폼은 검색 지면"이라는 전제로 만든 별도 5원칙이
+// "○○ 관련주 —" 껍데기만 찍어냈다(2026-08-01 사용자 확인 — 검색 성격은 있지만 그 형태는 아님).
+import titlePrinciples from "../config/title-principles.json";
 import type { LongformTitleCandidate, LongformTitlePackage, LongformTitleReview } from "./types";
 
 export interface LongformConstituent {
@@ -118,7 +120,7 @@ export async function generateLongformTitles(args: {
   const client = getAnthropic();
   const system = LONGFORM_TITLE_SYSTEM_PROMPT.replace(
     "{{PRINCIPLES}}",
-    JSON.stringify({ title: principles.title, channel: principles.channel, common_bans: principles.common_bans }, null, 2)
+    JSON.stringify(titlePrinciples, null, 2)
   );
   const text = titleInputToText(input);
   let totalCost = 0;
@@ -182,11 +184,7 @@ export async function reviewLongformTitle(args: {
   const client = getAnthropic();
   const system = LONGFORM_TITLE_REVIEW_SYSTEM_PROMPT.replace(
     "{{PRINCIPLES}}",
-    JSON.stringify(
-      { title: principles.title, channel: principles.channel, common_bans: principles.common_bans },
-      null,
-      2
-    )
+    JSON.stringify(titlePrinciples, null, 2)
   );
   const user = [`[검증할 제목]\n${title}`, context ? `\n[본편 구성]\n${context}` : ""]
     .filter(Boolean)

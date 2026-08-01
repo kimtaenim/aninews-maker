@@ -125,7 +125,7 @@ check(
 
 console.log("\n제목 검사");
 check("시점 표현 탈락", titleViolations("2026년 로봇 관련주 3대 총정리", "로봇 관련주").some((v) => v.includes("시점")));
-check("묶음 표시어 없어도 통과", titleViolations("로봇 관련주 이야기", "로봇 관련주").length === 0);
+check("묶음 표시어 없어도 통과", titleViolations("로봇 청소기가 삼킨 부품사 이야기", "로봇").length === 0);
 // 실사례(2026-07-23) — 모델이 "총정리 4편"·"4종 총정리"를 뱉었다. 묶음 표시어는 전부 금지.
 check(
   "'4종 총정리' 탈락",
@@ -137,13 +137,13 @@ check("'몰아보기' 탈락", titleViolations("반도체 관련주 몰아보기
 // 실제 소재 수량("신제품 300개")은 편수 세기가 아니다 — 오탐 방지.
 check(
   "'신제품 300개'는 통과",
-  titleViolations("3M 관련주, 신제품 300개의 비밀은 실패한 접착제였다", "3M 관련주").length === 0,
-  titleViolations("3M 관련주, 신제품 300개의 비밀은 실패한 접착제였다", "3M 관련주")
+  titleViolations("3M 신제품 300개의 비밀은 실패한 접착제였다", "3M").length === 0,
+  titleViolations("3M 신제품 300개의 비밀은 실패한 접착제였다", "3M")
 );
 check(
   "묶음 표시어 없는 제목 통과",
-  titleViolations("메모리 반도체 관련주, 헬륨 한 방울에 값이 흔들린 이유", "메모리 반도체 관련주").length === 0,
-  titleViolations("메모리 반도체 관련주, 헬륨 한 방울에 값이 흔들린 이유", "메모리 반도체 관련주")
+  titleViolations("삼성전자 D램 값이 헬륨 한 방울에 흔들린 이유", "삼성전자").length === 0,
+  titleViolations("삼성전자 D램 값이 헬륨 한 방울에 흔들린 이유", "삼성전자")
 );
 check(
   "주 검색어가 앞 30자에 없으면 탈락",
@@ -207,6 +207,29 @@ check(
     }),
     3
   ).violations.some((v) => v.includes("미리 말함"))
+);
+
+// ★ 2026-08-01 사용자 지정 — "○○ 관련주 —" 껍데기 제목 금지.
+console.log("\n제목 앞머리 검색어 꼬리표");
+check(
+  "'메모리 반도체 관련주 —' 탈락",
+  titleViolations("메모리 반도체 관련주 — HBM 쏠림이 DRAM 가격을 건드리다?", "메모리 반도체").some((v) =>
+    v.includes("검색어 꼬리표")
+  ),
+  titleViolations("메모리 반도체 관련주 — HBM 쏠림이 DRAM 가격을 건드리다?", "메모리 반도체")
+);
+check(
+  "'ASML 관련주,' 탈락",
+  titleViolations("ASML 관련주, 독점이 아니라 탈출 불가 구조가 핵심인 이유", "ASML").some((v) =>
+    v.includes("검색어 꼬리표")
+  )
+);
+check(
+  "문장 안에서 쓰인 '수혜주'는 통과",
+  !titleViolations("삼성전자가 웃는데 진짜 수혜주는 따로 있었다", "삼성전자").some((v) =>
+    v.includes("검색어 꼬리표")
+  ),
+  titleViolations("삼성전자가 웃는데 진짜 수혜주는 따로 있었다", "삼성전자")
 );
 
 console.log("\n제목 약속(title_promise) 검사");

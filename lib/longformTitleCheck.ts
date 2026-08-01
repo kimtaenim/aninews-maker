@@ -27,6 +27,19 @@ const BUNDLE_PATTERNS: { re: RegExp; label: string }[] = [
   { re: /TOP\s*\d+/i, label: "TOP N" },
 ];
 
+// ★ "○○ 관련주 —" 껍데기 금지(2026-08-01 사용자 지정).
+// 검색어를 앞머리에 세우라는 옛 지시가 "메모리 반도체 관련주 —", "ASML 관련주," 처럼
+// 같은 형태만 찍어냈다. 검색될 말은 회사명·소재어 자체이지, 뒤에 붙이는 꼬리표가 아니다.
+// 제목 "앞부분"에서만 잡는다 — 문장 안에서 자연스럽게 쓰이는 경우까지 막지는 않는다.
+const KEYWORD_TAIL = /(관련주|수혜주|유망주|대장주|테마주)/;
+const TITLE_HEAD_FOR_TAIL = 14; // 앞머리로 볼 구간
+
+export function keywordShellHits(title: string): string[] {
+  const head = (title ?? "").slice(0, TITLE_HEAD_FOR_TAIL);
+  const m = head.match(KEYWORD_TAIL);
+  return m ? [m[1]] : [];
+}
+
 export function bundleHits(title: string): string[] {
   return BUNDLE_PATTERNS.filter((p) => p.re.test(title)).map((p) => p.label);
 }
@@ -53,6 +66,10 @@ export function titleViolations(title: string, primaryKeyword: string): string[]
   if (times.length) out.push(`시점 표현(${times.join("·")})`);
   const hits = bundleHits(t);
   if (hits.length) out.push(`묶음 표시어(${hits.join("·")}) — 쓰지 말 것`);
+  const shell = keywordShellHits(t);
+  if (shell.length) {
+    out.push(`제목 앞머리에 '${shell[0]}' — 검색어 꼬리표로 시작하지 말 것(같은 껍데기만 나온다)`);
+  }
   if (!headOk(t, primaryKeyword)) out.push(`앞 ${TITLE_HEAD_CHARS}자 안에 주 검색어 없음`);
   if (/~/.test(t)) out.push("물결표(~)");
   return out;
