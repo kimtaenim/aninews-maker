@@ -20,6 +20,11 @@ const STEM_RATIO = 0.12;
 export const MIN_STROKE_AT_168 = 2;
 export const MIN_READABLE_FONT = Math.ceil(MIN_STROKE_AT_168 / (STEM_RATIO * (PREVIEW_W / THUMB_W))); // ≈127
 
+// 168px 에서 읽히려면 글자가 MIN_READABLE_FONT 이상이어야 하고, 글자 크기는
+// TARGET_BLOCK_W / (가장 긴 줄의 글자 수) 로 정해진다 → 한 줄에 들어갈 수 있는 글자 수가 나온다.
+// 프롬프트에 글자 수를 따로 적지 말고 이 값을 주입한다(사본이 갈라지면 검사와 지시가 어긋난다).
+export const MAX_LINE_CHARS = Math.floor(TARGET_BLOCK_W / MIN_READABLE_FONT); // 5
+
 export function strokeAt168(fontSize: number): number {
   return Math.round(fontSize * STEM_RATIO * (PREVIEW_W / THUMB_W) * 100) / 100;
 }
