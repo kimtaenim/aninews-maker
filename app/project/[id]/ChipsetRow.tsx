@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Chipset, ChipsetStage } from "@/lib/chipsets";
 import { CHIPSET_LABEL_MAX, CHIPSET_TEXT_MAX } from "@/lib/chipsets";
 
@@ -16,6 +16,7 @@ export default function ChipsetRow({
   onAdd,
   onUpdate,
   onDelete,
+  onReorder,
   disabled,
   hint,
 }: {
@@ -26,6 +27,7 @@ export default function ChipsetRow({
   onAdd: (input: { stage: ChipsetStage; label: string; text: string }) => Promise<string | null>;
   onUpdate: (id: string, patch: { label: string; text: string }) => Promise<string | null>;
   onDelete: (id: string) => Promise<void>;
+  onReorder: (stage: ChipsetStage, ids: string[]) => Promise<void>;
   disabled?: boolean;
   hint?: string;
 }) {
@@ -42,6 +44,22 @@ export default function ChipsetRow({
 
   const mine = chipsets.filter((c) => c.stage === stage);
   const active = new Set(activeIds);
+
+  // 드래그로 순서 바꾸기. dragId=집어 든 칩, overId=지금 올라가 있는 칩(그 앞에 꽂힌다).
+  // 드래그가 실제로 일어났으면 놓는 순간의 click 은 무시한다(칩이 토글돼 버리지 않게).
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
+  const draggedRef = useRef(false);
+
+  function reorderTo(targetId: string | null) {
+    if (!dragId) return;
+    const ids = mine.map((c) => c.id).filter((id) => id !== dragId);
+    const at = targetId ? ids.indexOf(targetId) : ids.length;
+    ids.splice(at < 0 ? ids.length : at, 0, dragId);
+    setDragId(null);
+    setOverId(null);
+    void onReorder(stage, ids);
+  }
 
   function openPanel(which: "add" | "manage") {
     setErr(null);
@@ -93,19 +111,56 @@ export default function ChipsetRow({
   return (
     <div className="grid gap-1">
       <span className="text-[10px] text-zinc-400">
-        🧩 내 칩셋{hint ? ` — ${hint}` : ""} (등록해 두면 다음 영상에서도 그대로 뜹니다)
+        🧩 내 칩셋{hint ? ` — ${hint}` : ""} (등록해 두면 다음 영상에서도 그대로 뜹니다
+        {mine.length > 1 ? " · 칩을 끌어서 순서 변경" : ""})
       </span>
-      <div className="flex flex-wrap items-center gap-1">
+      <div
+        className="flex flex-wrap items-center gap-1"
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => {
+          e.preventDefault();
+          reorderTo(null); // 빈 곳에 놓으면 맨 뒤로
+        }}
+      >
         {mine.map((c) => {
           const on = active.has(c.id);
           return (
             <button
               key={c.id}
               type="button"
-              onClick={() => onToggle(c)}
+              draggable={!disabled}
+              onDragStart={(e) => {
+                setDragId(c.id);
+                draggedRef.current = false;
+                e.dataTransfer.effectAllowed = "move";
+              }}
+              onDrag={() => (draggedRef.current = true)}
+              onDragEnd={() => {
+                setDragId(null);
+                setOverId(null);
+                // 놓은 뒤 곧바로 오는 click 만 막고 원상복구
+                setTimeout(() => (draggedRef.current = false), 0);
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (dragId && dragId !== c.id) setOverId(c.id);
+              }}
+              onDragLeave={() => setOverId((v) => (v === c.id ? null : v))}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                reorderTo(c.id);
+              }}
+              onClick={() => {
+                if (draggedRef.current) return; // 방금 드래그였으면 토글 안 함
+                onToggle(c);
+              }}
               disabled={disabled}
-              title={c.text}
-              className={`text-[10px] rounded-md border px-1.5 py-0.5 disabled:opacity-40 ${
+              title={`${c.text}\n\n(끌어서 순서 변경)`}
+              className={`cursor-grab active:cursor-grabbing text-[10px] rounded-md border px-1.5 py-0.5 disabled:opacity-40 ${
+                overId === c.id ? "ring-2 ring-accent " : ""
+              }${dragId === c.id ? "opacity-40 " : ""}${
                 on
                   ? "border-accent bg-accent/10 text-accent"
                   : "border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-900"

@@ -466,6 +466,28 @@ export default function Studio({
       /* 무시 */
     }
   }
+  // 드래그로 바꾼 순서 저장. 화면은 먼저 바꿔 두고(응답 기다리면 칩이 튄다) 서버 결과로 맞춘다.
+  async function reorderChipsetsFor(stage: ChipsetStage, ids: string[]) {
+    setChipsets((prev) => {
+      const rank = new Map(ids.map((id, i) => [id, i]));
+      return [...prev].sort((a, b) => {
+        if (a.stage !== stage || b.stage !== stage) return 0;
+        return (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0);
+      });
+    });
+    try {
+      const r = await fetch("/api/chipsets", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ stage, reorder: ids }),
+      });
+      const d = await r.json();
+      if (d?.ok && Array.isArray(d.chipsets)) setChipsets(d.chipsets as Chipset[]);
+    } catch {
+      /* 무시 — 다음 로드 때 서버 순서로 맞춰진다 */
+    }
+  }
+
   // 쓴 시각 기록(정렬용) — 실패해도 상관없다.
   function touchChipset(id: string) {
     fetch("/api/chipsets", {
@@ -3895,6 +3917,8 @@ export default function Studio({
                 onAdd={addChipset}
                 onUpdate={editChipset}
                 onDelete={removeChipset}
+
+                onReorder={reorderChipsetsFor}
                 disabled={busy !== null}
                 hint="이 씬0(첫 키프레임) 한 장에만 걸립니다"
               />
@@ -3994,6 +4018,8 @@ export default function Studio({
                   onAdd={addChipset}
                   onUpdate={editChipset}
                   onDelete={removeChipset}
+
+                  onReorder={reorderChipsetsFor}
                   disabled={busy !== null}
                   hint="스타일 규약에 붙어 모든 씬에 적용됩니다 (팔레트·주인공 특징 등)"
                 />
@@ -4039,6 +4065,8 @@ export default function Studio({
                 onAdd={addChipset}
                 onUpdate={editChipset}
                 onDelete={removeChipset}
+
+                onReorder={reorderChipsetsFor}
                 disabled={busy !== null}
                 hint="스타일 규약에 붙어 모든 씬에 적용됩니다 (팔레트·주인공 특징 등)"
               />
@@ -4215,6 +4243,8 @@ export default function Studio({
             onAdd={addChipset}
             onUpdate={editChipset}
             onDelete={removeChipset}
+
+            onReorder={reorderChipsetsFor}
             disabled={busy !== null}
             hint="씬1~ 이미지 프롬프트에 붙습니다 (소품·구도 등)"
           />
@@ -4694,6 +4724,8 @@ export default function Studio({
             onAdd={addChipset}
             onUpdate={editChipset}
             onDelete={removeChipset}
+
+            onReorder={reorderChipsetsFor}
             disabled={busy !== null}
             hint="공통 영상 지시에 붙습니다 (카메라·속도감 등)"
           />

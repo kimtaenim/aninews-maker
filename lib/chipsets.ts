@@ -36,6 +36,7 @@ export interface Chipset {
   text: string; // 프롬프트에 실제로 붙는 조각
   createdAt: number;
   usedAt?: number; // 마지막으로 쓴 시각 — 최근 쓴 것부터 보여주려고
+  order?: number; // 사용자가 드래그로 정한 순서. 있으면 이게 우선(자동 정렬 무시).
 }
 
 const KEY = (email: string) => `chipsets:${email.toLowerCase()}`;
@@ -51,10 +52,16 @@ export async function listChipsets(email: string): Promise<Chipset[]> {
   try {
     const rows = (await getRedis().get<Chipset[]>(KEY(email))) ?? [];
     if (!Array.isArray(rows)) return [];
-    // 최근 쓴 것 → 최근 만든 것 순. 자주 쓰는 칩이 앞에 오게.
+    // 사용자가 드래그로 정한 순서(order)가 있으면 그게 먼저. 없는 칩은 그 뒤에
+    // 최근 쓴 것 → 최근 만든 것 순(자주 쓰는 칩이 앞에 오게).
     return rows
       .filter((c) => c && typeof c.id === "string" && isStage(c.stage))
-      .sort((a, b) => (b.usedAt ?? b.createdAt) - (a.usedAt ?? a.createdAt));
+      .sort((a, b) => {
+        const ao = a.order ?? Number.POSITIVE_INFINITY;
+        const bo = b.order ?? Number.POSITIVE_INFINITY;
+        if (ao !== bo) return ao - bo;
+        return (b.usedAt ?? b.createdAt) - (a.usedAt ?? a.createdAt);
+      });
   } catch {
     return [];
   }
@@ -109,6 +116,25 @@ export async function updateChipset(
   rows[idx] = { ...rows[idx], label, text };
   await getRedis().set(KEY(email), rows);
   return { ok: true };
+}
+
+// 순서 바꾸기(드래그) — 그 단계 칩들에 0,1,2… 를 다시 매긴다. 목록에 없는 id 는 무시하고,
+// 빠진 칩은 뒤에 이어 붙여 order 를 채운다(일부만 넘어와도 순서가 깨지지 않게).
+export async function reorderChipsets(
+  email: string,
+  stage: ChipsetStage,
+  ids: string[]
+): Promise<void> {
+  const rows = await listChipsets(email);
+  const inStage = rows.filter((c) => c.stage === stage);
+  const byId = new Map(inStage.map((c) => [c.id, c]));
+  const ordered = ids.map((id) => byId.get(id)).filter((c): c is Chipset => !!c);
+  const rest = inStage.filter((c) => !ids.includes(c.id));
+  const rank = new Map([...ordered, ...rest].map((c, i) => [c.id, i]));
+  await getRedis().set(
+    KEY(email),
+    rows.map((c) => (rank.has(c.id) ? { ...c, order: rank.get(c.id) } : c))
+  );
 }
 
 export async function deleteChipset(email: string, id: string): Promise<void> {

@@ -4,6 +4,7 @@ import {
   listChipsets,
   addChipset,
   updateChipset,
+  reorderChipsets,
   deleteChipset,
   touchChipsets,
   CHIPSET_STAGES,
@@ -28,7 +29,7 @@ export async function POST(req: NextRequest) {
   const email = await getSessionEmail();
   if (!email) return NextResponse.json({ ok: false, error: "로그인 필요" }, { status: 401 });
 
-  let body: { stage?: string; label?: string; text?: string; used?: unknown };
+  let body: { stage?: string; label?: string; text?: string; used?: unknown; reorder?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -39,6 +40,19 @@ export async function POST(req: NextRequest) {
   if (Array.isArray(body.used)) {
     await touchChipsets(email, body.used.map((v) => String(v)));
     return NextResponse.json({ ok: true });
+  }
+
+  // 드래그로 순서 바꾸기 — { reorder: string[] } + stage.
+  if (Array.isArray(body.reorder)) {
+    if (!CHIPSET_STAGES.includes(body.stage as ChipsetStage)) {
+      return NextResponse.json({ ok: false, error: "단계가 잘못됐어요" }, { status: 400 });
+    }
+    await reorderChipsets(
+      email,
+      body.stage as ChipsetStage,
+      body.reorder.map((v) => String(v))
+    );
+    return NextResponse.json({ ok: true, chipsets: await listChipsets(email) });
   }
 
   if (!CHIPSET_STAGES.includes(body.stage as ChipsetStage)) {
