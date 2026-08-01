@@ -2592,7 +2592,9 @@ export default function Studio({
 
   // 한 단계의 칩 꼬리를 통째로 새 목록으로 갈아끼운다(적용 지점이 단계마다 다르다).
   function setStageFrags(stage: ChipsetStage, next: string[]) {
-    if (stage === "style") {
+    // style·styleChat 은 목록만 따로 관리할 뿐 붙는 자리는 같다(styleBible).
+    // 꼬리는 두 목록의 문구를 함께 담으므로 서로 지우지 않는다.
+    if (stage === "style" || stage === "styleChat") {
       setEditBible(withChipFrags(editBible, next));
       setBibleDirty(true); // 기존 디바운스 저장이 집어간다
       styleEditedRef.current = true; // 스타일이 바뀌었으니 키프레임 프롬프트 자동 재생성
@@ -2617,7 +2619,7 @@ export default function Studio({
   }
 
   function stageFrags(stage: ChipsetStage): string[] {
-    if (stage === "style") return styleChipFrags;
+    if (stage === "style" || stage === "styleChat") return styleChipFrags;
     if (stage === "keyframe") return keyframeChipFrags;
     if (stage === "videos") return videoChipFrags;
     return imageChipFrags;
@@ -4027,12 +4029,12 @@ export default function Studio({
               예: “더 따뜻한 색감으로”, “인물을 더 단순하게”. 반영 후{" "}
               <span className="font-medium">‘다시 생성’</span>을 누르면 적용됩니다.
             </p>
-            {/* 스타일 칩은 여기서도 등록·적용한다(위 '스타일 직접 조정' 칸과 같은 칩·같은 상태). */}
+            {/* 이 칸 전용 칩 목록 — 위 '스타일 직접 조정' 칸과 따로 관리된다(사용자 지정). */}
             <div className="mt-2">
               <ChipsetRow
-                stage="style"
+                stage="styleChat"
                 chipsets={chipsets}
-                activeIds={activeChipIds("style")}
+                activeIds={activeChipIds("styleChat")}
                 onToggle={toggleChipset}
                 onAdd={addChipset}
                 onUpdate={editChipset}

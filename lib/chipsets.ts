@@ -12,14 +12,18 @@
 
 import { getRedis } from "./redis";
 
-// 단계라기보다 "붙는 자리"다. 3단계 안에 자리가 둘이라 갈라 둔다:
-//   style    — 스타일 규약(styleBible). 키프레임과 이후 모든 씬 이미지에 들어간다. 팔레트가 여기.
-//   keyframe — 씬0 이미지 프롬프트. 첫 키프레임 한 장에만 걸린다.
-export const CHIPSET_STAGES = ["style", "keyframe", "images", "videos"] as const;
+// 단계라기보다 "붙는 자리"다. 3단계 안에만 자리가 셋이라 각각 갈라 둔다.
+// 화면의 칸마다 칩 목록이 따로 관리된다(한 곳에 등록해도 다른 칸엔 안 뜬다 — 사용자 지정).
+//   style     — "스타일 직접 조정" 칸
+//   styleChat — "스타일 미세조정 (대화)" 칸
+//     ↑ 둘 다 스타일 규약(styleBible)에 붙어 전 씬에 적용된다. 목록만 따로 관리한다.
+//   keyframe  — 씬0 이미지 프롬프트. 첫 키프레임 한 장에만 걸린다.
+export const CHIPSET_STAGES = ["style", "styleChat", "keyframe", "images", "videos"] as const;
 export type ChipsetStage = (typeof CHIPSET_STAGES)[number];
 
 export const CHIPSET_STAGE_LABEL: Record<ChipsetStage, string> = {
-  style: "스타일 미세조정 (전 씬)",
+  style: "스타일 직접 조정 (전 씬)",
+  styleChat: "스타일 미세조정 (전 씬)",
   keyframe: "3단계 키프레임 (씬0만)",
   images: "4단계 이미지",
   videos: "5단계 영상",
