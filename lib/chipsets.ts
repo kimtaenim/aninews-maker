@@ -18,15 +18,23 @@ import { getRedis } from "./redis";
 //   styleChat — "스타일 미세조정 (대화)" 칸
 //     ↑ 둘 다 스타일 규약(styleBible)에 붙어 전 씬에 적용된다. 목록만 따로 관리한다.
 //   keyframe  — 씬0 이미지 프롬프트. 첫 키프레임 한 장에만 걸린다.
-export const CHIPSET_STAGES = ["style", "styleChat", "keyframe", "images", "videos"] as const;
+export const CHIPSET_STAGES = [
+  "style",
+  "styleChat",
+  "keyframe",
+  "images",
+  "videos",
+  "videosCommon",
+] as const;
 export type ChipsetStage = (typeof CHIPSET_STAGES)[number];
 
 export const CHIPSET_STAGE_LABEL: Record<ChipsetStage, string> = {
   style: "스타일 직접 조정 (전 씬)",
   styleChat: "스타일 미세조정 (전 씬)",
   keyframe: "3단계 키프레임 (씬0만)",
-  images: "4단계 이미지",
-  videos: "5단계 영상",
+  images: "4단계 이미지 (씬별)",
+  videos: "5단계 영상 (씬별)",
+  videosCommon: "5단계 공통 영상 지시 (전 씬)",
 };
 
 export interface Chipset {

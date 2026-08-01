@@ -2600,12 +2600,14 @@ export default function Studio({
   //   style / styleChat → styleBible(스타일 규약). 전 씬 이미지에 주입된다 — 팔레트가 여기.
   //   keyframe          → 씬0 imagePrompt. 첫 키프레임 한 장에만.
   //   images / videos   → 그 씬의 imagePrompt / motion. 씬마다 따로 켠다.
+  //   videosCommon      → videoCommonPrompt(전 씬 영상에 공통으로 붙는 지시).
   const styleChipFrags = chipFrags(editBible);
   const keyframeChipFrags = chipFrags(scenes[0]?.imagePrompt ?? "");
+  const videoCommonChipFrags = chipFrags(videoCommonPrompt);
 
-  // 3단계 칩(style·styleChat·keyframe)은 씬 개념이 없어 단계 통째로 켜고 끈다.
+  // 씬 개념이 없는 칩(style·styleChat·keyframe·videosCommon)은 그 칸 통째로 켜고 끈다.
   const activeChipIds = (stage: ChipsetStage): string[] => {
-    const frags = stage === "keyframe" ? keyframeChipFrags : styleChipFrags;
+    const frags = stageFrags(stage);
     return chipsets.filter((c) => c.stage === stage && frags.includes(c.text)).map((c) => c.id);
   };
 
@@ -2620,6 +2622,13 @@ export default function Studio({
     }
     if (stage === "keyframe") {
       patchScene(0, { imagePrompt: withChipFrags(scenes[0]?.imagePrompt ?? "", next) });
+      return;
+    }
+    if (stage === "videosCommon") {
+      const v = withChipFrags(videoCommonPrompt, next);
+      setVideoCommonPrompt(v);
+      saveVideoCommonPrompt(v);
+      return;
     }
     // images·videos 는 씬별이라 여기로 오지 않는다(toggleSceneChip 이 맡는다).
   }
@@ -2641,7 +2650,9 @@ export default function Studio({
   }
 
   function stageFrags(stage: ChipsetStage): string[] {
-    return stage === "keyframe" ? keyframeChipFrags : styleChipFrags;
+    if (stage === "keyframe") return keyframeChipFrags;
+    if (stage === "videosCommon") return videoCommonChipFrags;
+    return styleChipFrags;
   }
 
   function toggleChipset(c: Chipset) {
@@ -4726,6 +4737,19 @@ export default function Studio({
             <span className="mt-1 text-xs font-medium text-zinc-600 dark:text-zinc-300">
               🎬 공통 영상 지시 <span className="font-normal text-zinc-400">(전 씬 공통)</span>
             </span>
+            {/* 공통 지시 전용 칩 — 씬별 영상 칩과 목록이 따로 관리된다. */}
+            <ChipsetRow
+              stage="videosCommon"
+              chipsets={chipsets}
+              activeIds={activeChipIds("videosCommon")}
+              onToggle={toggleChipset}
+              onAdd={addChipset}
+              onUpdate={editChipset}
+              onDelete={removeChipset}
+              onReorder={reorderChipsetsFor}
+              disabled={busy !== null}
+              hint="공통 영상 지시에 붙어 모든 씬 영상에 적용됩니다"
+            />
             <textarea
               value={videoCommonPrompt}
               onChange={(e) => setVideoCommonPrompt(e.target.value)}
