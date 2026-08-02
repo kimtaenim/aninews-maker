@@ -203,8 +203,12 @@ export default function Studio({
   initialTitles,
   initialReview,
   initialCritique,
+  embedded,
 }: {
   project: Project;
+  // 롱폼 화면에 내장될 때 true — 페이지 전역 요소(하단 고정 비용 바)를 그리지 않는다.
+  // 안 그러면 롱폼 총액 바와 겹쳐 비용이 두 줄로 뜬다(2026-08-02 지적).
+  embedded?: boolean;
   styleProfiles: { id: string; label: string }[];
   videoModels: { id: string; label: string }[];
   tts?: {
@@ -5798,13 +5802,15 @@ export default function Studio({
       )}
       </main>
 
-      {/* 누적 비용 — 항상 보이는 고정 푸터 (리롤마다 합산되는 게 바로 보이게) */}
-      <div className="fixed bottom-0 inset-x-0 z-40 border-t border-zinc-200/70 dark:border-zinc-800/70 bg-white/90 dark:bg-black/80 backdrop-blur px-4 py-2.5">
-        <p className="md:max-w-2xl md:mx-auto text-center text-xs text-zinc-600 dark:text-zinc-300">
-          누적 비용{" "}
-          <span className="font-semibold text-accent">{totalKrw ?? "₩0"}</span>
-        </p>
-      </div>
+      {/* 누적 비용 — 항상 보이는 고정 푸터. 내장(롱폼 안)일 땐 롱폼 총액 바 하나만 남긴다. */}
+      {!embedded && (
+        <div className="fixed bottom-0 inset-x-0 z-40 border-t border-zinc-200/70 dark:border-zinc-800/70 bg-white/90 dark:bg-black/80 backdrop-blur px-4 py-2.5">
+          <p className="md:max-w-2xl md:mx-auto text-center text-xs text-zinc-600 dark:text-zinc-300">
+            누적 비용{" "}
+            <span className="font-semibold text-accent">{totalKrw ?? "₩0"}</span>
+          </p>
+        </div>
+      )}
 
 
       {/* 썸네일 확대 라이트박스 — 아무 곳이나 누르면 닫힘. */}

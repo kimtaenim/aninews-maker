@@ -2023,6 +2023,7 @@ export default function LongformStudio({
             styleProfiles={studioProps.styleProfiles}
             videoModels={studioProps.videoModels}
             tts={studioProps.tts}
+            embedded
           />
         </div>
       )}
