@@ -33,6 +33,10 @@ function klingError(status: number, bodyText: string): string {
   } catch {
     /* keep raw */
   }
+  // 동시 실행 한도(계정 등급별) — 잔액과 다른 문제. 자리가 빌 때까지 기다리면 풀린다.
+  if (status === 429 || /parallel task|too many|rate ?limit|1303/i.test(detail)) {
+    return "Kling 동시 한도/레이트리밋 — 잠시 후 재시도.";
+  }
   if (/balance|credit|quota|insufficient|resource pack/i.test(detail)) {
     return "Kling 잔액/크레딧 부족 — Kling 콘솔 결제 확인.";
   }
@@ -42,6 +46,12 @@ function klingError(status: number, bodyText: string): string {
   return `Kling ${status}: ${detail.slice(0, 200)}`;
 }
 
+// ★ 동시 실행 한도 — MiniMax(lib/minimax.ts)와 같은 규약으로 자리 대기.
+// 씬 일괄 생성에서 한도 에러가 사용자에게 그대로 뜨면 안 된다(2026-08-02).
+const SLOT_RETRY_MS = 12_000;
+const SLOT_WAIT_MS = 100_000;
+const SLOT_ERROR = /동시 한도|레이트리밋/;
+
 // 제출 → task_id 반환.
 export async function submitKlingVideo(opts: {
   imageUrl: string;
@@ -49,6 +59,25 @@ export async function submitKlingVideo(opts: {
   duration?: number;
   model?: string; // model_name (config endpoint). 없으면 기본(kling-v3).
   aspect?: string; // "16:9" | "9:16" 등
+}): Promise<string> {
+  const started = Date.now();
+  for (;;) {
+    try {
+      return await submitKlingOnce(opts);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "";
+      if (!SLOT_ERROR.test(msg) || Date.now() - started > SLOT_WAIT_MS) throw e;
+      await new Promise((res) => setTimeout(res, SLOT_RETRY_MS)); // 자리 빌 때까지 대기 후 재시도
+    }
+  }
+}
+
+async function submitKlingOnce(opts: {
+  imageUrl: string;
+  prompt?: string;
+  duration?: number;
+  model?: string;
+  aspect?: string;
 }): Promise<string> {
   const body: Record<string, unknown> = {
     model_name: opts.model || process.env.KLING_MODEL || "kling-v3",
