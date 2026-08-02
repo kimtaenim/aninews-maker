@@ -871,6 +871,64 @@ export default function LongformStudio({
   }
 
   // [롱폼] 섹션 영상들을 최종 이어붙이기 — 모든 섹션이 합성돼 있어야 한다.
+  // ★ 최종 합성 한 버튼 — 남은 섹션을 차례로 굽고, 끝나면 이어붙이기까지 자동.
+  // 섹션은 OOM 안전판(서버 사정)이지 사용자가 알아야 할 단계가 아니다(2026-08-02 지적:
+  // 섹션마다 누르고 또 최종을 눌러야 했다). 섹션별 버튼은 다시 굽기용으로만 남긴다.
+  const [composeAllBusy, setComposeAllBusy] = useState(false);
+  async function composeAll() {
+    if (composing || composeAllBusy) return;
+    setComposeAllBusy(true);
+    setError("");
+    const state = async () => {
+      const r = await fetch(`/api/compose?projectId=${encodeURIComponent(project.id)}`);
+      return (await r.json().catch(() => ({}))) as {
+        ok?: boolean;
+        status?: string;
+        finalVideoUrl?: string;
+        error?: string;
+        sections?: LongformSection[];
+      };
+    };
+    try {
+      let st = await state();
+      const list = st.sections ?? secList;
+      for (let si = 0; si < list.length; si++) {
+        if (list[si].videoUrl) continue;
+        setProgress(`섹션 ${si + 1}/${list.length} 합성 중…`);
+        setSecList((prev) => prev.map((x) => (x.id === list[si].id ? { ...x, status: "generating" } : x)));
+        await post("/api/compose", { projectId: project.id, lang: "ko", sectionId: list[si].id });
+        for (;;) {
+          await new Promise((res) => setTimeout(res, 10_000));
+          st = await state();
+          if (Array.isArray(st.sections)) setSecList(st.sections);
+          const cur = st.sections?.find((x) => x.id === list[si].id);
+          if (cur?.videoUrl) break;
+          if (cur?.status === "error") throw new Error(cur.error || `섹션 ${si + 1} 합성 실패`);
+          setProgress(`섹션 ${si + 1}/${list.length} 합성 중…`);
+        }
+      }
+      setProgress("최종 이어붙이는 중…");
+      setComposing(true);
+      setStatus("generating");
+      await post("/api/compose", { projectId: project.id, lang: "ko", joinSections: true });
+      for (;;) {
+        await new Promise((res) => setTimeout(res, 10_000));
+        st = await state();
+        if (st.status === "generated" && st.finalVideoUrl) {
+          setFinalUrl(st.finalVideoUrl);
+          break;
+        }
+        if (st.status === "error") throw new Error(st.error || "최종 합성 실패");
+      }
+      refreshCost();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "최종 합성 실패");
+    } finally {
+      setComposing(false);
+      setComposeAllBusy(false);
+    }
+  }
+
   async function startJoin() {
     if (composing || !allSecReady) return;
     setError("");
@@ -1885,8 +1943,8 @@ export default function LongformStudio({
             <h2 className="text-sm font-semibold">섹션별 부분 합성 ({secReadyCount}/{secList.length})</h2>
           </div>
           <p className="mt-1 text-[11px] text-zinc-500">
-            세그먼트를 2~3편씩 섹션으로 나눠 <b>섹션별로</b> 굽습니다(한 번에 몰지 않아 서버 부담↓).
-            섹션을 전부 합성한 뒤 <b>최종 이어붙이기</b>를 누르세요.
+            아래 <b>최종 합성</b> 하나만 누르면 됩니다 — 묶음별로 차례로 구운 뒤 자동으로 이어붙입니다.
+            (묶음별 버튼은 특정 구간만 다시 구울 때 쓰세요.)
           </p>
           <ol className="mt-2 grid gap-2">
             {secList.map((sec, si) => {
@@ -1951,17 +2009,18 @@ export default function LongformStudio({
           {/* 최종 이어붙이기 */}
           <div className="mt-3 rounded-xl bg-zinc-50 dark:bg-zinc-900 p-3">
             <button
-              onClick={startJoin}
-              disabled={!allSecReady || composing}
+              onClick={composeAll}
+              disabled={composing || composeAllBusy || readyCount !== segs.length}
+              title={readyCount === segs.length ? "남은 묶음을 차례로 굽고 자동으로 이어붙입니다" : "먼저 위에서 편들을 완성해주세요"}
               className="w-full rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white text-sm font-medium py-2"
             >
-              {composing
-                ? "이어붙이는 중…"
-                : allSecReady
-                  ? "🔗 최종 이어붙이기"
-                  : `섹션 합성 대기 (${secReadyCount}/${secList.length})`}
+              {composing || composeAllBusy
+                ? "합성 중…"
+                : readyCount === segs.length
+                  ? "🔗 최종 합성 (한 번에)"
+                  : `편 완성 대기 (${readyCount}/${segs.length})`}
             </button>
-            {composing && (
+            {(composing || composeAllBusy) && (
               <p className="mt-2 text-[11px] text-zinc-500">
                 상태: {status} {progress ? `· ${progress}` : ""}
               </p>
