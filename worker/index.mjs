@@ -112,13 +112,19 @@ async function tick() {
     }
   } finally {
     if (timer) clearTimeout(timer); // 안 지우면 타이머가 살아 다음 잡 중에 터진다
-    await safely("current 해제", () => redis.del("worker:current"));
+    // 배포 겹침 창엔 구·신 프로세스가 이 키를 공유한다 — 내 잡 표식일 때만 지운다.
+    // (다른 프로세스가 굽는 중인 표식을 지우면, 그 프로세스가 죽었을 때 자동 재개가
+    // 고아 잡을 못 찾는다 — 2026-08-02 실사례.)
+    await safely("current 해제", async () => {
+      const cur = await redis.get("worker:current");
+      if (cur === job.id) await redis.del("worker:current");
+    });
   }
 }
 
 // 배포 검증용 버전 표식 — Render 로그 + Redis(worker:build)에 남긴다.
 // Redis 에 쓰면 대시보드 없이 원격에서 "새 코드가 떴는지" 확인 가능.
-const BUILD = "robust-v8 (join 이 섹션 완성을 기다림 — 배포 겹침에도 체인 순서 보장)";
+const BUILD = "robust-v9 (잡 표식 보호 — 배포 겹침 때 자동 재개가 안 끊기게)";
 console.log(`[worker] BUILD = ${BUILD}`);
 console.log("[worker] 시작 — jobq:compose 폴링 중…");
 try {
