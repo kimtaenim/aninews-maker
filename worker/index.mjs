@@ -47,9 +47,6 @@ async function tick() {
   let timer = null;
   try {
     await safely("running 기록", () => updateJob(job.id, { status: "running" }));
-    // 지금 굽는 잡 표식 — 프로세스가 여기서 죽으면(배포 재시작·OOM) 다음 기동이 이걸 보고
-    // 잡을 자동 재개한다. 아래 finally 에서 지운다.
-    await safely("current 기록", () => redis.set("worker:current", job.id));
     const url = await Promise.race([
       composeProject(job.projectId, job.payload?.lang ?? "ko", job.payload),
       new Promise((_, rej) => {
@@ -86,50 +83,17 @@ async function tick() {
     }
   } finally {
     if (timer) clearTimeout(timer); // 안 지우면 타이머가 살아 다음 잡 중에 터진다
-    await safely("current 해제", () => redis.del("worker:current"));
   }
 }
 
 // 배포 검증용 버전 표식 — Render 로그 + Redis(worker:build)에 남긴다.
 // Redis 에 쓰면 대시보드 없이 원격에서 "새 코드가 떴는지" 확인 가능.
-const BUILD = "robust-v5 (중단 잡 자동 재개 — 배포 재시작·OOM 에도 합성이 이어진다)";
+const BUILD = "robust-v4 (일시 오류 자동 재시도 + 이어붙이기 길이 검증 게이트)";
 console.log(`[worker] BUILD = ${BUILD}`);
 console.log("[worker] 시작 — jobq:compose 폴링 중…");
 try {
   await redis.set("worker:build", { build: BUILD, startedAt: Date.now() });
 } catch {}
-
-// [중단 잡 자동 재개] 단일 워커라, 기동 시점에 worker:current 가 남아 있으면 직전
-// 프로세스가 그 잡을 굽다 죽은 것(배포 재시작·OOM). 한 번은 조용히 다시 굽고,
-// 두 번째로 또 죽었으면 그 잡 자체가 워커를 죽이는 것으로 보고 명확히 실패 처리한다
-// (크래시 루프 방지). 과거 실패 기록 최다 유형("워커가 합성 도중 종료")의 근본 처리.
-// Render 재배포가 새 프로세스를 먼저 띄우는 짧은 겹침 창에선 산 잡을 재큐할 수도
-// 있는데, 합성은 멱등(나중 저장이 이김)이라 중복 굽기 손해로 그친다.
-try {
-  const orphanId = await redis.get("worker:current");
-  if (orphanId) {
-    const job = await redis.get(`job:${orphanId}`);
-    if (job && job.status === "running") {
-      const restarts = (job.restarts ?? 0) + 1;
-      if (restarts <= 1) {
-        console.log(`[worker] 중단된 잡 자동 재개 — ${orphanId}`);
-        await requeueJobFront({ ...job, restarts }, {
-          status: "queued",
-          error: `워커 재시작으로 중단 — 자동 재개 ${restarts}/1`,
-        });
-      } else {
-        await updateJob(orphanId, {
-          status: "error",
-          error: "이 잡을 굽는 중 워커가 두 번 종료됨 — 잡 자체가 원인일 수 있어 자동 재개를 멈췄어요",
-        });
-        await failCompose(job.projectId, "합성 중 워커가 반복 종료 — 다시 시도해 주세요");
-      }
-    }
-    await redis.del("worker:current");
-  }
-} catch (e) {
-  console.error("[worker] 중단 잡 확인 실패(무시):", e?.message ?? e);
-}
 // 생존 신호 — 1분마다 갱신(폴링 대비 미미한 추가 커맨드). 확인: GET worker:heartbeat.
 let lastBeat = 0;
 for (;;) {
