@@ -540,6 +540,7 @@ export default function LongformStudio({
       audioMissing: number[];
       imagesApproved: boolean;
       videosMissing: number[];
+      videosPending: number[];
       videosApproved: boolean;
       composeStatus: string;
       composeProgress: string;
@@ -619,6 +620,43 @@ export default function LongformStudio({
     prog(id, "✓ 완성");
     return true;
   }
+
+  // ★ 이어 폴링 — 숏폼과 같게(Studio.tsx 의 자동 재개 useEffect 를 롱폼에도).
+  // 제출된 영상 작업은 탭을 닫아도 MiniMax 가 계속 만든다 — 화면을 다시 열면 폴링만
+  // 붙이면 유실이 없다. 결과 저장(Blob)은 폴링 GET 이 하므로 폴링 재개가 곧 복구다.
+  const resumedRef = useRef(false);
+  useEffect(() => {
+    if (resumedRef.current) return;
+    resumedRef.current = true;
+    const ids = [...segs.map((x) => x.id), ...(hostProject ? [hostProject.id] : [])];
+    void (async () => {
+      let touched = false;
+      for (const id of ids) {
+        try {
+          const st = await segStatus(id);
+          const pending = st.videosPending ?? [];
+          if (!pending.length) continue;
+          touched = true;
+          prog(id, `만들던 영상 ${pending.length}개 이어서 확인 중…`);
+          await Promise.all(
+            pending.map(async (i) => {
+              for (;;) {
+                const r = await fetch(`/api/video/scene?projectId=${encodeURIComponent(id)}&sceneIndex=${i}`);
+                const d = (await r.json().catch(() => ({}))) as { status?: string };
+                if (d.status === "completed" || d.status === "failed") return;
+                await new Promise((res) => setTimeout(res, 12_000));
+              }
+            })
+          );
+          prog(id, "받아왔습니다 — “만들기”를 누르면 남은 단계를 이어서 합니다");
+        } catch {
+          /* 이 편은 건너뛰고 다음 편 */
+        }
+      }
+      if (touched) router.refresh();
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 후보를 고르면 그 편을 이어서 끝까지 만든다.
   async function pickSegKeyframe(id: string, url: string) {

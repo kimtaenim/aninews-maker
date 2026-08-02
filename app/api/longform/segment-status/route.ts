@@ -22,6 +22,10 @@ export async function GET(req: NextRequest) {
   const videosMissing = scenes
     .map((s, i) => (s.imageUrl && !s.videoUrl && !s.skipped && s.videoSource !== "upload" ? i : -1))
     .filter((i) => i >= 0);
+  // 제출은 됐는데 결과를 아직 안 받은 것 — 화면을 다시 열면 폴링을 자동 재개한다(숏폼과 같게).
+  const videosPending = scenes
+    .map((s, i) => (s.videoJobId && !s.videoUrl && !s.skipped ? i : -1))
+    .filter((i) => i >= 0);
 
   return NextResponse.json({
     ok: true,
@@ -32,6 +36,7 @@ export async function GET(req: NextRequest) {
     audioMissing,
     imagesApproved: p.steps.images.status === "approved",
     videosMissing,
+    videosPending,
     videosApproved: p.steps.videos.status === "approved",
     composeStatus: p.steps.compose.status,
     composeProgress: await getComposeProgressLine(projectId),
