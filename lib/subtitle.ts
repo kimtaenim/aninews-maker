@@ -30,7 +30,8 @@ export interface SubtitleStyle {
 function fontCqwFor(size: SubtitleSettings["size"], format?: "short" | "long"): number {
   const base = size === "small" ? 56 : size === "large" ? 84 : 68;
   const [W, H] = format === "long" ? [1920, 1080] : [1080, 1920];
-  const px = (base * H) / 1920;
+  // 가로는 높이 비례 크기가 너무 작다는 지적(2026-08-02) — 워커와 동일하게 2배.
+  const px = ((base * H) / 1920) * (format === "long" ? 2 : 1);
   return (px / W) * 100; // %단위(cqw)
 }
 
@@ -38,6 +39,15 @@ export function resolveSubtitleStyle(
   s: SubtitleSettings,
   format?: "short" | "long"
 ): SubtitleStyle {
+  // 가로에선 1/3→1/4·2/3→3/4 재매핑(2026-08-02 지시: 가로는 1/4·중앙·3/4). 워커와 동일.
+  const pos =
+    format === "long"
+      ? s.position === "one-third"
+        ? "one-quarter"
+        : s.position === "two-thirds"
+          ? "three-quarters"
+          : s.position
+      : s.position;
   return {
     fontFamily:
       s.font === "serif"
@@ -49,17 +59,17 @@ export function resolveSubtitleStyle(
     fontCqw: fontCqwFor(s.size, format),
     emColor: s.box === "light" ? "#b45309" : "#ffd24a",
     containerPos:
-      s.position === "top"
+      pos === "top"
         ? { top: "9%" }
-        : s.position === "one-quarter"
+        : pos === "one-quarter"
           ? { top: "25%", transform: "translateY(-50%)" }
-        : s.position === "one-third"
+        : pos === "one-third"
           ? { top: "33.3%", transform: "translateY(-50%)" }
-          : s.position === "center"
+          : pos === "center"
             ? { top: "50%", transform: "translateY(-50%)" }
-            : s.position === "two-thirds"
+            : pos === "two-thirds"
               ? { top: "66.6%", transform: "translateY(-50%)" }
-              : s.position === "three-quarters"
+              : pos === "three-quarters"
                 ? { top: "75%", transform: "translateY(-50%)" }
                 : { bottom: "10%" },
   };

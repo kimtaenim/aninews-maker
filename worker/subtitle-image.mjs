@@ -357,7 +357,9 @@ export async function renderCaptionPng(text, sub, opts = {}) {
   }
   // 씬별 자막 스타일 프리셋 — 폰트·박스·색·모서리·외곽선을 결정(위치·크기·정렬은 sub).
   const recipe = resolveCaptionRecipe(sub, opts.preset);
-  const size = opts.sizePx ?? fontPx(sub.size, H);
+  // 가로(16:9)는 높이 비례 크기가 너무 작다는 지적(2026-08-02) — 2배로 키운다.
+  const landscape = W > H;
+  const size = opts.sizePx ?? Math.round(fontPx(sub.size, H) * (landscape ? 2 : 1));
   const fam = familyOf(recipe.font);
   const baseFont = `${recipe.weight} ${size}px "${fam}"${LATIN_FALLBACK}`;
   const emSize = Math.round(size * 1.3); // 강조어는 1.3배 크게
@@ -398,18 +400,26 @@ export async function renderCaptionPng(text, sub, opts = {}) {
   const left = sub.align === "left";
   const boxX = left ? Math.round(W * 0.045) : Math.round((W - boxW) / 2);
   // 위치별 세로 배치. 중앙·2/3·3/4 는 박스 중심을 그 지점에 둔다. 하단은 바닥에서 10% 위.
+  // 가로에선 1/3→1/4·2/3→3/4 로 재매핑(2026-08-02 지시: 가로는 1/4·중앙·3/4).
+  const posKey = landscape
+    ? sub.position === "one-third"
+      ? "one-quarter"
+      : sub.position === "two-thirds"
+        ? "three-quarters"
+        : sub.position
+    : sub.position;
   const boxY =
-    sub.position === "top"
+    posKey === "top"
       ? Math.round(H * 0.09)
-      : sub.position === "one-quarter"
+      : posKey === "one-quarter"
         ? Math.round(H * 0.25 - boxH / 2)
-      : sub.position === "one-third"
+      : posKey === "one-third"
         ? Math.round(H / 3 - boxH / 2)
-      : sub.position === "center"
+      : posKey === "center"
         ? Math.round(H * 0.5 - boxH / 2)
-        : sub.position === "two-thirds"
+        : posKey === "two-thirds"
           ? Math.round((H * 2) / 3 - boxH / 2)
-          : sub.position === "three-quarters"
+          : posKey === "three-quarters"
             ? Math.round(H * 0.75 - boxH / 2)
             : Math.round(H - H * 0.1 - boxH);
 

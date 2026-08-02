@@ -771,8 +771,13 @@ export default function LongformStudio({
   const [composing, setComposing] = useState(false);
   const [status, setStatus] = useState<string>("");
   const [progress, setProgress] = useState<string>("");
-  // 단계별 현황 한 줄 — "① 편 2/3 완성 · 1 굽는 중 → ② 묶음 0/1 대기 → ③ 이어붙이기 대기"
-  const [stageLine, setStageLine] = useState<string>("");
+  // 단계별 현황 — 전체 3단계를 항상 다 보여주고 색으로 진행 위치 표시:
+  // 끝난 단계=초록, 지금 단계=강조색 굵게, 아직인 단계=회색.
+  const [stageInfo, setStageInfo] = useState<{
+    seg: { done: number; total: number; baking: number };
+    sec: { done: number; total: number; baking: number };
+    join: "wait" | "active" | "done";
+  } | null>(null);
   const [finalUrl, setFinalUrl] = useState<string | undefined>(project.finalVideoUrl);
   const [error, setError] = useState<string>("");
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -894,31 +899,25 @@ export default function LongformStudio({
         segBaking ? `편 합성 — ${segBaking.progress ?? "진행 중…"}` : (d.progress ?? "")
       );
       if (Array.isArray(d.sections)) setSecList(d.sections as LongformSection[]);
-      // 단계별 현황 — 몇 개가 끝났고 몇 개가 굽는 중이고 몇 개가 기다리는지(2026-08-02 요청).
+      // 단계별 현황 — 전체 단계·개수·진행 위치(2026-08-02 요청).
       {
         const secs = Array.isArray(d.sections) ? (d.sections as LongformSection[]) : [];
         const sgDone = segPolls.filter((x) => x.finalVideoUrl).length;
         const sgBaking = segPolls.filter((x) => !x.finalVideoUrl && x.composeStatus === "generating").length;
-        const sgWait = Math.max(0, segPolls.length - sgDone - sgBaking);
         const scDone = secs.filter((s) => s.videoUrl).length;
         const scBaking = secs.filter((s) => !s.videoUrl && s.status === "generating").length;
-        const scWait = Math.max(0, secs.length - scDone - scBaking);
-        const joinLabel =
+        const join: "wait" | "active" | "done" =
           d.status === "generated"
-            ? "완료"
+            ? "done"
             : secs.length > 0 && scDone === secs.length && d.status === "generating"
-              ? "굽는 중"
-              : "대기";
+              ? "active"
+              : "wait";
         if (segPolls.length || secs.length) {
-          setStageLine(
-            `① 편 ${sgDone}/${segPolls.length} 완성` +
-              (sgBaking ? ` · ${sgBaking} 굽는 중` : "") +
-              (sgWait ? ` · ${sgWait} 대기` : "") +
-              ` → ② 묶음 ${scDone}/${secs.length} 완성` +
-              (scBaking ? ` · ${scBaking} 굽는 중` : "") +
-              (scWait ? ` · ${scWait} 대기` : "") +
-              ` → ③ 이어붙이기 ${joinLabel}`
-          );
+          setStageInfo({
+            seg: { done: sgDone, total: segPolls.length, baking: sgBaking },
+            sec: { done: scDone, total: secs.length, baking: scBaking },
+            join,
+          });
         }
       }
       const anySecGen =
@@ -2262,11 +2261,47 @@ export default function LongformStudio({
                 합성 중단
               </button>
             )}
-            {(composing || composeAllBusy) && stageLine && (
-              <p className="mt-2 text-[11px] font-medium text-zinc-700 dark:text-zinc-200">
-                {stageLine}
-              </p>
-            )}
+            {(composing || composeAllBusy) && stageInfo && (() => {
+              // 단계 색: 끝난 단계=초록, 지금 단계=강조색 굵게+펄스, 아직=회색.
+              const st = stageInfo;
+              const segState = st.seg.total > 0 && st.seg.done === st.seg.total ? "done" : st.seg.baking > 0 ? "active" : "wait";
+              const secState = st.sec.total > 0 && st.sec.done === st.sec.total ? "done" : st.sec.baking > 0 || segState === "done" ? "active" : "wait";
+              const joinState = st.join === "done" ? "done" : st.join === "active" || secState === "done" ? "active" : "wait";
+              const cls = (s: string) =>
+                s === "done"
+                  ? "text-emerald-600 dark:text-emerald-400"
+                  : s === "active"
+                    ? "font-bold text-accent animate-pulse"
+                    : "text-zinc-400";
+              const units = st.seg.total + st.sec.total + 1;
+              const doneUnits = st.seg.done + st.sec.done + (st.join === "done" ? 1 : 0);
+              const pct = Math.round((doneUnits / Math.max(1, units)) * 100);
+              return (
+                <div className="mt-2">
+                  <p className="text-[11px]">
+                    <span className={cls(segState)}>
+                      ① 편 {st.seg.done}/{st.seg.total}
+                      {st.seg.baking > 0 ? ` (${st.seg.baking} 굽는 중)` : segState === "done" ? " ✓" : ""}
+                    </span>
+                    <span className="text-zinc-400"> → </span>
+                    <span className={cls(secState)}>
+                      ② 묶음 {st.sec.done}/{st.sec.total}
+                      {st.sec.baking > 0 ? " (굽는 중)" : secState === "done" ? " ✓" : ""}
+                    </span>
+                    <span className="text-zinc-400"> → </span>
+                    <span className={cls(joinState)}>
+                      ③ 이어붙이기{joinState === "done" ? " ✓" : joinState === "active" ? " (굽는 중)" : ""}
+                    </span>
+                  </p>
+                  <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
+                    <div
+                      className="h-full rounded-full bg-accent transition-all duration-700"
+                      style={{ width: `${Math.max(4, pct)}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })()}
             {(composing || composeAllBusy) && (
               <p className="mt-1 text-[11px] text-zinc-500">
                 상태: {status} {progress ? `· ${progress}` : ""}
