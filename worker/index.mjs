@@ -1,6 +1,14 @@
 // aninews 합성 워커 — Redis 큐(jobq:compose)를 폴링해 ffmpeg 합성 실행.
 // Render Background Worker 등 상시 서버에서 `node index.mjs` 로 가동.
-import { popComposeJob, updateJob, requeueJobFront, failCompose, redis } from "./store.mjs";
+import {
+  popComposeJob,
+  updateJob,
+  requeueJobFront,
+  requeueJobBack,
+  failCompose,
+  getProject,
+  redis,
+} from "./store.mjs";
 import { composeProject, abortActiveWork } from "./compose.mjs";
 
 const POLL_MS = 4000;
@@ -42,6 +50,24 @@ async function tick() {
     return;
   }
   if (!job) return;
+
+  // [순서 대기] 최종 join 인데 섹션이 아직이면 실패가 아니라 순서 문제 — 배포 겹침 창에
+  // 구·신 프로세스가 큐를 나눠 물면 섹션이 끝나기 전에 join 이 뽑힐 수 있다(2026-08-02
+  // 실사례). 큐 뒤로 물러나 기다린다(4초 폴링 × 최대 150회 ≈ 10분). 여기서 미리 보내야
+  // composeProject 의 진행로그 리셋이 섹션 진행 표시를 지우지 않는다.
+  if (job.payload?.joinSections) {
+    let missing = false;
+    try {
+      const p = await getProject(job.projectId);
+      missing = (p?.sections ?? []).some((s) => !s.videoUrl);
+    } catch {}
+    const waits = (job.waits ?? 0) + 1;
+    if (missing && waits <= 150) {
+      if (waits === 1 || waits % 15 === 0) console.log(`[worker] 섹션 완성 대기 — join 큐 뒤로 (${waits}/150)`);
+      await safely("섹션 대기 재큐", () => requeueJobBack({ ...job, waits }, { status: "queued" }));
+      return;
+    }
+  }
 
   console.log(`[worker] compose 시작 job=${job.id} project=${job.projectId} lang=${job.payload?.lang}`);
   let timer = null;
@@ -92,7 +118,7 @@ async function tick() {
 
 // 배포 검증용 버전 표식 — Render 로그 + Redis(worker:build)에 남긴다.
 // Redis 에 쓰면 대시보드 없이 원격에서 "새 코드가 떴는지" 확인 가능.
-const BUILD = "robust-v7 (부 전환 쉼 0.7초 — 영상·음성·자막 함께)";
+const BUILD = "robust-v8 (join 이 섹션 완성을 기다림 — 배포 겹침에도 체인 순서 보장)";
 console.log(`[worker] BUILD = ${BUILD}`);
 console.log("[worker] 시작 — jobq:compose 폴링 중…");
 try {

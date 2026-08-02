@@ -38,6 +38,14 @@ export async function requeueJobFront(job, patch) {
   await redis.rpush("jobq:compose", job.id);
 }
 
+// 순서 대기 재큐 — 큐의 생산 쪽(lpush)에 되돌려 다른 잡들이 먼저 돌게 한다.
+// (join 이 섹션 완성을 기다릴 때 사용 — 배포 겹침 창에 두 프로세스가 잡을 나눠 물면
+// 체인 순서가 깨질 수 있어서, 재료가 아직이면 실패 대신 뒤로 물러난다.)
+export async function requeueJobBack(job, patch) {
+  await redis.set(`job:${job.id}`, { ...job, ...patch, updatedAt: Date.now() });
+  await redis.lpush("jobq:compose", job.id);
+}
+
 // 합성 단계별 진행 로그 — Redis 리스트에 append. 클라/개발자가 lrange 로 읽어 어디서
 // 멈췄는지 본다. (Render 로그 복붙 없이 원격에서 진행 추적 가능)
 const progKey = (projectId) => `compose:progress:${projectId}`;
