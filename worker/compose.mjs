@@ -343,10 +343,13 @@ async function concatClips(order, dir, log, outName = "final.mp4") {
 // 최종 합성본 업로드 + 저장 — 저장 직전 fresh 재읽기 후 finalVideoUrl 만 머지(통째 저장 금지).
 async function uploadAndSaveFinal(project, lang, finalPath, log) {
   await log("Blob 업로드…");
+  // multipart — 대용량을 조각으로 나눠 조각 단위 재시도. 통짜 스트림은 업로드가 순간
+  // 실패해 SDK가 재시도할 때 이미 소진된 스트림을 못 다시 읽어 "Response body …
+  // disturbed or locked"로 죽는다(2026-08-02 join 사고).
   const { url } = await put(
     `project/${project.id}/final-${lang}-${Date.now()}.mp4`,
     createReadStream(finalPath),
-    { access: "public", contentType: "video/mp4", addRandomSuffix: false }
+    { access: "public", contentType: "video/mp4", addRandomSuffix: false, multipart: true }
   );
   const p2 = await getProject(project.id);
   if (p2) {
@@ -451,7 +454,7 @@ async function runLongformSectionConcat(project, sectionId, lang, dir, log, W, H
     const { url } = await put(
       `project/${project.id}/section-${section.id}-${lang}-${Date.now()}.mp4`,
       createReadStream(finalPath),
-      { access: "public", contentType: "video/mp4", addRandomSuffix: false }
+      { access: "public", contentType: "video/mp4", addRandomSuffix: false, multipart: true }
     );
     await saveSectionResult(project.id, section.id, { videoUrl: url, status: "generated", error: undefined });
     await log("섹션 합성 완료");
@@ -727,7 +730,7 @@ export async function composeProject(projectId, lang, opts = {}) {
     const { url } = await put(
       `project/${projectId}/${clean ? "clean" : "final"}-${lang}-${Date.now()}.mp4`,
       createReadStream(finalPath),
-      { access: "public", contentType: "video/mp4", addRandomSuffix: false }
+      { access: "public", contentType: "video/mp4", addRandomSuffix: false, multipart: true }
     );
 
     const p2 = await getProject(projectId);
