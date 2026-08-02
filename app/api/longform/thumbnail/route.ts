@@ -18,6 +18,7 @@ export async function POST(req: NextRequest) {
     styleProfileId?: string;
     quality?: "low" | "medium" | "high";
     chipIds?: string[];
+    referenceImageUrl?: string;
     // 생성 없이 설정만 저장(화면에서 고르는 즉시). 리로드해도 그대로 있어야 한다.
     settingsOnly?: boolean;
   };
@@ -41,6 +42,7 @@ export async function POST(req: NextRequest) {
       quality: body.quality,
       chipIds: Array.isArray(body.chipIds) ? body.chipIds : undefined,
       extra: (body.styleExtra ?? "").trim() || undefined,
+      referenceImageUrl: (body.referenceImageUrl ?? "").trim() || undefined,
     };
     fresh.thumbnail = cur
       ? { ...cur, settings, ...(body.text !== undefined ? { textUsed: body.text } : {}) }
@@ -100,6 +102,7 @@ export async function POST(req: NextRequest) {
       styleExtra: (body.styleExtra ?? "").trim() || undefined,
       styleProfileId: body.styleProfileId,
       quality: body.quality,
+      referenceImageUrl: (body.referenceImageUrl ?? "").trim() || undefined,
     });
     const fresh = (await getProject(projectId)) ?? longform;
     // 쓴 설정을 같이 저장 — 다시 만들 때 화면이 그대로 복원된다.
@@ -108,6 +111,7 @@ export async function POST(req: NextRequest) {
       quality: body.quality,
       chipIds: Array.isArray(body.chipIds) ? body.chipIds : undefined,
       extra: (body.styleExtra ?? "").trim() || undefined,
+      referenceImageUrl: (body.referenceImageUrl ?? "").trim() || undefined,
     };
     fresh.thumbnail = pkg;
     fresh.updatedAt = Date.now();

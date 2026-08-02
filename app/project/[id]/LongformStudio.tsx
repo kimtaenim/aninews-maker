@@ -14,6 +14,7 @@ import type { LongformReviewResult } from "@/lib/longformReview";
 import type { Chipset, ChipsetStage } from "@/lib/chipsets";
 import ChipsetRow from "./ChipsetRow";
 import Spinner from "@/components/Spinner";
+import { upload } from "@vercel/blob/client";
 import Studio from "./Studio";
 import type { Project } from "@/lib/types";
 import { speakSeconds } from "@/lib/longformScreening";
@@ -384,6 +385,26 @@ export default function LongformStudio({
   const [thumbQuality, setThumbQuality] = useState<"low" | "medium" | "high">(
     initialThumbnail?.settings?.quality ?? "medium"
   );
+  // 참조 이미지 — 숏폼 키프레임과 같게, 업로드하면 이 인물·구도를 살려 그린다.
+  const [thumbRefUrl, setThumbRefUrl] = useState(initialThumbnail?.settings?.referenceImageUrl ?? "");
+  const [thumbRefBusy, setThumbRefBusy] = useState(false);
+  const [thumbSelBusy, setThumbSelBusy] = useState(false);
+
+  async function uploadThumbRef(file: File) {
+    setThumbRefBusy(true);
+    try {
+      const safe = file.name.replace(/[^\w.\-]+/g, "_").slice(-60);
+      const blob = await upload(`project/${project.id}/upload-thumb-ref-${safe}`, file, {
+        access: "public",
+        handleUploadUrl: "/api/upload",
+      });
+      setThumbRefUrl(blob.url); // 자동 저장 useEffect 가 settingsOnly 로 서버에 남긴다
+    } catch {
+      setThumbErr("참조 이미지 업로드 실패");
+    } finally {
+      setThumbRefBusy(false);
+    }
+  }
   useEffect(() => {
     fetch("/api/chipsets")
       .then((r) => r.json())
@@ -470,13 +491,14 @@ export default function LongformStudio({
           styleProfileId: thumbStyleId || undefined,
           quality: thumbQuality,
           chipIds: thumbChips,
+          referenceImageUrl: thumbRefUrl || undefined,
           styleExtra: thumbExtra,
           text: thumbTextEdit,
         }),
       }).catch(() => {});
     }, 600); // 타이핑이 멈추면 저장
     return () => clearTimeout(t);
-  }, [project.id, thumbStyleId, thumbQuality, thumbChips, thumbExtra, thumbTextEdit]);
+  }, [project.id, thumbStyleId, thumbQuality, thumbChips, thumbExtra, thumbTextEdit, thumbRefUrl]);
 
   // ── [모듈 5] 썸네일 — 시안 3종 + 168px 축소 검증본.
   const [thumb, setThumb] = useState<LongformThumbnailPackage | null>(initialThumbnail);
@@ -503,6 +525,7 @@ export default function LongformStudio({
           styleProfileId: thumbStyleId || undefined,
           quality: thumbQuality,
           chipIds: thumbChips,
+          referenceImageUrl: thumbRefUrl || undefined,
         }),
       });
       const d = await r.json().catch(() => ({}));
@@ -517,6 +540,7 @@ export default function LongformStudio({
   }
 
   async function selectThumbnail(fileUrl: string) {
+    setThumbSelBusy(true);
     try {
       const r = await fetch("/api/longform/thumbnail", {
         method: "POST",
@@ -527,6 +551,8 @@ export default function LongformStudio({
       if (r.ok && d.ok) setThumb(d.thumbnail as LongformThumbnailPackage);
     } catch {
       /* 무시 */
+    } finally {
+      setThumbSelBusy(false);
     }
   }
 
@@ -1238,6 +1264,45 @@ export default function LongformStudio({
               </select>
             </label>
           </div>
+          {/* 참조 이미지 — 숏폼 키프레임과 같게. 있으면 이 인물·구도를 살려 그린다. */}
+          <div className="grid gap-1.5">
+            <span className="text-[11px] font-medium text-zinc-500">
+              참조 이미지 (선택) — 이 인물·구도를 살려서 썸네일을 만듭니다
+            </span>
+            {thumbRefUrl ? (
+              <div className="flex items-center gap-3">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={thumbRefUrl}
+                  alt="썸네일 참조"
+                  className="w-20 aspect-[16/9] rounded-lg border border-zinc-200 object-cover dark:border-zinc-800"
+                />
+                <button
+                  type="button"
+                  onClick={() => setThumbRefUrl("")}
+                  disabled={thumbBusy || thumbRefBusy}
+                  className="rounded-md border border-zinc-300 px-2 py-0.5 text-[11px] hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                >
+                  참조 제거
+                </button>
+              </div>
+            ) : (
+              <label className="inline-flex w-fit cursor-pointer items-center gap-1.5 rounded-md border border-zinc-300 px-2.5 py-1 text-[11px] hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900">
+                {thumbRefBusy ? "업로드 중…" : "이미지 업로드"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  disabled={thumbBusy || thumbRefBusy}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) uploadThumbRef(f);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            )}
+          </div>
           <ChipsetRow
             stage="style"
             chipsets={chipsets}
@@ -1296,51 +1361,76 @@ export default function LongformStudio({
             <p className="text-[11px]">
               <span className="font-semibold text-accent">글씨:</span> {thumb.textUsed}
             </p>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-              {thumb.variants.map((v, i) => (
-                <div
-                  key={i}
-                  className={`rounded-lg border p-1.5 ${thumb.selected && thumb.selected === v.fileUrl ? "border-accent bg-accent/10" : "border-zinc-200 dark:border-zinc-800"}`}
-                >
-                  {v.fileUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={v.fileUrl} alt={`시안 ${i + 1}`} className="w-full rounded aspect-[16/9] object-cover" />
-                  ) : (
-                    <div className="aspect-[16/9] w-full rounded bg-zinc-100 dark:bg-zinc-900" />
-                  )}
-                  <p className="mt-1 text-[10px] text-zinc-500 line-clamp-2">{v.composition}</p>
-                  <div className="mt-1 flex items-center gap-1.5">
-                    {v.previewUrl && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={v.previewUrl} alt="168px 검증본" width={84} className="rounded border border-zinc-300 dark:border-zinc-700" />
-                    )}
-                    <div className="flex flex-col gap-1">
-                      {v.fileUrl && (
-                        <a
-                          href={v.fileUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="rounded-md border border-zinc-300 dark:border-zinc-700 px-2 py-0.5 text-[10px] hover:bg-zinc-100 dark:hover:bg-zinc-900"
-                        >
-                          ⬇ 원본
-                        </a>
-                      )}
-                      {v.fileUrl && (
-                        <button
-                          onClick={() => selectThumbnail(v.fileUrl!)}
-                          className="rounded-md bg-accent px-2 py-0.5 text-[10px] font-medium text-white hover:bg-accent-strong"
-                        >
-                          {thumb.selected === v.fileUrl ? "✓ 선택됨" : "선택"}
-                        </button>
-                      )}
+            <p className="mb-2 text-[11px] text-zinc-500">
+              마음에 드는 시안을 고르세요. (3장 중 1장 — 업로드할 파일이 됩니다)
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              {thumb.variants.map((v, i) => {
+                if (!v.fileUrl) {
+                  return (
+                    <div
+                      key={i}
+                      className="flex aspect-[16/9] items-center justify-center rounded-xl border border-dashed border-red-300 text-[10px] text-red-500"
+                    >
+                      시안 {i + 1} 실패 — 다시 생성
                     </div>
-                  </div>
-                  {typeof v.strokePx === "number" && v.strokePx < 2 && (
-                    <p className="mt-1 text-[10px] text-amber-600">⚠ 168px에서 획이 얇아요({v.strokePx}px)</p>
-                  )}
-                </div>
-              ))}
+                  );
+                }
+                const selected = thumb.selected === v.fileUrl;
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => selectThumbnail(v.fileUrl!)}
+                    disabled={thumbBusy || thumbSelBusy}
+                    title={v.composition}
+                    className={
+                      "relative overflow-hidden rounded-xl border-2 transition-colors disabled:opacity-60 " +
+                      (selected
+                        ? "border-accent"
+                        : "border-transparent hover:border-zinc-300 dark:hover:border-zinc-600")
+                    }
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={v.fileUrl} alt={`시안 ${i + 1}`} className="aspect-[16/9] w-full object-cover" />
+                    {selected && (
+                      <span className="absolute right-1 top-1 rounded bg-accent px-1.5 py-0.5 text-[10px] font-bold text-white">
+                        선택됨
+                      </span>
+                    )}
+                    {thumbSelBusy && (
+                      <span className="absolute inset-0 flex items-center justify-center bg-black/30">
+                        <Spinner className="size-5 text-white" />
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
+            {thumb.selected && (
+              <div className="mt-2">
+                <p className="mb-1 text-[11px] font-medium text-zinc-500">
+                  ✓ 선택된 썸네일 — 이 파일을 유튜브에 올립니다
+                </p>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={thumb.selected}
+                  alt="선택된 썸네일"
+                  className="w-64 rounded-xl border-2 border-accent aspect-[16/9] object-cover"
+                />
+                <a
+                  href={thumb.selected}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-1.5 inline-block rounded-md border border-zinc-300 px-2 py-0.5 text-[11px] hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                >
+                  ⬇ 내려받기
+                </a>
+              </div>
+            )}
+            {!thumb.selected && thumb.variants.some((v) => v.fileUrl) && (
+              <p className="mt-1 text-[11px] text-amber-600">한 장을 선택해주세요.</p>
+            )}
             <p className="text-[10px] text-zinc-500">
               업로드할 때 유튜브 스튜디오 <b>테스트 및 비교</b>에 시안 3종을 걸어 시청 데이터로 승자를 고르세요(원칙 7).
             </p>

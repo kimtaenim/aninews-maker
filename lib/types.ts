@@ -286,6 +286,7 @@ export interface LongformThumbnailPackage {
     quality?: "low" | "medium" | "high";
     chipIds?: string[]; // 켜 뒀던 칩
     extra?: string; // 직접 쓴 그림 지시
+    referenceImageUrl?: string; // 업로드한 참조 이미지
   };
 }
 

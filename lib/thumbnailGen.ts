@@ -139,8 +139,9 @@ export async function buildThumbnails(args: {
   styleExtra?: string;
   styleProfileId?: string; // 숏폼 이미지와 같은 모드(스타일 프로파일)
   quality?: "low" | "medium" | "high";
+  referenceImageUrl?: string; // 업로드한 참조(이 인물·구도 살리기 — 숏폼 키프레임과 같게)
 }): Promise<LongformThumbnailPackage> {
-  const { projectId, thumbnailText, title, styleExtra, styleProfileId, quality } = args;
+  const { projectId, thumbnailText, title, styleExtra, styleProfileId, quality, referenceImageUrl } = args;
   const prompts = await generateThumbnailPrompts(args);
   const extra = (styleExtra ?? "").trim();
   const stamp = Date.now();
@@ -160,6 +161,7 @@ export async function buildThumbnails(args: {
         styleProfileId,
         quality,
         text: thumbnailText, // 글씨를 그림 안에 같이 그린다
+        referenceImageUrl,
       });
       // ★ 숏폼과 같은 길 — 받은 바이트를 그대로 Blob 에 올린다. 서버에서 이미지 가공을 하지
       // 않는다(캔버스는 OpenAI PNG 의 C2PA 청크에서, sharp 는 Vercel wasm 폴백에서 죽었다).

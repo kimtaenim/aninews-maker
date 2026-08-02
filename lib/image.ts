@@ -441,8 +441,9 @@ export async function generateThumbnailImage(args: {
   // ★ 썸네일 글씨를 그림 안에 직접 그리게 한다(사용자 지정 2026-08-01).
   // 캔버스로 나중에 얹으면 그림과 따로 논다 — 돈 내고 쓰는 모델이 같이 그리는 게 맞다.
   text?: string;
+  referenceImageUrl?: string; // 업로드한 참조 — 있으면 기본 마스코트 참조 대신 이걸 쓴다(숏폼과 같게)
 }): Promise<{ bytes: Buffer; costUsd: number }> {
-  const { projectId, prompt, quality = "medium", styleProfileId, text } = args;
+  const { projectId, prompt, quality = "medium", styleProfileId, text, referenceImageUrl } = args;
   const styleLine = styleProfileId ? (getStyleProfile(styleProfileId)?.imageBible ?? "") : "";
   const client = getOpenAI();
   const cfg = eyecatchConfig as { description?: string; referenceImageUrl?: string };
@@ -458,7 +459,7 @@ export async function generateThumbnailImage(args: {
         "the caption is composited afterwards.") +
     " Leave the bottom-right corner visually quiet " +
     "(YouTube overlays the duration badge there). Avoid pure white and pure black backgrounds.";
-  const ref = cfg.referenceImageUrl?.trim();
+  const ref = referenceImageUrl?.trim() || cfg.referenceImageUrl?.trim();
   const result = ref
     ? await client.images.edit({
         model: IMAGE_MODEL,
