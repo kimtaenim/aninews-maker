@@ -1200,8 +1200,8 @@ export default function LongformStudio({
           </button>
         </div>
         <p className="mt-1 text-[11px] text-zinc-500">
-          구도 3종으로 감정 실린 캐릭터 이미지를 만들고, ① 제목에서 정한 썸네일 문구를 후처리로 얹습니다(1280×720 JPG).
-          168px 축소본으로 소형 판독을 검증해요.
+          구도 3종으로 감정 실린 캐릭터 이미지를 만들고, 썸네일 글씨도 그림 안에 같이 그립니다(1280×720).
+          글씨가 깨지면 다시 생성하세요.
         </p>
         {!confirmedTitle && <p className="mt-2 text-[11px] text-amber-600">먼저 ① 제목을 확정해주세요.</p>}
 
