@@ -144,6 +144,28 @@ export async function syncHostScenes(
     }
   }
 
+  // ★ 단계 상태는 자산에서 복원 — 씬을 갈아끼워도 그림·영상이 살아 있으면 승인 유지.
+  // 초기화해 버리면 음성/영상 라우트 게이트("~단계를 먼저 승인")가 전부 막힌다(2026-08-02 실사고 409).
+  const allImg = scenes.length > 0 && scenes.every((sc) => !!sc.imageUrl);
+  const allVid = scenes.length > 0 && scenes.every((sc) => !!sc.videoUrl);
+  const allAud = scenes.length > 0 && scenes.every((sc) => !!sc.audioUrl);
+  if (existing?.keyframeUrl) {
+    steps.keyframe.status = "approved";
+    steps.keyframe.updatedAt = now;
+  }
+  if (allImg) {
+    steps.images.status = "approved";
+    steps.images.updatedAt = now;
+  }
+  if (allVid) {
+    steps.videos.status = "approved";
+    steps.videos.updatedAt = now;
+  }
+  if (allAud) {
+    steps.voiceover.status = "approved";
+    steps.voiceover.updatedAt = now;
+  }
+
   const hostId = existing?.id ?? randomUUID();
   const hostProject: Project = {
     id: hostId,
