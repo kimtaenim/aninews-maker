@@ -124,7 +124,7 @@ async function tick() {
 
 // 배포 검증용 버전 표식 — Render 로그 + Redis(worker:build)에 남긴다.
 // Redis 에 쓰면 대시보드 없이 원격에서 "새 코드가 떴는지" 확인 가능.
-const BUILD = "robust-v9 (잡 표식 보호 — 배포 겹침 때 자동 재개가 안 끊기게)";
+const BUILD = "robust-v10 (오디오 필터 concat — 깨진 타임스탬프 근본 수정, 크롬 7초 밀림 해결)";
 console.log(`[worker] BUILD = ${BUILD}`);
 console.log("[worker] 시작 — jobq:compose 폴링 중…");
 try {

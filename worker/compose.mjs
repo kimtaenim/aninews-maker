@@ -328,29 +328,71 @@ function interleaveGaps(entries, gapPath) {
   return out;
 }
 
-// concat 리스트 작성 + 무손실 이어붙이기 → 로컬 out 경로 반환.
+// concat 이어붙이기 → 로컬 out 경로 반환. 3단계:
+//   1) 비디오만 concat demuxer 무손실 copy
+//   2) 오디오는 조각별로 디코드 → 각 조각의 영상 길이만큼 무음 패딩·트림 → concat "필터"로
+//      한 줄 재인코딩 (타임스탬프를 인코더가 처음부터 새로 매김 — 어느 플레이어든 동일)
+//   3) 둘을 copy 로 합치기
+// ★aresample(async) 로 때우려던 시도는 조각 경계의 타임스탬프 점프를 못 감당하고 깨진
+// pts 를 그대로 내보내, ffmpeg 분석으론 멀쩡해 보이는데 크롬 재생은 음성이 7초씩 밀리는
+// 사고를 냈다(2026-08-02). 필터 concat 은 조각별 디코드가 인코더 프라이밍까지 올바르게
+// 처리하므로 몇십 ms 누적 밀림도 함께 사라진다.
 async function concatClips(order, dir, log, outName = "final.mp4") {
   const listPath = join(dir, `list-${outName}.txt`);
   await writeFile(listPath, order.map((f) => `file '${f}'`).join("\n"), "utf8");
   const finalPath = join(dir, outName);
-  // 비디오는 무손실 copy, 오디오만 재인코딩 — 각 조각의 오디오가 비디오보다 몇십 ms 짧아
-  // 생기는 타임스탬프 구멍을 진짜 무음으로 채운다(aresample async). 구멍을 무시하는
-  // 플레이어에서 조각 수만큼 누적돼 뒤로 갈수록 음성이 앞서던 싱크 밀림의 근본 수정
-  // (2026-08-02 — 끝부분 1.4초까지 벌어진 실측).
-  await log("이어붙이기(비디오 무손실 + 오디오 싱크 고정)…");
-  await run("ffmpeg", [
-    "-y", "-f", "concat", "-safe", "0", "-i", listPath,
-    "-c:v", "copy",
-    "-af", "aresample=async=1:min_hard_comp=0.100:first_pts=0",
-    "-c:a", "aac", "-b:a", "128k",
-    "-movflags", "+faststart",
-    finalPath,
-  ]);
-  // [검증 게이트] 결과 길이 = 입력 길이 합인지 대조 — 어긋난 결과물을 성공인 척 저장해
-  // 사용자에게 보내는 사고 차단(2026-08-02). 프로브가 0(실패)이면 검증 불가라 건너뛴다
-  // (가짜 실패로 정상 합성을 죽이지 않기 위해).
+
+  // 조각 길이(컨테이너=영상 기준) — 오디오 패딩 목표이자 길이 검증 재료.
   const inDur = [];
   for (const f of order) inDur.push(await probeDuration(f));
+
+  if (inDur.some((d) => !(d > 0))) {
+    // 프로브 불가면 단순 무손실 경로로라도 굽는다(검증·패딩 생략).
+    await log("이어붙이기(무손실 copy — 프로브 실패로 단순 경로)…");
+    await run("ffmpeg", [
+      "-y", "-f", "concat", "-safe", "0", "-i", listPath,
+      "-c", "copy", "-movflags", "+faststart", finalPath,
+    ]);
+    return finalPath;
+  }
+
+  // 1) 비디오만 무손실 이어붙이기.
+  const vOnly = join(dir, `v-${outName}`);
+  await log("이어붙이기 1/3 — 비디오(무손실)…");
+  await run("ffmpeg", [
+    "-y", "-f", "concat", "-safe", "0", "-i", listPath,
+    "-map", "0:v:0", "-c:v", "copy", "-an", vOnly,
+  ]);
+
+  // 2) 오디오 — 조각별 디코드 → 영상 길이로 패딩·트림 → 필터 concat → 한 줄 인코딩.
+  const aOnly = join(dir, `a-${outName}.m4a`);
+  await log("이어붙이기 2/3 — 오디오(패딩+한 줄 인코딩)…");
+  const aArgs = ["-y"];
+  for (const f of order) aArgs.push("-i", f);
+  // asetpts=N/SR/TB — 샘플 번호로 시각을 처음부터 다시 매긴다. 입력이 깨진 타임스탬프를
+  // 갖고 있어도(구버전 산출물) 필터가 그대로 물려받지 않게 입구·출구 양쪽에서 리셋.
+  const pads = order
+    .map((_, i) =>
+      `[${i}:a]asetpts=N/SR/TB,aformat=sample_rates=44100:channel_layouts=stereo,` +
+      `apad=whole_dur=${inDur[i].toFixed(3)},atrim=0:${inDur[i].toFixed(3)}[a${i}]`)
+    .join(";");
+  const labels = order.map((_, i) => `[a${i}]`).join("");
+  aArgs.push(
+    "-filter_complex", `${pads};${labels}concat=n=${order.length}:v=0:a=1,asetpts=N/SR/TB[a]`,
+    "-map", "[a]", "-c:a", "aac", "-b:a", "128k", aOnly
+  );
+  await run("ffmpeg", aArgs);
+
+  // 3) 합치기(둘 다 copy).
+  await log("이어붙이기 3/3 — 합치기…");
+  await run("ffmpeg", [
+    "-y", "-i", vOnly, "-i", aOnly,
+    "-map", "0:v:0", "-map", "1:a:0", "-c", "copy",
+    "-movflags", "+faststart", finalPath,
+  ]);
+
+  // [검증 게이트] 결과 길이 = 입력 길이 합인지 대조 — 어긋난 결과물을 성공인 척 저장해
+  // 사용자에게 보내는 사고 차단(2026-08-02).
   const expected = inDur.reduce((a, b) => a + b, 0);
   const actual = await probeDuration(finalPath);
   if (actual > 0 && inDur.every((d) => d > 0)) {
@@ -741,21 +783,9 @@ export async function composeProject(projectId, lang, opts = {}) {
       sceneFiles.push(out);
     }
 
-    // 이어붙이기 — 씬들이 동일 코덱/파라미터라 재인코딩 없이 무손실 복사(빠름).
-    await log("이어붙이기(무손실 copy)…");
-    const listPath = join(dir, "list.txt");
-    await writeFile(listPath, sceneFiles.map((f) => `file '${f}'`).join("\n"), "utf8");
-    const finalPath = join(dir, "final.mp4");
-    // 비디오 무손실 + 오디오 재인코딩(무음 채움) — 씬마다 오디오가 비디오보다 몇십 ms
-    // 짧아 누적되던 싱크 밀림 수정(위 concatClips 와 같은 원리).
-    await run("ffmpeg", [
-      "-y", "-f", "concat", "-safe", "0", "-i", listPath,
-      "-c:v", "copy",
-      "-af", "aresample=async=1:min_hard_comp=0.100:first_pts=0",
-      "-c:a", "aac", "-b:a", "128k",
-      "-movflags", "+faststart",
-      finalPath,
-    ]);
+    // 이어붙이기 — concatClips 3단계(비디오 무손실 + 오디오 패딩·한 줄 인코딩 + 합치기).
+    // 씬마다 오디오가 비디오보다 몇십 ms 짧아 누적되던 싱크 밀림까지 같이 잡는다.
+    const finalPath = await concatClips(sceneFiles, dir, log, "final.mp4");
 
     await log("Blob 업로드…");
     // 스트리밍 업로드 — 최종 영상을 통째로 메모리에 읽지 않는다(OOM 방지).
