@@ -122,12 +122,38 @@ function minimaxDuration(seconds?: number): number {
   return s <= 8 ? 6 : 10;
 }
 
+// ★ 동시 실행 한도(실측 6) — 잔액 문제가 아니라 자리가 빌 때까지 기다리면 풀린다.
+// fal 경유 시절엔 fal 큐가 대신 기다려 줬는데, 직접 API 는 우리가 기다려야 한다.
+// 씬 6개 넘게 일괄 생성하면 7번째부터 이 에러가 사용자에게 그대로 떴다(2026-08-02).
+// 영상 하나가 1~2분이라 몇 초 백오프로는 안 풀린다 — 라우트 상한(120초) 안쪽에서 길게 기다린다.
+const SLOT_RETRY_MS = 12_000;
+const SLOT_WAIT_MS = 100_000;
+const SLOT_ERROR = /동시 한도|레이트리밋/;
+
 // 제출 → task_id. (submitKlingVideo 와 같은 시그니처)
 export async function submitMinimaxVideo(opts: {
   imageUrl: string;
   prompt?: string;
   duration?: number;
   model?: string; // config endpoint(모델명). 없으면 env/기본.
+}): Promise<string> {
+  const started = Date.now();
+  for (;;) {
+    try {
+      return await submitMinimaxOnce(opts);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "";
+      if (!SLOT_ERROR.test(msg) || Date.now() - started > SLOT_WAIT_MS) throw e;
+      await new Promise((res) => setTimeout(res, SLOT_RETRY_MS)); // 자리 빌 때까지 대기 후 재시도
+    }
+  }
+}
+
+async function submitMinimaxOnce(opts: {
+  imageUrl: string;
+  prompt?: string;
+  duration?: number;
+  model?: string;
 }): Promise<string> {
   const body = {
     model: opts.model || MODEL,
