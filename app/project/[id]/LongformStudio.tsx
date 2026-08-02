@@ -524,6 +524,8 @@ export default function LongformStudio({
   // 세부 조정이 필요하면 기존 "편집"으로 들어가면 된다 — 이 버튼은 기본값 일괄 처리다.
   const [segProg, setSegProg] = useState<Record<string, string>>({});
   const [segRunning, setSegRunning] = useState<string | null>(null);
+  // 키프레임 후보 — 자동 선택하지 않는다(숏폼 규약: 3장 중 사용자가 고른다. 2026-08-02 지적).
+  const [segKf, setSegKf] = useState<Record<string, string[]>>({});
   const prog = (id: string, t: string) => setSegProg((m) => ({ ...m, [id]: t }));
 
   async function segStatus(id: string) {
@@ -544,14 +546,18 @@ export default function LongformStudio({
     };
   }
 
-  async function buildSegment(id: string) {
+  // true = 완성까지 감, false = 키프레임 선택 대기로 멈춤(고르면 이어서).
+  async function buildSegment(id: string): Promise<boolean> {
     let st = await segStatus(id);
     if (!st.keyframeReady) {
-      prog(id, "키프레임 만드는 중…");
+      prog(id, "키프레임 후보 만드는 중…");
       const kf = await post("/api/image/keyframe", { projectId: id });
       const urls = (kf.urls as string[]) ?? [];
       if (!urls.length) throw new Error("키프레임 후보가 안 나왔어요");
-      await post("/api/image/keyframe/select", { projectId: id, url: urls[0] });
+      // ★ 자동 선택 금지 — 후보 3장을 띄우고 멈춘다. 고르는 건 사용자다(숏폼과 같게).
+      setSegKf((m) => ({ ...m, [id]: urls }));
+      prog(id, "키프레임을 골라주세요 — 고르면 이어서 만듭니다");
+      return false;
     }
     if (!st.keyframeApproved) await post("/api/step/approve", { projectId: id, step: "keyframe" });
 
@@ -596,6 +602,29 @@ export default function LongformStudio({
       }
     }
     prog(id, "✓ 완성");
+    return true;
+  }
+
+  // 후보를 고르면 그 편을 이어서 끝까지 만든다.
+  async function pickSegKeyframe(id: string, url: string) {
+    if (segRunning) return;
+    setSegRunning(id);
+    try {
+      prog(id, "키프레임 반영 중…");
+      await post("/api/image/keyframe/select", { projectId: id, url });
+      await post("/api/step/approve", { projectId: id, step: "keyframe" });
+      setSegKf((m) => {
+        const n = { ...m };
+        delete n[id];
+        return n;
+      });
+      await buildSegment(id);
+      router.refresh();
+    } catch (e) {
+      prog(id, `✗ ${e instanceof Error ? e.message : "실패"}`);
+    } finally {
+      setSegRunning(null);
+    }
   }
 
   async function buildSegments(ids: string[]) {
@@ -1714,6 +1743,32 @@ export default function LongformStudio({
                   편집
                 </Link>
               </div>
+
+              {segKf[s.id] && (
+                <div className="ml-6 grid grid-cols-3 gap-2">
+                  {segKf[s.id].map((u) => (
+                    <div key={u} className="relative">
+                      <button
+                        type="button"
+                        onClick={() => pickSegKeyframe(s.id, u)}
+                        disabled={segRunning !== null}
+                        className="w-full overflow-hidden rounded-xl border-2 border-transparent transition-colors hover:border-accent disabled:opacity-60"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={u} alt="키프레임 후보" className="aspect-[16/9] w-full object-cover" />
+                      </button>
+                      <a
+                        href={u}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="absolute left-1 top-1 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white hover:bg-black/75"
+                      >
+                        🔍 크게
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* 연결 — 마지막 편 뒤엔 없다(엔딩으로 간다) */}
               {!isLast &&
