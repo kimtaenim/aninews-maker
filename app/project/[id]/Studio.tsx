@@ -4996,7 +4996,7 @@ export default function Studio({
       </section>
 
       {/* 6단계: 씬별 음성 (TTS 엔진은 아래 셀렉터로 프로젝트별 선택) */}
-      <section className="mt-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 p-5">
+      <section id="panel-audio" className="mt-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 p-5">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold">
             6. 음성 (보이스오버)

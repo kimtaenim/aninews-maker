@@ -298,18 +298,93 @@ async function makeGapClip(dir, W, H) {
   return out;
 }
 
-// 부(部) 꼬리 페이드아웃 — 세그먼트 완성본은 무손실 복사 대상이라 여기서 한 번만 재인코딩.
+// src 의 t 이전 마지막 비디오 키프레임 시각 — 꼬리만 재인코딩할 분할점. 못 찾으면 0.
+function lastKeyframeBefore(file, t, timeoutMs = 30000) {
+  return new Promise((res) => {
+    let p;
+    try {
+      p = spawn("ffprobe", [
+        "-v", "error", "-select_streams", "v:0",
+        "-show_entries", "packet=pts_time,flags", "-of", "csv=p=0",
+        "-read_intervals", `${Math.max(0, t - 15).toFixed(3)}%${t.toFixed(3)}`,
+        file,
+      ]);
+    } catch {
+      res(0);
+      return;
+    }
+    activeChildren.add(p);
+    let out = "";
+    let settled = false;
+    const finish = (v) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      activeChildren.delete(p);
+      res(v);
+    };
+    const timer = setTimeout(() => {
+      try { p.kill("SIGKILL"); } catch {}
+      finish(0);
+    }, timeoutMs);
+    p.stdout.on("data", (d) => (out += d));
+    p.on("error", () => finish(0));
+    p.on("close", () => {
+      let best = 0;
+      for (const line of out.split("\n")) {
+        const [pts, flags] = line.trim().split(",");
+        const v = parseFloat(pts);
+        if (Number.isFinite(v) && v <= t && /K/.test(flags || "") && v > best) best = v;
+      }
+      finish(best);
+    });
+  });
+}
+
+// 부(部) 꼬리 페이드아웃 — 페이드는 끝 0.4초뿐인데 전체 재인코딩은 편당 1~2분(느리다는
+// 지적, 2026-08-02). 마지막 키프레임 이후(보통 몇 초)만 재인코딩하고 앞은 무손실 복사.
+// 경계의 몇십 ms 오디오 오차는 섹션 concatClips 의 오디오 한 줄 재인코딩이 흡수한다.
 // (섹션 영상 꼬리는 섹션 합성 때 이미 페이드된 세그 꼬리라 최종 join 에선 다시 안 건다.)
 async function fadeTail(src, dir, tag, log) {
   const d = await probeDuration(src);
   if (!d || d < FADE_SEC + 0.2) return src;
-  const st = (d - FADE_SEC).toFixed(2);
+  const st = d - FADE_SEC;
   const out = join(dir, `${tag}-fade.mp4`);
+
+  const k = await lastKeyframeBefore(src, st - 0.05);
+  if (k > 1 && k < st) {
+    // 빠른 경로: [0,k) 무손실 복사 + [k,d] 만 페이드 재인코딩 + copy 이어붙이기.
+    if (log) await log(`꼬리 페이드아웃(${tag} — 끝 ${(d - k).toFixed(1)}초만 재인코딩)…`);
+    const head = join(dir, `${tag}-fhead.mp4`);
+    const tail = join(dir, `${tag}-ftail.mp4`);
+    await run("ffmpeg", [
+      "-y", "-i", src, "-to", k.toFixed(3), "-c", "copy", "-movflags", "+faststart", head,
+    ]);
+    const relSt = (st - k).toFixed(3);
+    await run("ffmpeg", [
+      "-y", "-ss", k.toFixed(3), "-i", src,
+      "-vf", `fade=t=out:st=${relSt}:d=${FADE_SEC}`,
+      "-af", `afade=t=out:st=${relSt}:d=${FADE_SEC}`,
+      "-r", String(FPS),
+      "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-crf", "23",
+      "-c:a", "aac", "-b:a", "128k",
+      tail,
+    ], sceneTimeout(d - k + 5));
+    const listP = join(dir, `${tag}-fade-list.txt`);
+    await writeFile(listP, [head, tail].map((f) => `file '${f}'`).join("\n"), "utf8");
+    await run("ffmpeg", [
+      "-y", "-f", "concat", "-safe", "0", "-i", listP,
+      "-c", "copy", "-movflags", "+faststart", out,
+    ]);
+    return out;
+  }
+
+  // 폴백: 키프레임을 못 찾으면 예전대로 전체 재인코딩(느리지만 확실).
   if (log) await log(`꼬리 페이드아웃(${tag})…`);
   await run("ffmpeg", [
     "-y", "-i", src,
-    "-vf", `fade=t=out:st=${st}:d=${FADE_SEC}`,
-    "-af", `afade=t=out:st=${st}:d=${FADE_SEC}`,
+    "-vf", `fade=t=out:st=${st.toFixed(2)}:d=${FADE_SEC}`,
+    "-af", `afade=t=out:st=${st.toFixed(2)}:d=${FADE_SEC}`,
     "-r", String(FPS),
     "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-crf", "23",
     "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",

@@ -37,6 +37,7 @@ interface HostScene {
   narration: string;
   imageUrl?: string;
   videoUrl?: string;
+  audioUrl?: string;
   durationSec: number;
 }
 
@@ -1054,6 +1055,22 @@ export default function LongformStudio({
     }
   }
 
+  // 진행자 씬 소리(TTS)만 다시 — 대사 고친 뒤 그 줄에서 바로(2026-08-02 요청).
+  async function hostRedoAudio(index: number) {
+    if (!hostProject || segRunning) return;
+    setSegRunning(hostProject.id);
+    try {
+      prog(hostProject.id, `씬${index} 소리 만드는 중…`);
+      await post("/api/audio/scene", { projectId: hostProject.id, sceneIndex: index });
+      prog(hostProject.id, "");
+      router.refresh();
+    } catch (e) {
+      prog(hostProject.id, `✗ ${e instanceof Error ? e.message : "실패"}`);
+    } finally {
+      setSegRunning(null);
+    }
+  }
+
   async function hostRedoVideo(index: number) {
     if (!hostProject || segRunning) return;
     setSegRunning(hostProject.id);
@@ -1147,7 +1164,7 @@ export default function LongformStudio({
           <button
             onClick={() => hostRedoImage(scene.index)}
             disabled={segRunning !== null}
-            className="shrink-0 rounded border border-zinc-300 px-1.5 py-0.5 text-[10px] hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-900"
+            className="shrink-0 rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-900"
           >
             {scene.imageUrl ? "그림 다시" : "그림"}
           </button>
@@ -1156,9 +1173,19 @@ export default function LongformStudio({
           <button
             onClick={() => hostRedoVideo(scene.index)}
             disabled={segRunning !== null}
-            className="shrink-0 rounded border border-zinc-300 px-1.5 py-0.5 text-[10px] hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-900"
+            className="shrink-0 rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-900"
           >
             {scene.videoUrl ? "영상 다시" : "영상"}
+          </button>
+        )}
+        {scene && (
+          <button
+            onClick={() => hostRedoAudio(scene.index)}
+            disabled={segRunning !== null}
+            title="이 씬 대사를 지금 목소리 설정으로 다시 녹음합니다"
+            className="shrink-0 rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-900"
+          >
+            {scene.audioUrl ? "소리 다시" : "소리"}
           </button>
         )}
       </div>
@@ -2039,7 +2066,7 @@ export default function LongformStudio({
                 </div>
                 <span className="line-clamp-2 flex-1 text-xs">{s.title}</span>
                 <span
-                  className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                  className={`shrink-0 rounded px-2 py-1 text-[11px] font-medium ${
                     s.finalVideoUrl
                       ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                       : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
@@ -2049,9 +2076,16 @@ export default function LongformStudio({
                 </span>
                 <Link
                   href={`/project/${s.id}`}
-                  className="shrink-0 rounded-md border border-zinc-300 px-2 py-0.5 text-[11px] hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                  className="shrink-0 rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
                 >
                   편집
+                </Link>
+                <Link
+                  href={`/project/${s.id}#panel-audio`}
+                  title="이 편의 목소리(씬별 음성)만 손보러 갑니다"
+                  className="shrink-0 rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                >
+                  더빙
                 </Link>
               </div>
 

@@ -105,6 +105,7 @@ export default async function ProjectStudioPage({
             narration: s.narration,
             imageUrl: s.imageUrl,
             videoUrl: s.videoUrl,
+            audioUrl: s.audioUrl,
             durationSec: s.durationSec,
           })),
         }
