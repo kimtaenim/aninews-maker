@@ -233,16 +233,12 @@ export default function Studio({
   const [project, setProject] = useState<Project>(initial);
   // 롱폼(가로 16:9) 프로젝트면 이미지·미리보기 종횡비를 가로로. 없으면 세로 9:16(기존).
   const longAspect = project.format === "long" ? "aspect-[16/9]" : "aspect-[9/16]";
-  // 자막 위치 — 롱폼(가로)은 ⅓·중앙·⅔ 3종만 노출(상단/¾/하단은 세로 전용). 세로는 6종 그대로.
+  // 자막 위치 — 롱폼(가로)은 ¼·중앙·¾ 3종만(2026-08-02 지시 — ⅓·⅔ 제거, 저장된 옛 값은
+  // 렌더에서 ¼·¾로 재매핑됨). 세로는 6종 그대로.
   const subPositions =
     project.format === "long"
       ? SUBTITLE_POSITIONS.filter(
-          ([v]) =>
-            v === "one-quarter" ||
-            v === "one-third" ||
-            v === "center" ||
-            v === "two-thirds" ||
-            v === "three-quarters"
+          ([v]) => v === "one-quarter" || v === "center" || v === "three-quarters"
         )
       : SUBTITLE_POSITIONS;
   const [busy, _setBusy] = useState<string | null>(null);
