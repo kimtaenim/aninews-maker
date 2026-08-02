@@ -505,6 +505,116 @@ export default function LongformStudio({
   const [thumbBusy, setThumbBusy] = useState(false);
   const [thumbErr, setThumbErr] = useState("");
 
+  // 공용 POST — 세그먼트 일괄 생성이 숏폼과 같은 API 들을 순서대로 부를 때 쓴다.
+  async function post(url: string, body: unknown) {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) throw new Error((d as { error?: string }).error || "요청 실패");
+    return d as Record<string, unknown>;
+  }
+
+  // ── 세그먼트 가로판 일괄 생성 — 각 편에 들어가지 않고 이 화면에서 끝까지 만든다
+  // (사용자 지정 2026-08-02: 하나의 화면에서 다 할 수 있어야 한다).
+  // 숏폼과 같은 API 를 순서대로 부를 뿐이다: 키프레임(첫 후보 자동 선택) → 그림 일괄 →
+  // 영상(한 씬씩 제출·폴링, MiniMax 자리 대기는 서버가 함) → 합성(워커) → 완성.
+  // 세부 조정이 필요하면 기존 "편집"으로 들어가면 된다 — 이 버튼은 기본값 일괄 처리다.
+  const [segProg, setSegProg] = useState<Record<string, string>>({});
+  const [segRunning, setSegRunning] = useState<string | null>(null);
+  const prog = (id: string, t: string) => setSegProg((m) => ({ ...m, [id]: t }));
+
+  async function segStatus(id: string) {
+    const r = await fetch(`/api/longform/segment-status?projectId=${encodeURIComponent(id)}`);
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) throw new Error((d as { error?: string }).error || "상태 조회 실패");
+    return d as {
+      sceneCount: number;
+      keyframeReady: boolean;
+      keyframeApproved: boolean;
+      imagesMissing: number[];
+      imagesApproved: boolean;
+      videosMissing: number[];
+      videosApproved: boolean;
+      composeStatus: string;
+      composeProgress: string;
+      finalVideoUrl: string | null;
+    };
+  }
+
+  async function buildSegment(id: string) {
+    let st = await segStatus(id);
+    if (!st.keyframeReady) {
+      prog(id, "키프레임 만드는 중…");
+      const kf = await post("/api/image/keyframe", { projectId: id });
+      const urls = (kf.urls as string[]) ?? [];
+      if (!urls.length) throw new Error("키프레임 후보가 안 나왔어요");
+      await post("/api/image/keyframe/select", { projectId: id, url: urls[0] });
+    }
+    if (!st.keyframeApproved) await post("/api/step/approve", { projectId: id, step: "keyframe" });
+
+    st = await segStatus(id);
+    if (st.imagesMissing.length) {
+      prog(id, `그림 ${st.imagesMissing.length}장 만드는 중…`);
+      await post("/api/image/scenes-batch", { projectId: id, sceneIndexes: st.imagesMissing });
+      st = await segStatus(id);
+      if (st.imagesMissing.length) throw new Error(`그림 ${st.imagesMissing.length}장이 안 나왔어요 — 다시 눌러 이어가기`);
+    }
+    if (!st.imagesApproved) await post("/api/step/approve", { projectId: id, step: "images" });
+
+    st = await segStatus(id);
+    const targets = st.videosMissing;
+    for (let k = 0; k < targets.length; k++) {
+      const i = targets[k];
+      prog(id, `영상 ${k + 1}/${targets.length} 제출…`);
+      await post("/api/video/scene", { projectId: id, sceneIndex: i });
+      for (;;) {
+        await new Promise((res) => setTimeout(res, 12_000));
+        const r = await fetch(`/api/video/scene?projectId=${encodeURIComponent(id)}&sceneIndex=${i}`);
+        const d = (await r.json().catch(() => ({}))) as { status?: string; error?: string };
+        if (d.status === "completed") break;
+        if (d.status === "failed") throw new Error(`씬${i} 영상 실패 — ${d.error ?? ""}`);
+        prog(id, `영상 ${k + 1}/${targets.length} 만드는 중…`);
+      }
+    }
+    st = await segStatus(id);
+    if (!st.videosApproved && st.videosMissing.length === 0) {
+      await post("/api/step/approve", { projectId: id, step: "videos" });
+    }
+
+    if (!st.finalVideoUrl) {
+      prog(id, "합성 대기열에 넣는 중…");
+      await post("/api/compose", { projectId: id });
+      for (;;) {
+        await new Promise((res) => setTimeout(res, 10_000));
+        const st2 = await segStatus(id);
+        if (st2.finalVideoUrl) break;
+        if (st2.composeStatus === "error") throw new Error("합성 실패 — 편집에서 확인해주세요");
+        prog(id, st2.composeProgress || "합성 중…");
+      }
+    }
+    prog(id, "✓ 완성");
+  }
+
+  async function buildSegments(ids: string[]) {
+    if (segRunning) return;
+    setSegRunning(ids.join(","));
+    try {
+      for (const id of ids) {
+        try {
+          await buildSegment(id);
+        } catch (e) {
+          prog(id, `✗ ${e instanceof Error ? e.message : "실패"}`);
+        }
+      }
+      router.refresh();
+    } finally {
+      setSegRunning(null);
+    }
+  }
+
   async function genThumbnail() {
     setThumbBusy(true);
     setThumbErr("");
@@ -1485,6 +1595,16 @@ export default function LongformStudio({
               className="rounded-lg border border-zinc-300 px-2.5 py-1 text-[11px] font-medium hover:bg-zinc-50 disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-900"
             >
               {scriptSaveBusy ? "저장 중…" : "대본 저장"}
+            </button>
+          )}
+          {segs.some((x) => !x.finalVideoUrl) && (
+            <button
+              onClick={() => buildSegments(segs.filter((x) => !x.finalVideoUrl).map((x) => x.id))}
+              disabled={segRunning !== null}
+              title="미완성인 편들을 차례로 끝까지 만듭니다 (키프레임 → 그림 → 영상 → 합성)"
+              className="rounded-lg border border-accent/40 bg-accent/10 px-2.5 py-1 text-[11px] font-medium text-accent hover:bg-accent/15 disabled:opacity-40"
+            >
+              {segRunning ? "만드는 중…" : "미완성 편 전부 만들기"}
             </button>
           )}
         </div>
