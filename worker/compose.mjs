@@ -213,7 +213,11 @@ async function renderHostSceneClip(s, dir, tag, sub, W, H) {
   const baseF =
     `[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase,` +
     `crop=${W}:${H},setpts=${speed.toFixed(4)}*PTS,fps=${FPS}`;
-  const filter = ovList ? `${baseF}[bg];[bg][2:v]overlay=0:0[v]` : `${baseF}[v]`;
+  const fadeSt = Math.max(0, duration - FADE_SEC).toFixed(2);
+  const vfade = `fade=t=out:st=${fadeSt}:d=${FADE_SEC}`;
+  const filter =
+    (ovList ? `${baseF}[bg];[bg][2:v]overlay=0:0,${vfade}[v]` : `${baseF},${vfade}[v]`) +
+    `;[1:a]afade=t=out:st=${fadeSt}:d=${FADE_SEC}[aud]`;
   const out = join(dir, `${tag}.mp4`);
   const args = ["-y", "-i", vPath];
   if (aPath) args.push("-i", aPath);
@@ -221,7 +225,7 @@ async function renderHostSceneClip(s, dir, tag, sub, W, H) {
   if (ovList) args.push("-f", "concat", "-safe", "0", "-i", ovList);
   args.push(
     "-filter_complex", filter,
-    "-map", "[v]", "-map", "1:a",
+    "-map", "[v]", "-map", "[aud]",
     "-t", String(duration), "-r", String(FPS),
     "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-crf", "23",
     "-c:a", "aac", "-b:a", "128k",
@@ -270,6 +274,56 @@ async function downloadSegment(segId, idx, total, dir, log) {
   await log(`세그먼트 ${idx + 1}/${total} 다운로드…`);
   await download(url, f);
   return f;
+}
+
+// [부 전환 휴식] 오프닝↔세그먼트↔진행자↔엔딩 사이 페이드아웃 + 0.4초 검은 쉼 —
+// 너무 빨리 넘어가 보기 불편하다는 지적(2026-08-02). 진행자 씬끼리(오프닝 1→2,
+// 답→구독)는 이어지는 말이라 붙여 둔다.
+const GAP_SEC = 0.4;
+const FADE_SEC = 0.4;
+
+async function makeGapClip(dir, W, H) {
+  const out = join(dir, "gap.mp4");
+  await run("ffmpeg", [
+    "-y",
+    "-f", "lavfi", "-i", `color=black:s=${W}x${H}:r=${FPS}:d=${GAP_SEC}`,
+    "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
+    "-t", String(GAP_SEC),
+    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-crf", "23",
+    "-c:a", "aac", "-b:a", "128k",
+    out,
+  ]);
+  return out;
+}
+
+// 부(部) 꼬리 페이드아웃 — 세그먼트 완성본은 무손실 복사 대상이라 여기서 한 번만 재인코딩.
+// (섹션 영상 꼬리는 섹션 합성 때 이미 페이드된 세그 꼬리라 최종 join 에선 다시 안 건다.)
+async function fadeTail(src, dir, tag, log) {
+  const d = await probeDuration(src);
+  if (!d || d < FADE_SEC + 0.2) return src;
+  const st = (d - FADE_SEC).toFixed(2);
+  const out = join(dir, `${tag}-fade.mp4`);
+  if (log) await log(`꼬리 페이드아웃(${tag})…`);
+  await run("ffmpeg", [
+    "-y", "-i", src,
+    "-vf", `fade=t=out:st=${st}:d=${FADE_SEC}`,
+    "-af", `afade=t=out:st=${st}:d=${FADE_SEC}`,
+    "-r", String(FPS),
+    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-crf", "23",
+    "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
+    out,
+  ], sceneTimeout(d));
+  return out;
+}
+
+// 진행자 씬끼리만 붙이고, 부가 바뀌는 모든 자리엔 검은 쉼을 끼운다.
+function interleaveGaps(entries, gapPath) {
+  const out = [];
+  for (let i = 0; i < entries.length; i++) {
+    if (i > 0 && !(entries[i - 1].kind === "host" && entries[i].kind === "host")) out.push(gapPath);
+    out.push(entries[i].f);
+  }
+  return out;
 }
 
 // concat 리스트 작성 + 무손실 이어붙이기 → 로컬 out 경로 반환.
@@ -332,27 +386,28 @@ async function runLongformConcat(project, lang, dir, log, W, H) {
     segFiles.push(await downloadSegment(segIds[i], i, segIds.length, dir, log));
   }
 
-  const order = [];
+  const gap = await makeGapClip(dir, W, H);
+  const entries = [];
   let oi = 0;
   for (const s of hostOpening) {
     await log(`오프닝 진행자 씬 렌더 ${oi + 1}/${hostOpening.length}…`);
-    order.push(await renderHostSceneClip(s, dir, `open${oi++}`, hostSub, W, H));
+    entries.push({ f: await renderHostSceneClip(s, dir, `open${oi++}`, hostSub, W, H), kind: "host" });
   }
   for (let i = 0; i < segFiles.length; i++) {
-    order.push(segFiles[i]);
+    entries.push({ f: await fadeTail(segFiles[i], dir, `seg${i}`, log), kind: "seg" });
     const conn = hostConnectors.get(i);
     if (conn) {
       await log(`연결 진행자 씬 렌더(세그 ${i + 1} 뒤)…`);
-      order.push(await renderHostSceneClip(conn, dir, `conn${i}`, hostSub, W, H));
+      entries.push({ f: await renderHostSceneClip(conn, dir, `conn${i}`, hostSub, W, H), kind: "host" });
     }
   }
   let ci = 0;
   for (const s of hostClosing) {
     await log("마무리 진행자 씬 렌더…");
-    order.push(await renderHostSceneClip(s, dir, `close${ci++}`, hostSub, W, H));
+    entries.push({ f: await renderHostSceneClip(s, dir, `close${ci++}`, hostSub, W, H), kind: "host" });
   }
 
-  const finalPath = await concatClips(order, dir, log);
+  const finalPath = await concatClips(interleaveGaps(entries, gap), dir, log);
   const url = await uploadAndSaveFinal(project, lang, finalPath, log);
   await log("롱폼 합성 완료");
   return url;
@@ -375,21 +430,23 @@ async function runLongformSectionConcat(project, sectionId, lang, dir, log, W, H
   await log(`섹션 합성 — 세그먼트 ${section.segmentIds.length}편(전역 ${globalIdx.join(",")})`);
 
   try {
-    const order = [];
+    const gap = await makeGapClip(dir, W, H);
+    const entries = [];
     for (let k = 0; k < section.segmentIds.length; k++) {
       const g = globalIdx[k];
-      order.push(await downloadSegment(section.segmentIds[k], k, section.segmentIds.length, dir, log));
+      const segF = await downloadSegment(section.segmentIds[k], k, section.segmentIds.length, dir, log);
+      entries.push({ f: await fadeTail(segF, dir, `sseg${g}`, log), kind: "seg" });
       // 내부 연결만: 섹션 마지막 세그(뒤=경계)는 건너뜀 → 경계 연결은 최종 join 이 넣는다.
       const isLastInSection = k === section.segmentIds.length - 1;
       if (!isLastInSection) {
         const conn = hostConnectors.get(g);
         if (conn) {
           await log(`연결 진행자 씬 렌더(섹션 내부, 세그 ${g + 1} 뒤)…`);
-          order.push(await renderHostSceneClip(conn, dir, `conn${g}`, hostSub, W, H));
+          entries.push({ f: await renderHostSceneClip(conn, dir, `conn${g}`, hostSub, W, H), kind: "host" });
         }
       }
     }
-    const finalPath = await concatClips(order, dir, log, "section.mp4");
+    const finalPath = await concatClips(interleaveGaps(entries, gap), dir, log, "section.mp4");
     await log("섹션 Blob 업로드…");
     const { url } = await put(
       `project/${project.id}/section-${section.id}-${lang}-${Date.now()}.mp4`,
@@ -419,33 +476,35 @@ async function runLongformJoin(project, lang, dir, log, W, H) {
   const { hostOpening, hostConnectors, hostClosing, hostSub } = await collectHostScenes(project, sub);
   await log(`최종 이어붙이기 — 섹션 ${sections.length}·오프닝 ${hostOpening.length}·마무리 ${hostClosing.length}`);
 
-  const order = [];
+  const gap = await makeGapClip(dir, W, H);
+  const entries = [];
   let oi = 0;
   for (const s of hostOpening) {
     await log(`오프닝 진행자 씬 렌더 ${oi + 1}/${hostOpening.length}…`);
-    order.push(await renderHostSceneClip(s, dir, `open${oi++}`, hostSub, W, H));
+    entries.push({ f: await renderHostSceneClip(s, dir, `open${oi++}`, hostSub, W, H), kind: "host" });
   }
   for (let si = 0; si < sections.length; si++) {
     const sec = sections[si];
     const f = join(dir, `sec-${sec.id}.mp4`);
     await log(`섹션 ${si + 1}/${sections.length} 다운로드…`);
     await download(sec.videoUrl, f);
-    order.push(f);
+    // 섹션 꼬리는 섹션 합성 때 이미 페이드된 세그 꼬리 — 여기선 재인코딩하지 않는다.
+    entries.push({ f, kind: "seg" });
     // 경계 연결: 이 섹션 마지막 세그의 전역 인덱스 뒤 연결(섹션 합성에서 건너뛴 것).
     const lastG = segIds.indexOf(sec.segmentIds[sec.segmentIds.length - 1]);
     const conn = hostConnectors.get(lastG);
     if (conn) {
       await log(`경계 연결 진행자 씬 렌더(섹션 ${si + 1} 뒤)…`);
-      order.push(await renderHostSceneClip(conn, dir, `bconn${si}`, hostSub, W, H));
+      entries.push({ f: await renderHostSceneClip(conn, dir, `bconn${si}`, hostSub, W, H), kind: "host" });
     }
   }
   let ci = 0;
   for (const s of hostClosing) {
     await log("마무리 진행자 씬 렌더…");
-    order.push(await renderHostSceneClip(s, dir, `close${ci++}`, hostSub, W, H));
+    entries.push({ f: await renderHostSceneClip(s, dir, `close${ci++}`, hostSub, W, H), kind: "host" });
   }
 
-  const finalPath = await concatClips(order, dir, log);
+  const finalPath = await concatClips(interleaveGaps(entries, gap), dir, log);
   const url = await uploadAndSaveFinal(project, lang, finalPath, log);
   await log("롱폼 최종 합성 완료");
   return url;
