@@ -121,9 +121,29 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "프로젝트 없음" }, { status: 404 });
   }
   const progress = await getComposeProgressLine(projectId);
+  // [롱폼] 편 상태 — 최종 합성 체인이 편부터 굽는 동안, 화면이 새로고침 없이
+  // 편 완성 배지와 "지금 어느 편의 몇 번째 씬을 굽는지" 로그를 실시간으로 보게(2026-08-02 지적).
+  let segments:
+    | { id: string; finalVideoUrl?: string; composeStatus: string; progress?: string | null }[]
+    | undefined;
+  if (Array.isArray(project.sourceProjectIds) && project.sourceProjectIds.length > 0) {
+    segments = [];
+    for (const sid of project.sourceProjectIds) {
+      const seg = await getProject(sid);
+      if (!seg) continue;
+      const baking = seg.steps.compose.status === "generating";
+      segments.push({
+        id: sid,
+        finalVideoUrl: seg.finalVideoUrl,
+        composeStatus: seg.steps.compose.status,
+        progress: baking ? await getComposeProgressLine(sid) : undefined,
+      });
+    }
+  }
   return NextResponse.json({
     ok: true,
     status: project.steps.compose.status,
+    segments,
     finalVideoUrl: project.finalVideoUrl,
     cleanVideoUrl: project.cleanVideoUrl, // "영상만" 합성본(있으면)
     error: project.steps.compose.error,

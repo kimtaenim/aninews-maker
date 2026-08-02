@@ -51,20 +51,30 @@ async function tick() {
   }
   if (!job) return;
 
-  // [순서 대기] 최종 join 인데 섹션이 아직이면 실패가 아니라 순서 문제 — 배포 겹침 창에
-  // 구·신 프로세스가 큐를 나눠 물면 섹션이 끝나기 전에 join 이 뽑힐 수 있다(2026-08-02
-  // 실사례). 큐 뒤로 물러나 기다린다(4초 폴링 × 최대 150회 ≈ 10분). 여기서 미리 보내야
-  // composeProject 의 진행로그 리셋이 섹션 진행 표시를 지우지 않는다.
-  if (job.payload?.joinSections) {
+  // [순서 대기] 재료가 아직인 체인 잡은 실패가 아니라 순서 문제 — 배포 겹침 창에
+  // 구·신 프로세스가 큐를 나눠 물면 앞 잡이 끝나기 전에 뒤 잡이 뽑힐 수 있다(2026-08-02
+  // 두 번 실사례: 섹션 전 join, 편 전 섹션). 큐 뒤로 물러나 기다린다(4초 폴링 × 최대
+  // 150회 ≈ 10분). 여기서 미리 보내야 composeProject 의 진행로그 리셋이 앞 잡의 진행
+  // 표시를 지우지 않는다.
+  if (job.payload?.joinSections || job.payload?.sectionId) {
     let missing = false;
     try {
       const p = await getProject(job.projectId);
-      missing = (p?.sections ?? []).some((s) => !s.videoUrl);
+      if (job.payload.joinSections) {
+        missing = (p?.sections ?? []).some((s) => !s.videoUrl);
+      } else {
+        const sec = (p?.sections ?? []).find((s) => s.id === job.payload.sectionId);
+        for (const segId of sec?.segmentIds ?? []) {
+          const seg = await getProject(segId);
+          if (!seg?.finalVideoUrl) { missing = true; break; }
+        }
+      }
     } catch {}
     const waits = (job.waits ?? 0) + 1;
     if (missing && waits <= 150) {
-      if (waits === 1 || waits % 15 === 0) console.log(`[worker] 섹션 완성 대기 — join 큐 뒤로 (${waits}/150)`);
-      await safely("섹션 대기 재큐", () => requeueJobBack({ ...job, waits }, { status: "queued" }));
+      const what = job.payload.joinSections ? "join(섹션 대기)" : "섹션(편 대기)";
+      if (waits === 1 || waits % 15 === 0) console.log(`[worker] ${what} — 큐 뒤로 (${waits}/150)`);
+      await safely("순서 대기 재큐", () => requeueJobBack({ ...job, waits }, { status: "queued" }));
       return;
     }
   }
@@ -124,7 +134,7 @@ async function tick() {
 
 // 배포 검증용 버전 표식 — Render 로그 + Redis(worker:build)에 남긴다.
 // Redis 에 쓰면 대시보드 없이 원격에서 "새 코드가 떴는지" 확인 가능.
-const BUILD = "robust-v10 (오디오 필터 concat — 깨진 타임스탬프 근본 수정, 크롬 7초 밀림 해결)";
+const BUILD = "robust-v11 (섹션도 편 완성 대기 — 배포 겹침 순서 꼬임 전면 차단)";
 console.log(`[worker] BUILD = ${BUILD}`);
 console.log("[worker] 시작 — jobq:compose 폴링 중…");
 try {

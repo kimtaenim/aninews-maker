@@ -771,6 +771,8 @@ export default function LongformStudio({
   const [composing, setComposing] = useState(false);
   const [status, setStatus] = useState<string>("");
   const [progress, setProgress] = useState<string>("");
+  // 단계별 현황 한 줄 — "① 편 2/3 완성 · 1 굽는 중 → ② 묶음 0/1 대기 → ③ 이어붙이기 대기"
+  const [stageLine, setStageLine] = useState<string>("");
   const [finalUrl, setFinalUrl] = useState<string | undefined>(project.finalVideoUrl);
   const [error, setError] = useState<string>("");
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -876,8 +878,49 @@ export default function LongformStudio({
       const d = await r.json().catch(() => ({}));
       if (!d.ok) return;
       setStatus(d.status ?? "");
-      setProgress(d.progress ?? "");
+      // 편 배지·진행 로그 실시간 갱신 — 체인이 편부터 굽는 동안 새로고침 없이 보이게(2026-08-02 지적).
+      type SegPoll = { id: string; finalVideoUrl?: string; composeStatus: string; progress?: string | null };
+      const segPolls: SegPoll[] = Array.isArray(d.segments) ? (d.segments as SegPoll[]) : [];
+      if (segPolls.length) {
+        setSegs((prev) =>
+          prev.map((s) => {
+            const u = segPolls.find((x) => x.id === s.id);
+            return u ? { ...s, finalVideoUrl: u.finalVideoUrl } : s;
+          })
+        );
+      }
+      const segBaking = segPolls.find((x) => x.composeStatus === "generating");
+      setProgress(
+        segBaking ? `편 합성 — ${segBaking.progress ?? "진행 중…"}` : (d.progress ?? "")
+      );
       if (Array.isArray(d.sections)) setSecList(d.sections as LongformSection[]);
+      // 단계별 현황 — 몇 개가 끝났고 몇 개가 굽는 중이고 몇 개가 기다리는지(2026-08-02 요청).
+      {
+        const secs = Array.isArray(d.sections) ? (d.sections as LongformSection[]) : [];
+        const sgDone = segPolls.filter((x) => x.finalVideoUrl).length;
+        const sgBaking = segPolls.filter((x) => !x.finalVideoUrl && x.composeStatus === "generating").length;
+        const sgWait = Math.max(0, segPolls.length - sgDone - sgBaking);
+        const scDone = secs.filter((s) => s.videoUrl).length;
+        const scBaking = secs.filter((s) => !s.videoUrl && s.status === "generating").length;
+        const scWait = Math.max(0, secs.length - scDone - scBaking);
+        const joinLabel =
+          d.status === "generated"
+            ? "완료"
+            : secs.length > 0 && scDone === secs.length && d.status === "generating"
+              ? "굽는 중"
+              : "대기";
+        if (segPolls.length || secs.length) {
+          setStageLine(
+            `① 편 ${sgDone}/${segPolls.length} 완성` +
+              (sgBaking ? ` · ${sgBaking} 굽는 중` : "") +
+              (sgWait ? ` · ${sgWait} 대기` : "") +
+              ` → ② 묶음 ${scDone}/${secs.length} 완성` +
+              (scBaking ? ` · ${scBaking} 굽는 중` : "") +
+              (scWait ? ` · ${scWait} 대기` : "") +
+              ` → ③ 이어붙이기 ${joinLabel}`
+          );
+        }
+      }
       const anySecGen =
         Array.isArray(d.sections) &&
         (d.sections as LongformSection[]).some((s) => s.status === "generating");
@@ -2219,8 +2262,13 @@ export default function LongformStudio({
                 합성 중단
               </button>
             )}
+            {(composing || composeAllBusy) && stageLine && (
+              <p className="mt-2 text-[11px] font-medium text-zinc-700 dark:text-zinc-200">
+                {stageLine}
+              </p>
+            )}
             {(composing || composeAllBusy) && (
-              <p className="mt-2 text-[11px] text-zinc-500">
+              <p className="mt-1 text-[11px] text-zinc-500">
                 상태: {status} {progress ? `· ${progress}` : ""}
               </p>
             )}
