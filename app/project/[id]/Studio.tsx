@@ -5809,6 +5809,17 @@ export default function Studio({
       )}
       </main>
 
+      {/* 롱폼 딸린 프로젝트(가로판·진행자)면 돌아가기를 플로팅으로 — 페이지가 길어서
+          상단 링크만으론 못 찾는다(2026-08-02 지적). 내장 모드에선 이미 롱폼 화면이라 불필요. */}
+      {project.longformId && !embedded && (
+        <a
+          href={`/project/${project.longformId}`}
+          className="fixed bottom-14 right-4 z-40 rounded-full bg-accent px-4 py-2 text-sm font-medium text-white shadow-lg hover:bg-accent-strong"
+        >
+          ← 롱폼으로
+        </a>
+      )}
+
       {/* 누적 비용 — 항상 보이는 고정 푸터. 내장(롱폼 안)일 땐 롱폼 총액 바 하나만 남긴다. */}
       {!embedded && (
         <div className="fixed bottom-0 inset-x-0 z-40 border-t border-zinc-200/70 dark:border-zinc-800/70 bg-white/90 dark:bg-black/80 backdrop-blur px-4 py-2.5">
