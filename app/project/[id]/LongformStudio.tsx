@@ -1378,8 +1378,8 @@ export default function LongformStudio({
                 }
                 const selected = thumb.selected === v.fileUrl;
                 return (
+                  <div key={i} className="relative">
                   <button
-                    key={i}
                     type="button"
                     onClick={() => selectThumbnail(v.fileUrl!)}
                     disabled={thumbBusy || thumbSelBusy}
@@ -1404,6 +1404,16 @@ export default function LongformStudio({
                       </span>
                     )}
                   </button>
+                  {/* 크게 보기 — 원본을 새 탭으로(선택과 분리, 숏폼 키프레임과 동일) */}
+                  <a
+                    href={v.fileUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="absolute left-1 top-1 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white hover:bg-black/75"
+                  >
+                    🔍 크게
+                  </a>
+                  </div>
                 );
               })}
             </div>

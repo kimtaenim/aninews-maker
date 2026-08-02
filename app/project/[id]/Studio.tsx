@@ -4159,8 +4159,8 @@ export default function Studio({
               {candidates.map((u) => {
                 const selected = project.keyframeUrl === u;
                 return (
+                  <div key={u} className="relative">
                   <button
-                    key={u}
                     type="button"
                     onClick={() => selectKeyframe(u)}
                     disabled={busy !== null}
@@ -4188,6 +4188,16 @@ export default function Studio({
                       </span>
                     )}
                   </button>
+                  {/* 크게 보기 — 원본을 새 탭으로(선택 클릭과 분리) */}
+                  <a
+                    href={u}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="absolute left-1 top-1 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white hover:bg-black/75"
+                  >
+                    🔍 크게
+                  </a>
+                  </div>
                 );
               })}
             </div>
@@ -4207,11 +4217,14 @@ export default function Studio({
               ✓ 선택된 씬0 — 이 스타일·인물이 이후 모든 씬에 적용됩니다
             </p>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={project.keyframeUrl}
-              alt="선택된 씬0 키프레임"
-              className={`w-48 ${longAspect} object-cover rounded-xl border-2 border-accent`}
-            />
+            <a href={project.keyframeUrl} target="_blank" rel="noreferrer" title="새 탭에서 크게 보기">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={project.keyframeUrl}
+                alt="선택된 씬0 키프레임"
+                className={`w-48 ${longAspect} object-cover rounded-xl border-2 border-accent`}
+              />
+            </a>
             <button
               type="button"
               onClick={() => convertRealistic(0)}
