@@ -337,6 +337,24 @@ async function concatClips(order, dir, log, outName = "final.mp4") {
     "-c", "copy", "-movflags", "+faststart",
     finalPath,
   ]);
+  // [검증 게이트] 결과 길이 = 입력 길이 합인지 대조 — 어긋난 결과물을 성공인 척 저장해
+  // 사용자에게 보내는 사고 차단(2026-08-02). 프로브가 0(실패)이면 검증 불가라 건너뛴다
+  // (가짜 실패로 정상 합성을 죽이지 않기 위해).
+  const inDur = [];
+  for (const f of order) inDur.push(await probeDuration(f));
+  const expected = inDur.reduce((a, b) => a + b, 0);
+  const actual = await probeDuration(finalPath);
+  if (actual > 0 && inDur.every((d) => d > 0)) {
+    const tol = Math.max(2, expected * 0.01);
+    if (Math.abs(actual - expected) > tol) {
+      throw new Error(
+        `이어붙이기 길이 검증 실패 — 결과 ${actual.toFixed(1)}초 ≠ 기대 ${expected.toFixed(1)}초(입력 ${order.length}개 합). 결과물을 저장하지 않았어요.`
+      );
+    }
+    await log(`길이 검증 통과 — ${actual.toFixed(1)}초 (기대 ${expected.toFixed(1)}초)`);
+  } else {
+    await log("길이 검증 건너뜀 — ffprobe 실패(합성 자체는 계속)");
+  }
   return finalPath;
 }
 

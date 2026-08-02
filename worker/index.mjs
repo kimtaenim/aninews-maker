@@ -1,10 +1,17 @@
 // aninews 합성 워커 — Redis 큐(jobq:compose)를 폴링해 ffmpeg 합성 실행.
 // Render Background Worker 등 상시 서버에서 `node index.mjs` 로 가동.
-import { popComposeJob, updateJob, failCompose, redis } from "./store.mjs";
+import { popComposeJob, updateJob, requeueJobFront, failCompose, redis } from "./store.mjs";
 import { composeProject, abortActiveWork } from "./compose.mjs";
 
 const POLL_MS = 4000;
 const COMPOSE_TIMEOUT_MS = 10 * 60 * 1000; // 10분 넘게 매달리면 에러 처리(무한대기 제거)
+
+// 일시 오류 판별 — 이 패턴이면 사용자에게 실패를 던지지 않고 자동 재시도한다.
+// 타임아웃("합성 타임아웃")·ffmpeg 실패·"완성본이 없어요" 류는 일부러 제외:
+// 같은 입력이면 같은 결과라 재시도가 시간만 태운다(크래시 루프 방지).
+const RETRYABLE =
+  /disturbed or locked|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|EPIPE|fetch failed|socket|other side closed|terminated|UND_ERR|다운로드 실패 (429|5\d\d)/i;
+const MAX_RETRY = 2;
 
 // 워커는 죽으면 안 된다 — 잡 하나가 실패해도 프로세스는 살아 다음 잡을 받아야 한다.
 // 예전엔 핸들러가 없어서 자식 spawn 실패나 Redis 한 번의 오류가 곧바로 프로세스 종료
@@ -55,11 +62,25 @@ async function tick() {
     console.log(`[worker] compose 완료 → ${url}`);
   } catch (e) {
     const msg = String(e?.message ?? e);
-    console.error(`[worker] compose 실패 job=${job.id}:`, msg);
     // 실패했으면 남은 자식이 없어야 한다(있으면 다음 잡과 메모리가 겹친다).
     abortActiveWork();
-    await safely("error 기록", () => updateJob(job.id, { status: "error", error: msg }));
-    await safely("프로젝트 실패 표시", () => failCompose(job.projectId, msg));
+    // [자동 재시도] 일시 오류(네트워크·업로드·다운로드 5xx)는 사용자에게 던지지 않고
+    // 최대 2회 조용히 다시 돈다 — 순간 삐끗이 곧바로 "실패" 화면이 되던 구조 수정
+    // (2026-08-02). 타임아웃·ffmpeg 오류·자산 없음은 재시도 안 함(같은 결과 반복 방지).
+    const attempts = (job.attempts ?? 0) + 1;
+    if (attempts <= MAX_RETRY && RETRYABLE.test(msg)) {
+      console.error(`[worker] 일시 오류 — 자동 재시도 ${attempts}/${MAX_RETRY}: ${msg}`);
+      await safely("재시도 큐", () =>
+        requeueJobFront({ ...job, attempts }, {
+          status: "queued",
+          error: `일시 오류 — 자동 재시도 ${attempts}/${MAX_RETRY} 대기: ${msg.slice(0, 200)}`,
+        })
+      );
+    } else {
+      console.error(`[worker] compose 실패 job=${job.id}:`, msg);
+      await safely("error 기록", () => updateJob(job.id, { status: "error", error: msg }));
+      await safely("프로젝트 실패 표시", () => failCompose(job.projectId, msg));
+    }
   } finally {
     if (timer) clearTimeout(timer); // 안 지우면 타이머가 살아 다음 잡 중에 터진다
   }
@@ -67,7 +88,7 @@ async function tick() {
 
 // 배포 검증용 버전 표식 — Render 로그 + Redis(worker:build)에 남긴다.
 // Redis 에 쓰면 대시보드 없이 원격에서 "새 코드가 떴는지" 확인 가능.
-const BUILD = "robust-v3 (대용량 업로드 multipart — 재시도 스트림 잠김 수정)";
+const BUILD = "robust-v4 (일시 오류 자동 재시도 + 이어붙이기 길이 검증 게이트)";
 console.log(`[worker] BUILD = ${BUILD}`);
 console.log("[worker] 시작 — jobq:compose 폴링 중…");
 try {

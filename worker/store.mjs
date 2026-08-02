@@ -31,6 +31,13 @@ export async function updateJob(id, patch) {
   await redis.set(`job:${id}`, { ...cur, ...patch, updatedAt: Date.now() });
 }
 
+// 일시 오류 자동 재시도 — 잡을 큐의 소비 쪽(rpush=rpop 쪽)에 되돌린다. 뒤에 대기 중인
+// 체인 잡(예: 섹션 뒤의 최종 join)보다 먼저 다시 돌아야 산출물 순서가 안 꼬인다.
+export async function requeueJobFront(job, patch) {
+  await redis.set(`job:${job.id}`, { ...job, ...patch, updatedAt: Date.now() });
+  await redis.rpush("jobq:compose", job.id);
+}
+
 // 합성 단계별 진행 로그 — Redis 리스트에 append. 클라/개발자가 lrange 로 읽어 어디서
 // 멈췄는지 본다. (Render 로그 복붙 없이 원격에서 진행 추적 가능)
 const progKey = (projectId) => `compose:progress:${projectId}`;
