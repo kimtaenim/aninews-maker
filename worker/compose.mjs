@@ -331,10 +331,17 @@ async function concatClips(order, dir, log, outName = "final.mp4") {
   const listPath = join(dir, `list-${outName}.txt`);
   await writeFile(listPath, order.map((f) => `file '${f}'`).join("\n"), "utf8");
   const finalPath = join(dir, outName);
-  await log("이어붙이기(무손실 copy)…");
+  // 비디오는 무손실 copy, 오디오만 재인코딩 — 각 조각의 오디오가 비디오보다 몇십 ms 짧아
+  // 생기는 타임스탬프 구멍을 진짜 무음으로 채운다(aresample async). 구멍을 무시하는
+  // 플레이어에서 조각 수만큼 누적돼 뒤로 갈수록 음성이 앞서던 싱크 밀림의 근본 수정
+  // (2026-08-02 — 끝부분 1.4초까지 벌어진 실측).
+  await log("이어붙이기(비디오 무손실 + 오디오 싱크 고정)…");
   await run("ffmpeg", [
     "-y", "-f", "concat", "-safe", "0", "-i", listPath,
-    "-c", "copy", "-movflags", "+faststart",
+    "-c:v", "copy",
+    "-af", "aresample=async=1:min_hard_comp=0.100:first_pts=0",
+    "-c:a", "aac", "-b:a", "128k",
+    "-movflags", "+faststart",
     finalPath,
   ]);
   // [검증 게이트] 결과 길이 = 입력 길이 합인지 대조 — 어긋난 결과물을 성공인 척 저장해
@@ -737,9 +744,14 @@ export async function composeProject(projectId, lang, opts = {}) {
     const listPath = join(dir, "list.txt");
     await writeFile(listPath, sceneFiles.map((f) => `file '${f}'`).join("\n"), "utf8");
     const finalPath = join(dir, "final.mp4");
+    // 비디오 무손실 + 오디오 재인코딩(무음 채움) — 씬마다 오디오가 비디오보다 몇십 ms
+    // 짧아 누적되던 싱크 밀림 수정(위 concatClips 와 같은 원리).
     await run("ffmpeg", [
       "-y", "-f", "concat", "-safe", "0", "-i", listPath,
-      "-c", "copy", "-movflags", "+faststart",
+      "-c:v", "copy",
+      "-af", "aresample=async=1:min_hard_comp=0.100:first_pts=0",
+      "-c:a", "aac", "-b:a", "128k",
+      "-movflags", "+faststart",
       finalPath,
     ]);
 
