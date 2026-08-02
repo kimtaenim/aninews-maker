@@ -16,6 +16,9 @@ export async function GET(req: NextRequest) {
   const imagesMissing = scenes
     .map((s, i) => (i > 0 && !s.imageUrl && !s.skipped ? i : -1))
     .filter((i) => i >= 0);
+  const audioMissing = scenes
+    .map((s, i) => (!s.audioUrl && !s.skipped && (s.narration ?? "").trim() ? i : -1))
+    .filter((i) => i >= 0);
   const videosMissing = scenes
     .map((s, i) => (s.imageUrl && !s.videoUrl && !s.skipped && s.videoSource !== "upload" ? i : -1))
     .filter((i) => i >= 0);
@@ -26,6 +29,7 @@ export async function GET(req: NextRequest) {
     keyframeReady: !!p.keyframeUrl,
     keyframeApproved: p.steps.keyframe.status === "approved",
     imagesMissing,
+    audioMissing,
     imagesApproved: p.steps.images.status === "approved",
     videosMissing,
     videosApproved: p.steps.videos.status === "approved",

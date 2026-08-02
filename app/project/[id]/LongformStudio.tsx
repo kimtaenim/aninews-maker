@@ -537,6 +537,7 @@ export default function LongformStudio({
       keyframeReady: boolean;
       keyframeApproved: boolean;
       imagesMissing: number[];
+      audioMissing: number[];
       imagesApproved: boolean;
       videosMissing: number[];
       videosApproved: boolean;
@@ -547,7 +548,10 @@ export default function LongformStudio({
   }
 
   // true = 완성까지 감, false = 키프레임 선택 대기로 멈춤(고르면 이어서).
-  async function buildSegment(id: string): Promise<boolean> {
+  // 진행자 프로젝트도 같은 함수를 쓴다 — audio(진행자는 음성도 새로) · compose(편만) 스위치.
+  async function buildSegment(id: string, opts?: { audio?: boolean; compose?: boolean }): Promise<boolean> {
+    const withAudio = opts?.audio === true;
+    const withCompose = opts?.compose !== false;
     let st = await segStatus(id);
     if (!st.keyframeReady) {
       prog(id, "키프레임 후보 만드는 중…");
@@ -571,6 +575,13 @@ export default function LongformStudio({
     if (!st.imagesApproved) await post("/api/step/approve", { projectId: id, step: "images" });
 
     st = await segStatus(id);
+    if (withAudio && st.audioMissing.length) {
+      for (let k = 0; k < st.audioMissing.length; k++) {
+        prog(id, `음성 ${k + 1}/${st.audioMissing.length} 만드는 중…`);
+        await post("/api/audio/scene", { projectId: id, sceneIndex: st.audioMissing[k] });
+      }
+      st = await segStatus(id);
+    }
     const targets = st.videosMissing;
     for (let k = 0; k < targets.length; k++) {
       const i = targets[k];
@@ -590,6 +601,10 @@ export default function LongformStudio({
       await post("/api/step/approve", { projectId: id, step: "videos" });
     }
 
+    if (!withCompose) {
+      prog(id, "✓ 완성");
+      return true;
+    }
     if (!st.finalVideoUrl) {
       prog(id, "합성 대기열에 넣는 중…");
       await post("/api/compose", { projectId: id });
@@ -618,10 +633,24 @@ export default function LongformStudio({
         delete n[id];
         return n;
       });
-      await buildSegment(id);
+      await buildSegment(id, hostProject && id === hostProject.id ? { audio: true, compose: false } : undefined);
       router.refresh();
     } catch (e) {
       prog(id, `✗ ${e instanceof Error ? e.message : "실패"}`);
+    } finally {
+      setSegRunning(null);
+    }
+  }
+
+  // 진행자(오프닝·연결·엔딩) 그림·음성·영상 일괄 — 편 "만들기"와 같은 흐름, 합성만 없다.
+  async function buildHost() {
+    if (!hostProject || segRunning) return;
+    setSegRunning(hostProject.id);
+    try {
+      await buildSegment(hostProject.id, { audio: true, compose: false });
+      router.refresh();
+    } catch (e) {
+      prog(hostProject.id, `✗ ${e instanceof Error ? e.message : "실패"}`);
     } finally {
       setSegRunning(null);
     }
@@ -1024,11 +1053,42 @@ export default function LongformStudio({
         </div>
       </div>
       <p className="mt-2 text-xs text-zinc-500">
-        가로 16:9 롱폼 — 아래 순서 그대로 이어붙습니다. 칸마다 말을 고치고, 각 편은 편집에서 완성하세요.
+        가로 16:9 롱폼 — 아래 순서 그대로 이어붙습니다.
       </p>
 
+      {/* ★ 지금 할 일 — 상태를 보고 다음 행동 하나만 가리킨다(2026-08-02 사용자 지적:
+          어디 가서 뭘 해야 할지 모르겠다). 패널이 많아진 건 사실이니 길잡이는 화면이 든다. */}
+      {(() => {
+        const next = !confirmedTitle
+          ? { label: "① 제목을 확정하세요", href: "#panel-title" }
+          : !script
+            ? { label: "③ 대본을 만드세요 (오프닝·연결·엔딩)", href: "#panel-script" }
+            : hostScenes.length > 0 && hostVideoDone < hostScenes.length
+              ? { label: `진행자 만들기를 누르세요 (${hostVideoDone}/${hostScenes.length})`, href: "#panel-script" }
+              : readyCount < segs.length
+                ? { label: `편을 완성하세요 (${readyCount}/${segs.length}) — 편 줄의 “만들기”`, href: "#panel-script" }
+                : !finalUrl
+                  ? { label: "🔗 최종 합성을 누르세요", href: "#panel-compose" }
+                  : !thumb?.selected
+                    ? { label: "② 썸네일을 골라주세요 (업로드용)", href: "#panel-thumb" }
+                    : null;
+        return next ? (
+          <a
+            href={next.href}
+            className="mt-2 flex items-center gap-2 rounded-xl border border-accent bg-accent/10 px-3 py-2 text-sm font-medium text-accent hover:bg-accent/15"
+          >
+            <span className="shrink-0 rounded bg-accent px-1.5 py-0.5 text-[10px] font-bold text-white">지금 할 일</span>
+            {next.label}
+          </a>
+        ) : (
+          <div className="mt-2 flex items-center gap-2 rounded-xl border border-emerald-400 bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-600">
+            ✓ 전부 끝났습니다 — 최종 영상과 썸네일을 내려받아 업로드하세요.
+          </div>
+        );
+      })()}
+
       {/* [모듈 1] 롱폼 제목 — 검색 5원칙 */}
-      <div className="mt-4 rounded-xl border border-accent/40 bg-accent/5 p-3">
+      <div id="panel-title" className="mt-4 rounded-xl border border-accent/40 bg-accent/5 p-3">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold">① 제목</h2>
           <button
@@ -1411,7 +1471,7 @@ export default function LongformStudio({
 
 
       {/* [모듈 5] 썸네일 */}
-      <div className="mt-4 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
+      <div id="panel-thumb" className="mt-4 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold">② 썸네일</h2>
           <button
@@ -1658,7 +1718,7 @@ export default function LongformStudio({
       {/* ★ 재생 순서 = 이 화면의 뼈대. 오프닝 → 세그1 → 연결 → 세그2 → … → 엔딩 순으로,
           진행자 구간은 씬 단위로 펼쳐 그 자리에서 대본을 고친다. 제목·썸네일 등 나머지 도구는
           이 아래에 접어 둔다(사용자 지정 2026-07-26: 머릿속 구조가 곧 화면 구조여야 한다). */}
-      <div className="mt-4 flex items-center justify-between gap-2">
+      <div id="panel-script" className="mt-4 flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold">
           ③ 대본 <span className="text-[11px] font-normal text-zinc-500">
             (편 {readyCount}/{segs.length} · 진행자 {hostVideoDone}/{hostScenes.length || 0})
@@ -1682,6 +1742,16 @@ export default function LongformStudio({
               className="rounded-lg border border-zinc-300 px-2.5 py-1 text-[11px] font-medium hover:bg-zinc-50 disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-900"
             >
               {scriptSaveBusy ? "저장 중…" : "대본 저장"}
+            </button>
+          )}
+          {hostProject && hostScenes.some((sc) => !sc.videoUrl) && (
+            <button
+              onClick={buildHost}
+              disabled={segRunning !== null}
+              title="오프닝·연결·엔딩 씬의 그림·음성·영상을 여기서 만듭니다 (키프레임은 골라주세요)"
+              className="rounded-lg bg-accent px-2.5 py-1 text-[11px] font-medium text-white hover:bg-accent-strong disabled:opacity-40"
+            >
+              진행자 만들기
             </button>
           )}
           {segs.some((x) => !x.finalVideoUrl) && (
@@ -1737,6 +1807,36 @@ export default function LongformStudio({
       )}
 
       <ol className="mt-2 grid gap-1.5">
+        {hostProject && segProg[hostProject.id] && (
+          <p className={`text-[11px] ${segProg[hostProject.id].startsWith("✗") ? "text-red-600" : "text-accent"}`}>
+            진행자: {segProg[hostProject.id]}
+          </p>
+        )}
+        {hostProject && segKf[hostProject.id] && (
+          <div className="grid grid-cols-3 gap-2">
+            {segKf[hostProject.id].map((u) => (
+              <div key={u} className="relative">
+                <button
+                  type="button"
+                  onClick={() => pickSegKeyframe(hostProject.id, u)}
+                  disabled={segRunning !== null}
+                  className="w-full overflow-hidden rounded-xl border-2 border-transparent transition-colors hover:border-accent disabled:opacity-60"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={u} alt="진행자 키프레임 후보" className="aspect-[16/9] w-full object-cover" />
+                </button>
+                <a
+                  href={u}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="absolute left-1 top-1 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white hover:bg-black/75"
+                >
+                  🔍 크게
+                </a>
+              </div>
+            ))}
+          </div>
+        )}
         {/* 오프닝 — 씬 2개 */}
         {script && edit
           ? [
@@ -1876,7 +1976,7 @@ export default function LongformStudio({
           오프닝·연결·엔딩 씬의 그림·영상·음성·칩셋·자막이 숏폼과 똑같이 뜬다.
           따로 만들지 마라 — 만들면 또 반쪽짜리가 된다. */}
       {hostFull && (
-        <div className="mt-6 rounded-xl border border-accent/40 p-2">
+        <div id="panel-host" className="mt-6 rounded-xl border border-accent/40 p-2">
           <p className="px-1 pb-1 text-[11px] text-zinc-500">
             아래는 <b>오프닝 · 연결 · 엔딩</b> 편집이에요 — 숏폼과 같은 화면입니다.
           </p>
@@ -1938,7 +2038,7 @@ export default function LongformStudio({
 
       {/* 합성 — 섹션이 있으면 섹션별 부분 합성 + 최종 이어붙이기, 없으면 레거시 단일 합성 */}
       {hasSections ? (
-        <div className="mt-5">
+        <div id="panel-compose" className="mt-5">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold">섹션별 부분 합성 ({secReadyCount}/{secList.length})</h2>
           </div>
@@ -2071,14 +2171,7 @@ export default function LongformStudio({
       {/* 롱폼 제작 비용 — 롱폼 자신 + 세그먼트 전부 + 진행자 합산(숏폼 Studio 와 같은 위치). */}
       <div className="fixed bottom-0 inset-x-0 z-40 border-t border-zinc-200/70 dark:border-zinc-800/70 bg-white/90 dark:bg-black/80 backdrop-blur px-4 py-2.5">
         <p className="md:max-w-2xl md:mx-auto text-center text-xs text-zinc-600 dark:text-zinc-300">
-          롱폼 제작 비용 <span className="font-semibold text-accent">{cost?.totalKrw ?? "₩0"}</span>
-          {cost?.segments && (
-            <span className="ml-1.5 text-[10px] text-zinc-500">
-              (세그먼트 {cost.segCount ?? 0}편 {cost.segments}
-              {cost.host ? ` · 진행자 ${cost.host}` : ""}
-              {cost.own ? ` · 대본·썸네일 ${cost.own}` : ""})
-            </span>
-          )}
+          제작 비용 <span className="font-semibold text-accent">{cost?.totalKrw ?? "₩0"}</span>
         </p>
       </div>
     </main>
