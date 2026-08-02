@@ -957,6 +957,12 @@ export default function LongformStudio({
       };
     };
     try {
+      // 0) 편별 최종본 — 없는 편은 만들기 흐름을 그대로 태운다(끝난 단계는 건너뛰므로
+      // 사실상 합성만 돈다). 예전엔 이게 안 돼서 "편 완성 대기"로 버튼만 막았다(2026-08-02 지적).
+      for (const sg of segs.filter((x) => !x.finalVideoUrl)) {
+        const done = await buildSegment(sg.id);
+        if (!done) throw new Error("키프레임을 먼저 골라주세요 — 위 편 줄에서 고르면 이어집니다");
+      }
       let st = await state();
       const list = st.sections ?? secList;
       for (let si = 0; si < list.length; si++) {
@@ -2090,7 +2096,6 @@ export default function LongformStudio({
               const segInfos = sec.segmentIds
                 .map((id) => segs.find((s) => s.id === id))
                 .filter((s): s is SegInfo => !!s);
-              const segReady = segInfos.length > 0 && segInfos.every((s) => s.finalVideoUrl);
               const gen = sec.status === "generating";
               const done = !!sec.videoUrl;
               return (
@@ -2117,15 +2122,8 @@ export default function LongformStudio({
                       {gen ? "합성 중" : done ? "완성" : sec.status === "error" ? "에러" : "미합성"}
                     </span>
                   </div>
-                  <div className="mt-1.5 flex items-center gap-2">
-                    <button
-                      onClick={() => composeSection(sec.id)}
-                      disabled={!segReady || gen || composing}
-                      className="rounded-md bg-accent hover:bg-accent-strong disabled:opacity-40 text-white text-[11px] font-medium px-3 py-1"
-                    >
-                      {gen ? "합성 중…" : done ? "다시 합성" : "부분 합성"}
-                    </button>
-                    {done && (
+                  {done && (
+                    <div className="mt-1.5 flex items-center gap-2">
                       <a
                         href={sec.videoUrl}
                         target="_blank"
@@ -2134,11 +2132,16 @@ export default function LongformStudio({
                       >
                         ▶ 미리보기
                       </a>
-                    )}
-                    {!segReady && (
-                      <span className="text-[11px] text-amber-600">세그먼트 먼저 완성</span>
-                    )}
-                  </div>
+                      <button
+                        onClick={() => composeSection(sec.id)}
+                        disabled={gen || composing || composeAllBusy}
+                        className="text-[11px] text-zinc-500 underline hover:text-accent disabled:opacity-40"
+                        title="이 구간만 다시 굽습니다(보통은 필요 없음)"
+                      >
+                        다시
+                      </button>
+                    </div>
+                  )}
                   {sec.error && <p className="mt-1 text-[11px] text-red-600">{sec.error}</p>}
                 </li>
               );
@@ -2149,15 +2152,11 @@ export default function LongformStudio({
           <div className="mt-3 rounded-xl bg-zinc-50 dark:bg-zinc-900 p-3">
             <button
               onClick={composeAll}
-              disabled={composing || composeAllBusy || readyCount !== segs.length}
-              title={readyCount === segs.length ? "남은 묶음을 차례로 굽고 자동으로 이어붙입니다" : "먼저 위에서 편들을 완성해주세요"}
+              disabled={composing || composeAllBusy || segRunning !== null}
+              title="남은 것 전부(편별 합성 → 묶음 합성 → 이어붙이기)를 차례로 합니다"
               className="w-full rounded-lg bg-accent hover:bg-accent-strong disabled:opacity-40 text-white text-sm font-medium py-2"
             >
-              {composing || composeAllBusy
-                ? "합성 중…"
-                : readyCount === segs.length
-                  ? "🔗 최종 합성 (한 번에)"
-                  : `편 완성 대기 (${readyCount}/${segs.length})`}
+              {composing || composeAllBusy ? "합성 중…" : "🔗 최종 합성 (한 번에)"}
             </button>
             {(composing || composeAllBusy) && (
               <p className="mt-2 text-[11px] text-zinc-500">

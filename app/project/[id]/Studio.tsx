@@ -5638,8 +5638,9 @@ export default function Studio({
         </section>
       )}
 
-      {/* 7단계: 최종 합성 (worker) */}
-      {project.scenes.some((s) => s.videoUrl) && (
+      {/* 7단계: 최종 합성 (worker) — 내장(롱폼 진행자)에선 숨김: 진행자는 개별 합성이 없고,
+          합성 버튼이 여러 개 흩어져 보이는 혼란의 원인이었다(2026-08-02 지적). */}
+      {!embedded && project.scenes.some((s) => s.videoUrl) && (
         <section className="mt-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 p-5">
           <h2 className="text-sm font-semibold">
             7. 합성 (최종 영상)
