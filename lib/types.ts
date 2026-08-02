@@ -303,6 +303,7 @@ export interface LongformSection {
   id: string;
   segmentIds: string[]; // 이 섹션 세그먼트들(순서대로). sourceProjectIds 의 부분집합.
   videoUrl?: string; // 부분 합성 결과(Blob) — 최종 join 대상.
+  videoUrlBackup?: string; // 낡아서 다시 굽기 전의 직전 결과(보존용 — 삭제 대신 백업).
   status?: "pending" | "generating" | "generated" | "error";
   jobId?: string; // 이 섹션 합성 잡 id(진행 추적).
   error?: string;

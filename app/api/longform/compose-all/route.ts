@@ -37,13 +37,20 @@ export async function POST(req: NextRequest) {
     updatedAt: now,
   });
 
-  // 1) 편별 — 최종본 없는 편만. 영상이 덜 된 편이 있으면 큐에 넣지 않고 어디가 왜인지 알려준다.
+  // 1) 편별 — 최종본이 없거나 "낡은"(합성한 뒤에 편이 수정된 — 음성·영상 다시 등) 편.
+  // ★2026-08-02 사고: 완성본이 있다는 이유만으로 무조건 건너뛰어, 다시 만든 음성·영상이
+  // 최종본에 영원히 반영되지 않았다. 이제 수정 시각을 대조해 낡은 것은 다시 굽는다.
+  const STALE_SLACK_MS = 2000; // 합성 저장 자체가 updatedAt 을 건드리는 몇 ms 를 흡수
   const needSeg: string[] = [];
   const notReady: string[] = [];
+  const segTouchedAt = new Map<string, number>(); // 섹션 낡음 판정용(재큐된 편은 now)
   for (const id of segIds) {
     const seg = await getProject(id);
     if (!seg) continue;
-    if (seg.finalVideoUrl) continue;
+    segTouchedAt.set(id, seg.updatedAt);
+    const composedAt = seg.steps.compose.updatedAt ?? 0;
+    const stale = !!seg.finalVideoUrl && seg.updatedAt > composedAt + STALE_SLACK_MS;
+    if (seg.finalVideoUrl && !stale) continue;
     const missing = (seg.scenes ?? []).filter((s) => !s.skipped && !s.videoUrl).length;
     if (missing > 0) {
       notReady.push(`"${seg.title.slice(0, 20)}…" 영상 ${missing}개 미완 — 그 편 '만들기' 먼저`);
@@ -67,14 +74,26 @@ export async function POST(req: NextRequest) {
     seg.steps.compose.updatedAt = now;
     seg.updatedAt = now;
     await saveProject(seg);
+    segTouchedAt.set(id, now); // 새로 굽는 편 — 이 편을 담은 섹션도 같이 낡음 처리
     queuedSegments++;
   }
 
-  // 2) 묶음(없는 것만) + 3) 이어붙이기 — 저장은 fresh 재읽기 후 한 번에.
+  // 2) 묶음 — 없는 것 + 낡은 것(재료인 편·진행자가 섹션 합성 뒤에 수정됨). 3) 이어붙이기.
+  // 낡은 섹션은 직전 결과를 videoUrlBackup 에 보존하고 비운다 — 새 합성이 실패하면
+  // join 이 "안 된 섹션" 으로 크게 실패하게(낡은 걸 조용히 다시 쓰는 것 금지).
   const fresh = (await getProject(projectId)) ?? longform;
+  const host = fresh.hostProjectId ? await getProject(fresh.hostProjectId) : null;
+  const hostTouchedAt = host?.updatedAt ?? 0;
   let queuedSections = 0;
   for (const sec of fresh.sections ?? []) {
-    if (sec.videoUrl) continue;
+    const builtAt = sec.updatedAt ?? 0;
+    const inputAt = Math.max(hostTouchedAt, ...sec.segmentIds.map((id) => segTouchedAt.get(id) ?? 0));
+    const stale = !!sec.videoUrl && inputAt > builtAt + STALE_SLACK_MS;
+    if (sec.videoUrl && !stale) continue;
+    if (sec.videoUrl) {
+      sec.videoUrlBackup = sec.videoUrl;
+      sec.videoUrl = undefined;
+    }
     const job = mkJob(projectId, { lang: "ko", sectionId: sec.id });
     await enqueueJob(job);
     sec.status = "generating";
