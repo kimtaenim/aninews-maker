@@ -441,22 +441,32 @@ export async function generateThumbnailImage(args: {
   // ★ 썸네일 글씨를 그림 안에 직접 그리게 한다(사용자 지정 2026-08-01).
   // 캔버스로 나중에 얹으면 그림과 따로 논다 — 돈 내고 쓰는 모델이 같이 그리는 게 맞다.
   text?: string;
+  // ★ 워터마크 서명도 그림 안에(2026-08-02 지시 — 숏폼 영상 서명과 같은 채널 표식).
+  // 우하단은 유튜브 시간 배지 자리라 비워야 하므로(스크리닝 원칙) 좌하단에 작게 넣는다.
+  watermarkText?: string;
   referenceImageUrl?: string; // 업로드한 참조 — 있으면 기본 마스코트 참조 대신 이걸 쓴다(숏폼과 같게)
 }): Promise<{ bytes: Buffer; costUsd: number }> {
-  const { projectId, prompt, quality = "medium", styleProfileId, text, referenceImageUrl } = args;
+  const { projectId, prompt, quality = "medium", styleProfileId, text, watermarkText, referenceImageUrl } = args;
   const styleLine = styleProfileId ? (getStyleProfile(styleProfileId)?.imageBible ?? "") : "";
   const client = getOpenAI();
   const cfg = eyecatchConfig as { description?: string; referenceImageUrl?: string };
+  const wm = (watermarkText ?? "").trim();
+  const wmLine = wm
+    ? ` Also render this exact small signature text in the BOTTOM-LEFT corner: "${wm}" — small, ` +
+      "subtle, semi-transparent white with a thin dark outline, like a broadcast channel watermark. "
+    : "";
   const full =
     `${cfg.description ?? ""}\n\n${prompt}\n\n` +
     (text?.trim()
       ? `Render this exact Korean text INSIDE the image as a bold poster headline: "${text.trim()}". ` +
         "Very large heavy sans-serif, thick dark outline and drop shadow so it stays readable when the " +
         "image is shrunk to 168px wide. Place it on the empty side away from the subject, never covering " +
-        "the face. Keep the wording EXACTLY as given — no other text, no logos, no watermarks, " +
-        "no extra letters or numbers anywhere."
-      : "ABSOLUTELY NO TEXT, letters, numbers, logos, or watermarks anywhere in the image — " +
-        "the caption is composited afterwards.") +
+        `the face. Keep the wording EXACTLY as given.${wmLine}` +
+        `No other text, logos${wm ? "" : ", watermarks"}, or extra letters or numbers anywhere.`
+      : wm
+        ? `${wmLine}Besides that signature, ABSOLUTELY NO other text, letters, numbers, or logos anywhere.`
+        : "ABSOLUTELY NO TEXT, letters, numbers, logos, or watermarks anywhere in the image — " +
+          "the caption is composited afterwards.") +
     " Leave the bottom-right corner visually quiet " +
     "(YouTube overlays the duration badge there). Avoid pure white and pure black backgrounds.";
   const ref = referenceImageUrl?.trim() || cfg.referenceImageUrl?.trim();

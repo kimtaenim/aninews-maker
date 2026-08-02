@@ -178,8 +178,9 @@ async function download(url, dest) {
 
 // [롱폼] 진행자 씬 하나를 클립으로 렌더 — 영상+음성+자막(커버크롭), 세그먼트 완성본과 동일
 // 인코딩(libx264/yuv420p/30fps/aac128k, 동일 W·H)이라 -c copy concat 가능. 기존 씬 루프
-// (composeProject)는 안 건드리고 진행자 씬용으로 별도(효과음·워터마크·크레딧 없음).
-async function renderHostSceneClip(s, dir, tag, sub, W, H) {
+// (composeProject)는 안 건드리고 진행자 씬용으로 별도(효과음·크레딧 없음).
+// wmPng — 워터마크 서명(숏폼 씬 루프와 같은 방식: 캡션 PNG 에 미리 합성. 2026-08-02 지시).
+async function renderHostSceneClip(s, dir, tag, sub, W, H, wmPng = null) {
   const vPath = join(dir, `${tag}-v.mp4`);
   await download(s.videoUrl, vPath);
   let aPath = null;
@@ -195,7 +196,7 @@ async function renderHostSceneClip(s, dir, tag, sub, W, H) {
   for (let j = 0; j < caps.length; j++) {
     const png = await renderCaptionPng(caps[j], sub, { W, H, preset: s.captionStyle });
     const cp = join(dir, `${tag}-cap${j}.png`);
-    await writeFile(cp, png);
+    await writeFile(cp, wmPng ? await mergePngLayers([png, wmPng], { W, H }) : png);
     capPaths.push(cp);
   }
   const MIN_CAP = 1.2;
@@ -206,10 +207,14 @@ async function renderHostSceneClip(s, dir, tag, sub, W, H) {
   const duration = capPaths.length ? Math.max(audioLen, capTotal) : audioLen;
   const speed = vd > 0 && duration > vd ? duration / vd : 1;
   // 자막 오버레이는 concat 목록 1개(씬 루프와 동일 이유 — 캡션당 입력은 길이의 제곱 비용).
-  const ovList = await writeOverlayConcat(
-    overlayEntries(capPaths, durs, duration),
-    join(dir, `${tag}-ov.txt`)
-  );
+  // 자막이 없어도 워터마크가 있으면 그 한 장을 씬 길이만큼 깐다(숏폼 씬 루프와 동일).
+  let ovEntries = overlayEntries(capPaths, durs, duration);
+  if (ovEntries.length === 0 && wmPng) {
+    const sp = join(dir, `${tag}-wm.png`);
+    await writeFile(sp, wmPng);
+    ovEntries = [{ path: sp, duration: duration + 0.5 }];
+  }
+  const ovList = await writeOverlayConcat(ovEntries, join(dir, `${tag}-ov.txt`));
   const baseF =
     `[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase,` +
     `crop=${W}:${H},setpts=${speed.toFixed(4)}*PTS,fps=${FPS}`;
@@ -245,15 +250,19 @@ function defaultLongSub(project) {
 
 // [롱폼] 진행자 프로젝트 씬을 슬롯별로 수집 — videoUrl 없는(미생성) 씬은 건너뜀.
 //   hostConnectors 는 connectorAfter(전역 세그먼트 인덱스, 0-based) → scene 맵.
-async function collectHostScenes(project, fallbackSub) {
+//   hostWmPng — 진행자 씬에 넣을 워터마크 서명 PNG(숏폼과 같은 렌더러). 출처 우선순위:
+//   진행자 프로젝트 → 롱폼 자신 → 첫 세그먼트(진행자 기본값 상속 규약과 동일 방향).
+async function collectHostScenes(project, fallbackSub, W, H) {
   const hostOpening = [];
   const hostConnectors = new Map();
   const hostClosing = [];
   let hostSub = fallbackSub;
+  let wm = null;
   if (project.hostProjectId) {
     const host = await getProject(project.hostProjectId);
     if (host) {
       hostSub = host.subtitle ?? fallbackSub;
+      if (host.watermark?.text?.trim()) wm = host.watermark;
       for (const s of host.scenes ?? []) {
         if (!s.videoUrl) continue;
         if (s.hostSlot === "opening") hostOpening.push(s);
@@ -262,7 +271,16 @@ async function collectHostScenes(project, fallbackSub) {
       }
     }
   }
-  return { hostOpening, hostConnectors, hostClosing, hostSub };
+  if (!wm && project.watermark?.text?.trim()) wm = project.watermark;
+  if (!wm) {
+    const firstId = (project.sourceProjectIds ?? [])[0];
+    if (firstId) {
+      const seg = await getProject(firstId);
+      if (seg?.watermark?.text?.trim()) wm = seg.watermark;
+    }
+  }
+  const hostWmPng = wm && W && H ? await renderWatermarkPng(wm, { W, H }) : null;
+  return { hostOpening, hostConnectors, hostClosing, hostSub, hostWmPng };
 }
 
 // 세그먼트 완성본(finalVideoUrl) 다운로드 → 로컬 경로 반환.
@@ -525,7 +543,7 @@ async function runLongformConcat(project, lang, dir, log, W, H) {
   const segIds = project.sourceProjectIds ?? [];
   if (segIds.length === 0) throw new Error("롱폼에 세그먼트(sourceProjectIds)가 없어요");
   const sub = defaultLongSub(project);
-  const { hostOpening, hostConnectors, hostClosing, hostSub } = await collectHostScenes(project, sub);
+  const { hostOpening, hostConnectors, hostClosing, hostSub, hostWmPng } = await collectHostScenes(project, sub, W, H);
   await log(`진행자 씬 — 오프닝 ${hostOpening.length}·연결 ${hostConnectors.size}·마무리 ${hostClosing.length}`);
 
   const segFiles = [];
@@ -538,20 +556,20 @@ async function runLongformConcat(project, lang, dir, log, W, H) {
   let oi = 0;
   for (const s of hostOpening) {
     await log(`오프닝 진행자 씬 렌더 ${oi + 1}/${hostOpening.length}…`);
-    entries.push({ f: await renderHostSceneClip(s, dir, `open${oi++}`, hostSub, W, H), kind: "host" });
+    entries.push({ f: await renderHostSceneClip(s, dir, `open${oi++}`, hostSub, W, H, hostWmPng), kind: "host" });
   }
   for (let i = 0; i < segFiles.length; i++) {
     entries.push({ f: await fadeTail(segFiles[i], dir, `seg${i}`, log), kind: "seg" });
     const conn = hostConnectors.get(i);
     if (conn) {
       await log(`연결 진행자 씬 렌더(세그 ${i + 1} 뒤)…`);
-      entries.push({ f: await renderHostSceneClip(conn, dir, `conn${i}`, hostSub, W, H), kind: "host" });
+      entries.push({ f: await renderHostSceneClip(conn, dir, `conn${i}`, hostSub, W, H, hostWmPng), kind: "host" });
     }
   }
   let ci = 0;
   for (const s of hostClosing) {
     await log("마무리 진행자 씬 렌더…");
-    entries.push({ f: await renderHostSceneClip(s, dir, `close${ci++}`, hostSub, W, H), kind: "host" });
+    entries.push({ f: await renderHostSceneClip(s, dir, `close${ci++}`, hostSub, W, H, hostWmPng), kind: "host" });
   }
 
   const finalPath = await concatClips(interleaveGaps(entries, gap), dir, log);
@@ -569,7 +587,7 @@ async function runLongformSectionConcat(project, sectionId, lang, dir, log, W, H
   const section = sections.find((s) => s.id === sectionId);
   if (!section) throw new Error(`섹션을 찾을 수 없어요: ${sectionId}`);
   const sub = defaultLongSub(project);
-  const { hostConnectors, hostSub } = await collectHostScenes(project, sub);
+  const { hostConnectors, hostSub, hostWmPng } = await collectHostScenes(project, sub, W, H);
 
   // 섹션 세그먼트의 전역 인덱스(연결 위치 매핑용) — sourceProjectIds 순서 기준.
   const globalIdx = section.segmentIds.map((id) => segIds.indexOf(id));
@@ -589,7 +607,7 @@ async function runLongformSectionConcat(project, sectionId, lang, dir, log, W, H
         const conn = hostConnectors.get(g);
         if (conn) {
           await log(`연결 진행자 씬 렌더(섹션 내부, 세그 ${g + 1} 뒤)…`);
-          entries.push({ f: await renderHostSceneClip(conn, dir, `conn${g}`, hostSub, W, H), kind: "host" });
+          entries.push({ f: await renderHostSceneClip(conn, dir, `conn${g}`, hostSub, W, H, hostWmPng), kind: "host" });
         }
       }
     }
@@ -620,7 +638,7 @@ async function runLongformJoin(project, lang, dir, log, W, H) {
     throw new Error(`아직 합성 안 된 섹션이 ${missing.length}개 있어요 — 섹션부터 합성해 주세요`);
   }
   const sub = defaultLongSub(project);
-  const { hostOpening, hostConnectors, hostClosing, hostSub } = await collectHostScenes(project, sub);
+  const { hostOpening, hostConnectors, hostClosing, hostSub, hostWmPng } = await collectHostScenes(project, sub, W, H);
   await log(`최종 이어붙이기 — 섹션 ${sections.length}·오프닝 ${hostOpening.length}·마무리 ${hostClosing.length}`);
 
   const gap = await makeGapClip(dir, W, H);
@@ -628,7 +646,7 @@ async function runLongformJoin(project, lang, dir, log, W, H) {
   let oi = 0;
   for (const s of hostOpening) {
     await log(`오프닝 진행자 씬 렌더 ${oi + 1}/${hostOpening.length}…`);
-    entries.push({ f: await renderHostSceneClip(s, dir, `open${oi++}`, hostSub, W, H), kind: "host" });
+    entries.push({ f: await renderHostSceneClip(s, dir, `open${oi++}`, hostSub, W, H, hostWmPng), kind: "host" });
   }
   for (let si = 0; si < sections.length; si++) {
     const sec = sections[si];
@@ -642,13 +660,13 @@ async function runLongformJoin(project, lang, dir, log, W, H) {
     const conn = hostConnectors.get(lastG);
     if (conn) {
       await log(`경계 연결 진행자 씬 렌더(섹션 ${si + 1} 뒤)…`);
-      entries.push({ f: await renderHostSceneClip(conn, dir, `bconn${si}`, hostSub, W, H), kind: "host" });
+      entries.push({ f: await renderHostSceneClip(conn, dir, `bconn${si}`, hostSub, W, H, hostWmPng), kind: "host" });
     }
   }
   let ci = 0;
   for (const s of hostClosing) {
     await log("마무리 진행자 씬 렌더…");
-    entries.push({ f: await renderHostSceneClip(s, dir, `close${ci++}`, hostSub, W, H), kind: "host" });
+    entries.push({ f: await renderHostSceneClip(s, dir, `close${ci++}`, hostSub, W, H, hostWmPng), kind: "host" });
   }
 
   const finalPath = await concatClips(interleaveGaps(entries, gap), dir, log);

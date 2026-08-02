@@ -82,12 +82,15 @@ export async function POST(req: NextRequest) {
   const orderedFirstId =
     longform.longformScript?.segmentOrder?.[0]?.segmentId ?? (longform.sourceProjectIds ?? [])[0];
   let firstSegmentTopic = longform.longformScript?.opening.blockAHook ?? "";
+  // 채널 서명(좌하단 작게) — 롱폼 자신 → 첫 세그먼트 워터마크 순으로 상속(2026-08-02 지시).
+  let watermarkText = longform.watermark?.text?.trim() || "";
   if (orderedFirstId) {
     const [seg] = await getProjectsBulk([orderedFirstId]);
     if (seg) {
       firstSegmentTopic =
         `${seg.title} — ` +
         (seg.scenes ?? []).map((s) => s.narration).filter(Boolean).join(" ").slice(0, 300);
+      if (!watermarkText) watermarkText = seg.watermark?.text?.trim() || "";
     }
   }
 
@@ -103,6 +106,7 @@ export async function POST(req: NextRequest) {
       styleProfileId: body.styleProfileId,
       quality: body.quality,
       referenceImageUrl: (body.referenceImageUrl ?? "").trim() || undefined,
+      watermarkText: watermarkText || undefined,
     });
     const fresh = (await getProject(projectId)) ?? longform;
     // 쓴 설정을 같이 저장 — 다시 만들 때 화면이 그대로 복원된다.
