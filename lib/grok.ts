@@ -26,6 +26,10 @@ function grokError(status: number, bodyText: string): string {
   } catch {
     /* keep raw */
   }
+  // 동시 실행 한도/레이트리밋 — 잔액과 다른 문제. 자리가 빌 때까지 기다리면 풀린다.
+  if (status === 429 || /rate ?limit|too many|concurren/i.test(detail)) {
+    return "Grok 동시 한도/레이트리밋 — 잠시 후 재시도.";
+  }
   if (/balance|credit|quota|insufficient/i.test(detail)) {
     return "Grok(xAI) 잔액/크레딧 부족 — console.x.ai 결제 확인.";
   }
@@ -36,7 +40,29 @@ function grokError(status: number, bodyText: string): string {
 }
 
 // 제출 → request_id 반환.
+// ★ 동시 실행 한도 — Kling·MiniMax(lib/kling.ts·lib/minimax.ts)와 같은 규약으로 자리 대기.
+const SLOT_RETRY_MS = 12_000;
+const SLOT_WAIT_MS = 100_000;
+const SLOT_ERROR = /동시 한도|레이트리밋/;
+
 export async function submitGrokVideo(opts: {
+  imageUrl: string;
+  prompt?: string;
+  duration?: number;
+}): Promise<string> {
+  const started = Date.now();
+  for (;;) {
+    try {
+      return await submitGrokOnce(opts);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "";
+      if (!SLOT_ERROR.test(msg) || Date.now() - started > SLOT_WAIT_MS) throw e;
+      await new Promise((res) => setTimeout(res, SLOT_RETRY_MS)); // 자리 빌 때까지 대기 후 재시도
+    }
+  }
+}
+
+async function submitGrokOnce(opts: {
   imageUrl: string;
   prompt?: string;
   duration?: number;
