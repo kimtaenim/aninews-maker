@@ -1524,7 +1524,14 @@ export default function LongformStudio({
         {script && edit
           ? [
               hostRow("op-a", "오프닝 1", edit.a, (v) => setEdit({ ...edit, a: v }), openingScenes[0]),
-              hostRow("op-b", "오프닝 2", edit.b, (v) => setEdit({ ...edit, b: v }), openingScenes[1]),
+              hostRow(
+                "op-b",
+                "오프닝 2",
+                edit.b,
+                (v) => setEdit({ ...edit, b: v }),
+                openingScenes[1],
+                "훅 한 문장으로 충분하면 비워두세요 — 비우고 저장하면 씬이 빠집니다"
+              ),
             ]
           : hostRow("op-none", "오프닝", "대본 미생성", null)}
 

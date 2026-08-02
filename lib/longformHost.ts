@@ -28,24 +28,31 @@ export async function syncHostScenes(
     "The two host mascots (fanged glasses chibi girl + small headless quadruped robot), bright pop background.";
   const scenes: Scene[] = [];
   let idx = 0;
+  // 빈 칸은 씬이 아니다 — 사용자가 칸을 비우면 그 씬은 빠진다(오프닝 1씬으로 줄이기 등).
+  const push = (sc: Scene | null) => {
+    if (sc) scenes.push(sc);
+  };
   const mk = (
     narration: string,
     imagePrompt: string | undefined,
     hostSlot: Scene["hostSlot"],
     connectorAfter?: number
-  ): Scene => ({
-    index: idx++,
-    narration,
-    imagePrompt: (imagePrompt ?? "").trim() || MASCOTS,
-    motion: "",
-    durationSec: Math.max(3, Math.round(speakSeconds(narration))),
-    status: "generated",
-    hostSlot,
-    ...(connectorAfter !== undefined ? { connectorAfter } : {}),
-  });
+  ): Scene | null =>
+    !(narration ?? "").trim()
+      ? null
+      : {
+          index: idx++,
+          narration,
+          imagePrompt: (imagePrompt ?? "").trim() || MASCOTS,
+          motion: "",
+          durationSec: Math.max(3, Math.round(speakSeconds(narration))),
+          status: "generated",
+          hostSlot,
+          ...(connectorAfter !== undefined ? { connectorAfter } : {}),
+        };
 
   // 오프닝 2씬 — 블록 A(제목 호응 훅) · 블록 B(로드맵 + 착지).
-  scenes.push(
+  push(
     mk(
       pkg.opening.blockAHook,
       pkg.opening.imagePromptA ??
@@ -53,22 +60,22 @@ export async function syncHostScenes(
       "opening"
     )
   );
-  scenes.push(mk(pkg.opening.blockBRoadmapLanding, pkg.opening.imagePromptB, "opening"));
+  push(mk(pkg.opening.blockBRoadmapLanding, pkg.opening.imagePromptB, "opening"));
 
   // 브리지 — 방점·승격·개방을 한 씬 나레이션으로 잇는다(세그먼트 i 뒤).
   for (const b of pkg.bridges) {
     const narration = [b.emphasis, b.elevation, b.opening].map((s) => (s ?? "").trim()).filter(Boolean).join(" ");
     if (!narration) continue;
-    scenes.push(mk(narration, b.imagePrompt, "connector", b.afterSegment));
+    push(mk(narration, b.imagePrompt, "connector", b.afterSegment));
   }
 
   // 엔딩 — 파트 A(고리 닫기) · B(여운, 보통 빈칸) · C(구독 전환).
   // ★ 여운은 기본이 빈 문자열이다(투자 조언 금지). 비어 있으면 씬을 만들지 않는다 —
   // 만들면 대사 없는 3초 정지 화면이 엔딩에 끼어든다(연결과 같은 처리).
-  scenes.push(mk(pkg.ending.partAClose, pkg.ending.imagePromptA, "closing"));
+  push(mk(pkg.ending.partAClose, pkg.ending.imagePromptA, "closing"));
   const hasLanding = (pkg.ending.partBLanding ?? "").trim().length > 0;
-  if (hasLanding) scenes.push(mk(pkg.ending.partBLanding, pkg.ending.imagePromptB, "closing"));
-  scenes.push(
+  push(mk(pkg.ending.partBLanding, pkg.ending.imagePromptB, "closing"));
+  push(
     mk(
       pkg.ending.partCStandard,
       pkg.ending.imagePromptC ?? "The two host mascots pointing at a red subscribe button, cheering. " + MASCOTS,

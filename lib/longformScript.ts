@@ -112,7 +112,8 @@ function parse(raw: string, input: LongformScriptInput): LongformScriptPackage |
 
   const blockA = str(op.block_a_hook);
   const blockB = str(op.block_b_roadmap_landing);
-  if (!blockA || !blockB) return null;
+  // 오프닝은 1~2씬 — 훅 한 문장으로 충분하면 두 번째 블록은 비워도 된다(빈말 채우기 금지).
+  if (!blockA) return null;
 
   const screening: Record<string, string> = {};
   if (j.screening && typeof j.screening === "object") {
