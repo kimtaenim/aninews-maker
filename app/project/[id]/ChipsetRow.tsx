@@ -19,6 +19,7 @@ export default function ChipsetRow({
   onReorder,
   disabled,
   hint,
+  alsoShow,
 }: {
   stage: ChipsetStage;
   chipsets: Chipset[];
@@ -30,6 +31,9 @@ export default function ChipsetRow({
   onReorder: (stage: ChipsetStage, ids: string[]) => Promise<void>;
   disabled?: boolean;
   hint?: string;
+  // 이 단계 칩에 더해 같이 보여줄 단계 — 미세조정 줄에서 스타일 칩도 부르게(2026-08-02 지적:
+  // "미세조정에서 칩셋을 못 불러온다"). 새로 등록하는 칩은 여전히 stage 로 들어간다.
+  alsoShow?: ChipsetStage;
 }) {
   const [panel, setPanel] = useState<null | "add" | "manage">(null);
   const [label, setLabel] = useState("");
@@ -42,7 +46,7 @@ export default function ChipsetRow({
   const [editText, setEditText] = useState("");
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
-  const mine = chipsets.filter((c) => c.stage === stage);
+  const mine = chipsets.filter((c) => c.stage === stage || (alsoShow != null && c.stage === alsoShow));
   const active = new Set(activeIds);
 
   // 드래그로 순서 바꾸기. dragId=집어 든 칩, overId=지금 올라가 있는 칩(그 앞에 꽂힌다).

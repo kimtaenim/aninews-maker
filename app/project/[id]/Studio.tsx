@@ -4085,7 +4085,14 @@ export default function Studio({
               <ChipsetRow
                 stage="styleChat"
                 chipsets={chipsets}
-                activeIds={activeChipIds("styleChat")}
+                alsoShow="style"
+                activeIds={chipsets
+                  .filter(
+                    (c) =>
+                      (c.stage === "styleChat" || c.stage === "style") &&
+                      stageFrags("styleChat").includes(c.text)
+                  )
+                  .map((c) => c.id)}
                 onToggle={toggleChipset}
                 onAdd={addChipset}
                 onUpdate={editChipset}
