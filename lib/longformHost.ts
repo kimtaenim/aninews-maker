@@ -90,10 +90,59 @@ export async function syncHostScenes(
   steps.script.status = "approved"; // 대본 확정 — 다음은 키프레임부터
   steps.script.updatedAt = now;
 
-  // 기존 진행자 프로젝트가 있으면 갱신(씬 교체 + 파이프라인 리셋), 없으면 새로.
   const existingId = longform.hostProjectId;
   const existing = existingId ? await getProject(existingId) : null;
   const ownerEmail = ownerEmailArg ?? longform.ownerEmail;
+
+  // ★ 목소리·자막 기본값은 세그먼트(실제 본문)에서 물려받는다 — 롱폼 껍데기에는 이 설정이
+  // 없어서, 진행자만 다른 목소리로 더빙되는 사고가 났다(2026-08-02 "디폴트가 달라서 다 망했어").
+  const refSeg = (longform.sourceProjectIds ?? []).length
+    ? await getProject(longform.sourceProjectIds![0])
+    : null;
+
+  // ★ 씬을 갈아끼우되 만든 자산은 보존한다 — 같은 자리(hostSlot·connectorAfter·slot 내 순번)의
+  // 기존 씬에서 그림·영상을 가져오고, 나레이션이 같을 때만 음성도 가져온다.
+  // (예전엔 대본 저장마다 전부 리셋 — 그림·영상·음성이 통째로 날아갔다.)
+  const slotKey = (sc: Scene, seq: number) => `${sc.hostSlot}#${sc.connectorAfter ?? ""}#${seq}`;
+  const oldByKey = new Map<string, Scene>();
+  {
+    const seq: Record<string, number> = {};
+    for (const sc of existing?.scenes ?? []) {
+      const base = `${sc.hostSlot}#${sc.connectorAfter ?? ""}`;
+      seq[base] = (seq[base] ?? 0) + 1;
+      oldByKey.set(slotKey(sc, seq[base] - 1), sc);
+    }
+  }
+  const ttsProvider = longform.ttsProvider ?? refSeg?.ttsProvider;
+  const voiceId = longform.voiceId ?? refSeg?.voiceId;
+  const voiceSpeed = longform.voiceSpeed ?? refSeg?.voiceSpeed;
+  // 목소리 설정이 이전 진행자 프로젝트와 다르면 기존 음성은 전부 낡은 것 — 버리고 다시 뽑게 한다.
+  const voiceChanged =
+    !!existing &&
+    (existing.ttsProvider !== ttsProvider ||
+      existing.voiceId !== voiceId ||
+      existing.voiceSpeed !== voiceSpeed);
+  {
+    const seq: Record<string, number> = {};
+    for (let i = 0; i < scenes.length; i++) {
+      const sc = scenes[i];
+      const base = `${sc.hostSlot}#${sc.connectorAfter ?? ""}`;
+      seq[base] = (seq[base] ?? 0) + 1;
+      const old = oldByKey.get(slotKey(sc, seq[base] - 1));
+      if (!old) continue;
+      scenes[i] = {
+        ...sc,
+        imageUrl: old.imageUrl,
+        videoUrl: old.videoUrl,
+        videoJobId: old.videoJobId,
+        videoModelId: old.videoModelId,
+        imagePrompt: old.imageUrl ? old.imagePrompt : sc.imagePrompt, // 그림이 있으면 그 프롬프트 유지
+        ...(old.narration.trim() === sc.narration.trim() && !voiceChanged
+          ? { audioUrl: old.audioUrl, ttsTimestamps: old.ttsTimestamps }
+          : {}),
+      };
+    }
+  }
 
   const hostId = existing?.id ?? randomUUID();
   const hostProject: Project = {
@@ -101,18 +150,18 @@ export async function syncHostScenes(
     title: `${longform.title} · 진행자`,
     format: "long",
     longformId: longform.id,
-    styleProfileId: longform.styleProfileId,
-    styleBible: longform.styleBible,
-    keyframeUrl: undefined, // 오프닝 첫 씬에서 새로 확정
+    styleProfileId: longform.styleProfileId ?? refSeg?.styleProfileId,
+    styleBible: longform.styleBible ?? refSeg?.styleBible,
+    keyframeUrl: existing?.keyframeUrl, // 이미 확정한 키프레임은 유지
     scenes,
     steps,
-    ttsEnabled: longform.ttsEnabled ?? true,
-    ttsProvider: longform.ttsProvider,
-    voiceId: longform.voiceId,
-    voiceSpeed: longform.voiceSpeed,
-    videoModelId: longform.videoModelId,
-    subtitle: longform.subtitle,
-    watermark: longform.watermark,
+    ttsEnabled: longform.ttsEnabled ?? refSeg?.ttsEnabled ?? true,
+    ttsProvider,
+    voiceId,
+    voiceSpeed,
+    videoModelId: longform.videoModelId ?? refSeg?.videoModelId,
+    subtitle: longform.subtitle ?? refSeg?.subtitle,
+    watermark: longform.watermark ?? refSeg?.watermark,
     ownerEmail: ownerEmail ?? undefined,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
