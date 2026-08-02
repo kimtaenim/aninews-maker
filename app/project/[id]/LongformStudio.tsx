@@ -15,7 +15,6 @@ import type { Chipset, ChipsetStage } from "@/lib/chipsets";
 import ChipsetRow from "./ChipsetRow";
 import Spinner from "@/components/Spinner";
 import { upload } from "@vercel/blob/client";
-import Studio from "./Studio";
 import type { Project } from "@/lib/types";
 import { speakSeconds } from "@/lib/longformScreening";
 
@@ -624,6 +623,13 @@ export default function LongformStudio({
   // ★ 이어 폴링 — 숏폼과 같게(Studio.tsx 의 자동 재개 useEffect 를 롱폼에도).
   // 제출된 영상 작업은 탭을 닫아도 MiniMax 가 계속 만든다 — 화면을 다시 열면 폴링만
   // 붙이면 유실이 없다. 결과 저장(Blob)은 폴링 GET 이 하므로 폴링 재개가 곧 복구다.
+  // 합성 폴링도 마운트에서 재개 — 워커가 굽는 동안 화면을 닫았다 열어도 진행이 보인다.
+  useEffect(() => {
+    poll();
+    startPolling(); // poll() 이 "굽는 중 아님"을 확인하면 스스로 인터벌을 끈다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const resumedRef = useRef(false);
   useEffect(() => {
     if (resumedRef.current) return;
@@ -879,6 +885,8 @@ export default function LongformStudio({
       if (d.status === "generated" && d.finalVideoUrl) {
         setFinalUrl(d.finalVideoUrl);
         setComposing(false);
+      } else if (d.status === "generating") {
+        setComposing(true);
       } else if (d.status === "error") {
         setError(d.error || "합성 실패");
         setComposing(false);
@@ -942,63 +950,90 @@ export default function LongformStudio({
   // 섹션은 OOM 안전판(서버 사정)이지 사용자가 알아야 할 단계가 아니다(2026-08-02 지적:
   // 섹션마다 누르고 또 최종을 눌러야 했다). 섹션별 버튼은 다시 굽기용으로만 남긴다.
   const [composeAllBusy, setComposeAllBusy] = useState(false);
+  // ★ 큐에 한 번에 넣고 끝 — 편별 합성 → 묶음 → 이어붙이기를 워커가 순서대로 처리한다.
+  // 탭을 닫아도 계속 굽고, 다시 열면 아래 마운트 폴링이 진행 상황을 이어서 보여준다(숏폼과 같게).
   async function composeAll() {
     if (composing || composeAllBusy) return;
     setComposeAllBusy(true);
     setError("");
-    const state = async () => {
-      const r = await fetch(`/api/compose?projectId=${encodeURIComponent(project.id)}`);
-      return (await r.json().catch(() => ({}))) as {
-        ok?: boolean;
-        status?: string;
-        finalVideoUrl?: string;
-        error?: string;
-        sections?: LongformSection[];
-      };
-    };
     try {
-      // 0) 편별 최종본 — 없는 편은 만들기 흐름을 그대로 태운다(끝난 단계는 건너뛰므로
-      // 사실상 합성만 돈다). 예전엔 이게 안 돼서 "편 완성 대기"로 버튼만 막았다(2026-08-02 지적).
-      for (const sg of segs.filter((x) => !x.finalVideoUrl)) {
-        const done = await buildSegment(sg.id);
-        if (!done) throw new Error("키프레임을 먼저 골라주세요 — 위 편 줄에서 고르면 이어집니다");
-      }
-      let st = await state();
-      const list = st.sections ?? secList;
-      for (let si = 0; si < list.length; si++) {
-        if (list[si].videoUrl) continue;
-        setProgress(`섹션 ${si + 1}/${list.length} 합성 중…`);
-        setSecList((prev) => prev.map((x) => (x.id === list[si].id ? { ...x, status: "generating" } : x)));
-        await post("/api/compose", { projectId: project.id, lang: "ko", sectionId: list[si].id });
-        for (;;) {
-          await new Promise((res) => setTimeout(res, 10_000));
-          st = await state();
-          if (Array.isArray(st.sections)) setSecList(st.sections);
-          const cur = st.sections?.find((x) => x.id === list[si].id);
-          if (cur?.videoUrl) break;
-          if (cur?.status === "error") throw new Error(cur.error || `섹션 ${si + 1} 합성 실패`);
-          setProgress(`섹션 ${si + 1}/${list.length} 합성 중…`);
-        }
-      }
-      setProgress("최종 이어붙이는 중…");
+      const d = await post("/api/longform/compose-all", { projectId: project.id });
+      const q = d.queued as { segments: number; sections: number } | undefined;
+      setProgress(
+        `대기열에 넣었어요 — 편 ${q?.segments ?? 0} · 묶음 ${q?.sections ?? 0} · 이어붙이기 1. 탭을 닫아도 계속 굽습니다.`
+      );
       setComposing(true);
       setStatus("generating");
-      await post("/api/compose", { projectId: project.id, lang: "ko", joinSections: true });
-      for (;;) {
-        await new Promise((res) => setTimeout(res, 10_000));
-        st = await state();
-        if (st.status === "generated" && st.finalVideoUrl) {
-          setFinalUrl(st.finalVideoUrl);
-          break;
-        }
-        if (st.status === "error") throw new Error(st.error || "최종 합성 실패");
-      }
-      refreshCost();
+      startPolling();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "최종 합성 실패");
+      setError(e instanceof Error ? e.message : "최종 합성 요청 실패");
     } finally {
-      setComposing(false);
       setComposeAllBusy(false);
+    }
+  }
+
+  // 합성 중단 — 대기열에 남은 체인을 걷어낸다(굽는 중인 것 하나는 원격으로 못 죽임).
+  async function cancelComposeAll() {
+    try {
+      await fetch(`/api/longform/compose-all?projectId=${encodeURIComponent(project.id)}`, {
+        method: "DELETE",
+      });
+    } catch {
+      /* 무시 */
+    }
+    setComposing(false);
+    setStatus("");
+    setProgress("중단했어요 — 대기열을 비웠습니다.");
+    router.refresh();
+  }
+
+  // 진행자 씬 하나만 다시 — 그림(씬0은 키프레임 후보로) / 영상. 줄에서 바로.
+  async function hostRedoImage(index: number) {
+    if (!hostProject || segRunning) return;
+    setSegRunning(hostProject.id);
+    try {
+      if (index === 0) {
+        prog(hostProject.id, "키프레임 후보 만드는 중…");
+        const kf = await post("/api/image/keyframe", { projectId: hostProject.id });
+        const urls = (kf.urls as string[]) ?? [];
+        if (!urls.length) throw new Error("키프레임 후보가 안 나왔어요");
+        setSegKf((m) => ({ ...m, [hostProject.id]: urls }));
+        prog(hostProject.id, "키프레임을 골라주세요");
+      } else {
+        prog(hostProject.id, `씬${index} 그림 만드는 중…`);
+        await post("/api/image/scene", { projectId: hostProject.id, sceneIndex: index });
+        prog(hostProject.id, "");
+        router.refresh();
+      }
+    } catch (e) {
+      prog(hostProject.id, `✗ ${e instanceof Error ? e.message : "실패"}`);
+    } finally {
+      setSegRunning(null);
+    }
+  }
+
+  async function hostRedoVideo(index: number) {
+    if (!hostProject || segRunning) return;
+    setSegRunning(hostProject.id);
+    try {
+      prog(hostProject.id, `씬${index} 영상 제출…`);
+      await post("/api/video/scene", { projectId: hostProject.id, sceneIndex: index });
+      for (;;) {
+        await new Promise((res) => setTimeout(res, 12_000));
+        const r = await fetch(
+          `/api/video/scene?projectId=${encodeURIComponent(hostProject.id)}&sceneIndex=${index}`
+        );
+        const d = (await r.json().catch(() => ({}))) as { status?: string; error?: string };
+        if (d.status === "completed") break;
+        if (d.status === "failed") throw new Error(d.error || `씬${index} 영상 실패`);
+        prog(hostProject.id, `씬${index} 영상 만드는 중…`);
+      }
+      prog(hostProject.id, "");
+      router.refresh();
+    } catch (e) {
+      prog(hostProject.id, `✗ ${e instanceof Error ? e.message : "실패"}`);
+    } finally {
+      setSegRunning(null);
     }
   }
 
@@ -1058,8 +1093,31 @@ export default function LongformStudio({
               ? "씬 미생성"
               : "대본 미생성"}
         </span>
+        {scene?.imageUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={scene.imageUrl}
+            alt={label}
+            className="h-8 w-14 shrink-0 rounded border border-zinc-200 object-cover dark:border-zinc-800"
+          />
+        )}
         {scene && (
-          <span className="shrink-0 text-[10px] text-zinc-400">아래에서 편집</span>
+          <button
+            onClick={() => hostRedoImage(scene.index)}
+            disabled={segRunning !== null}
+            className="shrink-0 rounded border border-zinc-300 px-1.5 py-0.5 text-[10px] hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-900"
+          >
+            {scene.imageUrl ? "그림 다시" : "그림"}
+          </button>
+        )}
+        {scene?.imageUrl && (
+          <button
+            onClick={() => hostRedoVideo(scene.index)}
+            disabled={segRunning !== null}
+            className="shrink-0 rounded border border-zinc-300 px-1.5 py-0.5 text-[10px] hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-900"
+          >
+            {scene.videoUrl ? "영상 다시" : "영상"}
+          </button>
         )}
       </div>
       {onChange ? (
@@ -1788,6 +1846,15 @@ export default function LongformStudio({
               {scriptSaveBusy ? "저장 중…" : "대본 저장"}
             </button>
           )}
+          {hostProject && (
+            <Link
+              href={`/project/${hostProject.id}`}
+              className="rounded-lg border border-zinc-300 px-2.5 py-1 text-[11px] font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+              title="진행자 씬 전체를 숏폼 편집 화면에서(음성·자막 등 세부)"
+            >
+              진행자 상세 →
+            </Link>
+          )}
           {hostProject && hostScenes.some((sc) => !sc.videoUrl) && (
             <button
               onClick={buildHost}
@@ -2019,21 +2086,6 @@ export default function LongformStudio({
       {/* ★ 진행자 씬 편집 — 숏폼 편집 화면을 그대로 쓴다(사용자 지정 2026-08-01).
           오프닝·연결·엔딩 씬의 그림·영상·음성·칩셋·자막이 숏폼과 똑같이 뜬다.
           따로 만들지 마라 — 만들면 또 반쪽짜리가 된다. */}
-      {hostFull && (
-        <div id="panel-host" className="mt-6 rounded-xl border border-accent/40 p-2">
-          <p className="px-1 pb-1 text-[11px] text-zinc-500">
-            아래는 <b>오프닝 · 연결 · 엔딩</b> 편집이에요 — 숏폼과 같은 화면입니다.
-          </p>
-          <Studio
-            project={hostFull}
-            styleProfiles={studioProps.styleProfiles}
-            videoModels={studioProps.videoModels}
-            tts={studioProps.tts}
-            embedded
-          />
-        </div>
-      )}
-
       {/* 손보기 도구 — 재생 순서에서 바로 고치는 게 기본이지만, 이전 단계(진행자 대본 생성·
           전체 다듬기·씬 펼치기)는 그대로 보여야 한다. 접어서 안 보이게 하지 마라
           (2026-08-01: 접었더니 단계를 날린 것처럼 됐다). 접고 싶으면 사용자가 직접 접는다. */}
@@ -2158,6 +2210,15 @@ export default function LongformStudio({
             >
               {composing || composeAllBusy ? "합성 중…" : "🔗 최종 합성 (한 번에)"}
             </button>
+            {composing && (
+              <button
+                onClick={cancelComposeAll}
+                className="mt-1.5 w-full rounded-lg border border-red-300 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-950"
+                title="대기열에 남은 합성을 걷어냅니다(이미 굽기 시작한 것 하나는 마저 굽힙니다)"
+              >
+                합성 중단
+              </button>
+            )}
             {(composing || composeAllBusy) && (
               <p className="mt-2 text-[11px] text-zinc-500">
                 상태: {status} {progress ? `· ${progress}` : ""}
