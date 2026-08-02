@@ -92,7 +92,7 @@ async function tick() {
 
 // 배포 검증용 버전 표식 — Render 로그 + Redis(worker:build)에 남긴다.
 // Redis 에 쓰면 대시보드 없이 원격에서 "새 코드가 떴는지" 확인 가능.
-const BUILD = "robust-v6 (오디오 싱크 고정 — 이어붙이기 때 무음 채움, 끝부분 밀림 수정)";
+const BUILD = "robust-v7 (부 전환 쉼 0.7초 — 영상·음성·자막 함께)";
 console.log(`[worker] BUILD = ${BUILD}`);
 console.log("[worker] 시작 — jobq:compose 폴링 중…");
 try {

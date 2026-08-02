@@ -279,7 +279,9 @@ async function downloadSegment(segId, idx, total, dir, log) {
 // [부 전환 휴식] 오프닝↔세그먼트↔진행자↔엔딩 사이 페이드아웃 + 0.4초 검은 쉼 —
 // 너무 빨리 넘어가 보기 불편하다는 지적(2026-08-02). 진행자 씬끼리(오프닝 1→2,
 // 답→구독)는 이어지는 말이라 붙여 둔다.
-const GAP_SEC = 0.4;
+// 0.7초로 상향(2026-08-02 지시) — 영상·음성·자막 모두 같이 쉰다: 쉼 클립이 검은 화면
+// +무음 트랙을 함께 갖고, concat 의 오디오 무음 채움이 타임라인을 1:1 로 고정한다.
+const GAP_SEC = 0.7;
 const FADE_SEC = 0.4;
 
 async function makeGapClip(dir, W, H) {
