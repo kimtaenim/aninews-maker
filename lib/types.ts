@@ -153,8 +153,11 @@ export const DEFAULT_SUBTITLE: SubtitleSettings = {
 
 // ── 워터마크 (최종 출력에 새김) ──────────────────────────────────────────────
 export interface Watermark {
-  text: string;
+  text: string; // 글자 워터마크. imageUrl 이 있으면 비어 있어도 된다(그림만 새김).
   position: "tl" | "tr" | "bl" | "br"; // 좌상 / 우상 / 좌하 / 우하
+  imageUrl?: string; // 업로드한 그림 워터마크(로고 등). 있으면 글자 대신 이걸 새긴다.
+  imageScale?: number; // 그림 크기 = 짧은 변 대비 비율(0.04~0.4, 기본 0.12).
+  imageOpacity?: number; // 그림 투명도(0.1~1, 기본 1=원본). PNG 자체 알파는 그대로 곱해진다.
 }
 
 // ── [롱폼] 열린 고리 오프닝 ───────────────────────────────────────────────────

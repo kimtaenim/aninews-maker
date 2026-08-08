@@ -746,9 +746,11 @@ export async function composeProject(projectId, lang, opts = {}) {
     // 파일이 아니라 버퍼로 들고 있다가 씬마다 캡션 PNG 에 미리 합성한다 — ffmpeg 입력을
     // 늘리지 않으려고(입력 1개 = 매 프레임 풀프레임 디코드 1회).
     let wmPng = null;
-    if (!clean && project.watermark?.text?.trim()) {
+    // 글자 워터마크든 그림 워터마크든 하나라도 있으면 새긴다.
+    if (!clean && (project.watermark?.text?.trim() || project.watermark?.imageUrl?.trim())) {
       wmPng = await renderWatermarkPng(project.watermark, { W, H });
-      await log(`워터마크 "${project.watermark.text}" (${project.watermark.position})`);
+      const what = project.watermark.imageUrl ? "그림" : `"${project.watermark.text}"`;
+      await log(`워터마크 ${what} (${project.watermark.position})`);
     }
     // 제작 크레딧 — 마지막 3씬에만. 워터마크 위치 기준 옆에 1.5배로. (워터마크 유무와 무관)
     const CREDIT_LAST_SCENES = 3; // 크레딧을 노출할 끝 씬 개수

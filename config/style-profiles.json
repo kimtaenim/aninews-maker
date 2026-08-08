@@ -56,6 +56,14 @@
       }
     },
     {
+      "id": "voxel",
+      "label": "복셀 (3D 큐브 아트)",
+      "_comment": "imageBible 은 사용자가 준 프롬프트 원문 그대로. 임의로 문구를 덧붙이지 말 것.",
+      "imageBible": "voxel style 3D character with cube-shaped body, rounded cylinder head and simple geometric limbs, standing in a voxel style low-poly environment with simple geometric buildings, flat bright colors, plastic toy-like textures, smooth ground",
+      "motionStyle": "Smooth continuous motion, gentle camera moves, natural easing.",
+      "postFx": {}
+    },
+    {
       "id": "webtoon-romance",
       "label": "웹툰 미남미녀 (연애)",
       "imageBible": "Glossy Korean webtoon / web-novel romance illustration. Idealized beautiful lead characters (꽃미남·꽃미녀; the leads' genders follow the script — any pairing including two men or two women): large expressive glossy eyes, flawless smooth skin, sharp elegant features, stylish hair with individual flowing strands catching the light. Romantic soft rim lighting, cinematic bloom and gentle lens flare, vivid saturated palette, clean detailed line art, dramatic shallow depth of field. Consistent character design across shots. 9:16 vertical composition. This is CLEARLY a stylized webtoon illustration — NOT a photorealistic likeness of any real person.",

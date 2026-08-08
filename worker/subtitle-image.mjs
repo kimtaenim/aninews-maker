@@ -484,6 +484,37 @@ export async function renderWatermarkPng(wm, opts = {}) {
     ctx.fillStyle = "#7a7a7a";
     ctx.fillRect(0, 0, W, H);
   }
+  const margin0 = Math.round(W * 0.03);
+  const pos0 = wm?.position || "br";
+
+  // 그림 워터마크(업로드한 로고 등)가 있으면 글자 대신 그걸 새긴다. 원본 비율을 유지하고
+  // 짧은 변 대비 imageScale(기본 0.12)로 크기를 맞춘다. 받아오기 실패하면 글자로 폴백.
+  const imageUrl = (wm?.imageUrl ?? "").trim();
+  if (imageUrl) {
+    try {
+      const r = await fetch(imageUrl);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const img = await loadImage(Buffer.from(await r.arrayBuffer()));
+      const scale = Math.min(0.4, Math.max(0.04, Number(wm?.imageScale) || 0.12));
+      const target = Math.min(W, H) * scale;
+      const ratio = img.width && img.height ? img.height / img.width : 1;
+      const dw = Math.round(target);
+      const dh = Math.round(target * ratio);
+      const dx = pos0.includes("l") ? margin0 : Math.round(W - margin0 - dw);
+      const dy = pos0.startsWith("t") ? margin0 : Math.round(H - margin0 - dh);
+      // 투명도 — PNG 자체 알파에 곱해진다(투명 배경은 그대로 유지되고 그림만 흐려진다).
+      const op = Math.min(1, Math.max(0.1, Number(wm?.imageOpacity) || 1));
+      const prevAlpha = ctx.globalAlpha;
+      ctx.globalAlpha = op;
+      ctx.drawImage(img, dx, dy, dw, dh);
+      ctx.globalAlpha = prevAlpha; // 공유 캔버스라 반드시 되돌린다(다음 렌더 오염 방지)
+      return canvas.encode("png");
+    } catch (e) {
+      console.error("[worker] 그림 워터마크 실패 — 글자로 대체:", e?.message ?? e);
+      // 아래 글자 경로로 계속(글자도 없으면 빈 PNG).
+    }
+  }
+
   const text = (wm?.text ?? "").trim();
   if (!text) return canvas.encode("png");
 

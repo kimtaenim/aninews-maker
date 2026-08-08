@@ -646,6 +646,10 @@ export default function Studio({
   const [wmPos, setWmPos] = useState<"tl" | "tr" | "bl" | "br">(
     initial.watermark?.position ?? "br"
   );
+  // 그림 워터마크(로고 등) — 있으면 글자 대신 이게 새겨진다. 크기는 짧은 변 대비 비율.
+  const [wmImageUrl, setWmImageUrl] = useState(initial.watermark?.imageUrl ?? "");
+  const [wmScale, setWmScale] = useState(initial.watermark?.imageScale ?? 0.12);
+  const [wmOpacity, setWmOpacity] = useState(initial.watermark?.imageOpacity ?? 1);
   // 제작 크레딧 이름 — 마지막 2씬에 "제작 : {이름}"을 워터마크 옆에 1.5배로.
   const [wmCredit, setWmCredit] = useState(initial.credit ?? "");
   // 제목 클릭 편집
@@ -720,24 +724,42 @@ export default function Studio({
       scenes: p.scenes.map((s, idx) => (idx === i ? { ...s, narration: text } : s)),
     }));
   }
+  // 워터마크 저장. 그림(imageUrl)은 넘기지 않으면 서버가 기존 값을 유지하고,
+  // 빈 문자열을 넘기면 제거한다(글자만 쓰던 상태로 되돌리기).
   async function saveWatermark(
     text: string,
     position: "tl" | "tr" | "bl" | "br",
-    credit: string
+    credit: string,
+    img?: { imageUrl?: string; imageScale?: number; imageOpacity?: number }
   ) {
     try {
-      await call("/api/project/watermark", {
+      const d = await call("/api/project/watermark", {
         projectId: project.id,
-        watermark: { text, position },
+        watermark: { text, position, ...(img ?? {}) },
         credit,
       });
       setProject((p) => ({
         ...p,
-        watermark: text.trim() ? { text: text.trim(), position } : undefined,
+        watermark: (d.watermark as Project["watermark"]) ?? undefined,
         credit: credit.trim() || undefined,
       }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "워터마크 저장 실패");
+    }
+  }
+
+  // 그림 워터마크 업로드 — 다른 이미지 업로드와 같은 Blob 경로를 쓴다.
+  async function uploadWatermarkImage(file: File) {
+    setError(null);
+    setUploading("watermark");
+    try {
+      const url = await uploadFile(file, "watermark");
+      setWmImageUrl(url);
+      await saveWatermark(wmText, wmPos, wmCredit, { imageUrl: url, imageScale: wmScale });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "워터마크 이미지 업로드 실패");
+    } finally {
+      setUploading(null);
     }
   }
 
@@ -5679,6 +5701,85 @@ export default function Studio({
               <option value="br">우하</option>
             </select>
           </div>
+          {/* 그림 워터마크 — 올리면 글자 대신 이게 새겨진다(로고 등). */}
+          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+            <label className="inline-flex w-fit cursor-pointer items-center gap-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 px-2.5 py-1.5 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-900">
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) uploadWatermarkImage(f);
+                  e.target.value = "";
+                }}
+              />
+              {uploading === "watermark" ? <Busy>업로드 중…</Busy> : "🖼 그림 워터마크 올리기"}
+            </label>
+            {wmImageUrl && (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={wmImageUrl}
+                  alt="워터마크 미리보기"
+                  className="h-8 w-auto rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900 object-contain"
+                />
+                <label className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+                  크기
+                  <input
+                    type="range"
+                    min={4}
+                    max={40}
+                    value={Math.round(wmScale * 100)}
+                    onChange={(e) => setWmScale(Number(e.target.value) / 100)}
+                    onMouseUp={() =>
+                      saveWatermark(wmText, wmPos, wmCredit, { imageScale: wmScale })
+                    }
+                    onTouchEnd={() =>
+                      saveWatermark(wmText, wmPos, wmCredit, { imageScale: wmScale })
+                    }
+                    className="w-24"
+                  />
+                  {Math.round(wmScale * 100)}%
+                </label>
+                <label className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+                  투명도
+                  <input
+                    type="range"
+                    min={10}
+                    max={100}
+                    value={Math.round(wmOpacity * 100)}
+                    onChange={(e) => setWmOpacity(Number(e.target.value) / 100)}
+                    onMouseUp={() =>
+                      saveWatermark(wmText, wmPos, wmCredit, { imageOpacity: wmOpacity })
+                    }
+                    onTouchEnd={() =>
+                      saveWatermark(wmText, wmPos, wmCredit, { imageOpacity: wmOpacity })
+                    }
+                    className="w-24"
+                  />
+                  {Math.round(wmOpacity * 100)}%
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setWmImageUrl("");
+                    saveWatermark(wmText, wmPos, wmCredit, { imageUrl: "" });
+                    setWmOpacity(1);
+                  }}
+                  className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-2 py-1 text-[11px] text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                >
+                  그림 제거
+                </button>
+              </>
+            )}
+          </div>
+          {wmImageUrl && (
+            <p className="mt-1 text-[10px] text-amber-600">
+              그림 워터마크가 있으면 글자 대신 그림이 새겨집니다. 크기는 화면 짧은 변 기준 비율,
+              투명도는 그림 위에 곱해집니다(배경이 투명한 PNG는 투명한 채로 들어갑니다).
+            </p>
+          )}
           {/* 제작 크레딧 — 마지막 2씬에만 워터마크 옆에 "제작 : 이름" (1.5배 크기) */}
           <input
             type="text"
