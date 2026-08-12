@@ -56,6 +56,14 @@
       }
     },
     {
+      "id": "horror-real",
+      "label": "공포 실사 (미스터리·오컬트)",
+      "_comment": "미스터리·괴담 숏폼용. 실사 프로필의 공포 버전 — 인물·질감은 사실적이되 톤을 어둡게.",
+      "imageBible": "Photorealistic cinematic horror photography of real people and real environments. Natural human faces and skin, realistic textures, dim low-key lighting with deep shadows and a single hard light source, desaturated cold color grade with a slight green-teal cast, heavy atmosphere — fog, dust in the air, damp surfaces, visible film grain and subtle lens vignetting, shallow depth of field, unsettling composition with negative space and things half-hidden in darkness, documentary found-footage realism, consistent realistic character appearance across shots. No gore, no blood, no monsters — dread comes from atmosphere and what is not shown. 9:16 vertical composition. Keep on-image text minimal.",
+      "motionStyle": "Slow creeping camera moves — gradual push-in or drift, unsteady handheld feel. Hold on stillness, let the frame breathe.",
+      "postFx": {}
+    },
+    {
       "id": "voxel",
       "label": "복셀 (블록 아바타)",
       "_comment": "로블록스식 블록 아바타 룩. 상표명은 프롬프트에 넣지 않는다 — 이미지 모델이 상표명을 거르는 경우가 있어 생김새로 기술한다.",
