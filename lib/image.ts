@@ -111,6 +111,9 @@ export async function generateKeyframes(args: {
   quality?: ImageQuality;
   count?: number;
   referenceImageUrl?: string; // 있으면 이 이미지를 레퍼런스로 img2img(인물/구도 살림)
+  // 참조를 쓰는 방식. 기본은 구도까지 유지(기존 동작). "subject" 는 인물·화풍만 가져오고
+  // 구도는 출력 비율에 맞춰 다시 잡는다 — 참조와 출력의 가로세로비가 크게 다를 때.
+  referenceMode?: "composition" | "subject";
   portraitUrls?: string[]; // [cliche] 캐스팅 포트레이트들 — 등장인물 외모 고정용 참조
   subtitlePosition?: string; // 비워둘 지점(자막 위치) — 그 띠만 배경/소품만 두게 한다
   imageSize?: string; // 생성 크기(가로x세로). 비면 세로 9:16 기본. 롱폼은 formatDims 로 16:9 전달.
@@ -123,6 +126,7 @@ export async function generateKeyframes(args: {
     quality = "low",
     count = 3,
     referenceImageUrl,
+    referenceMode = "composition",
     portraitUrls = [],
     subtitlePosition,
     imageSize = IMAGE_SIZE,
@@ -131,10 +135,16 @@ export async function generateKeyframes(args: {
 
   // 참조 이미지가 있으면 그걸 살려서(인물·구도) 스타일 바이블을 입혀 후보 생성.
   // 캐스팅 포트레이트가 있으면 함께 넣어 등장인물 외모를 고정한다(구도 참조 이미지가 첫 장).
-  const refClause = referenceImageUrl
-    ? "Use the FIRST provided reference image as the basis: preserve its main subject/character and " +
-      "composition, but re-render it in the art style and palette described below.\n\n"
-    : "";
+  // subject 모드 — 참조와 출력의 가로세로비가 크게 다를 때(카드뉴스의 가로 삽화 등).
+  // 구도를 지키라고 하면 가로 구도가 세로 틀에 눌려 인물 배치가 어긋난다.
+  const refClause = !referenceImageUrl
+    ? ""
+    : referenceMode === "subject"
+      ? "Use the FIRST provided reference image as the basis: preserve its main subject/character, " +
+        "but DO NOT keep its framing or composition — recompose the scene to fill the target frame " +
+        "naturally, and re-render it in the art style and palette described below.\n\n"
+      : "Use the FIRST provided reference image as the basis: preserve its main subject/character and " +
+        "composition, but re-render it in the art style and palette described below.\n\n";
   const prompt = `${refClause}${castClause(portraitUrls.length)}${styleBible}\n\n${narrationContext(narration)}Scene: ${scenePrompt}\n\n${NO_TEXT}\n\n${edgeSafe(subtitlePosition)}`;
 
   // 참조/포트레이트가 하나라도 있으면 edit(img2img), 없으면 generate.

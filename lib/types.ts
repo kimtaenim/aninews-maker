@@ -443,6 +443,10 @@ export interface Project {
   styleBible: string; // 키프레임에서 확정 → 전 씬 공유되는 스타일 규약
   keyframeUrl?: string;
   keyframeReferenceUrl?: string; // 키프레임 생성 시 참조할 업로드 이미지(있으면 img2img로 후보 생성)
+  // 참조 이미지를 어떻게 쓸지. 없으면 기존 동작(구도까지 유지) — 롱폼·확장판은 앞 편
+  // 키프레임을 참조하므로 구도를 지켜야 한다. "subject" 는 인물·화풍만 가져오고 구도는
+  // 출력 비율에 맞춰 다시 잡는다(카드뉴스의 가로 삽화처럼 비율이 크게 다를 때).
+  keyframeReferenceMode?: "subject";
   scenes: Scene[];
   steps: Record<StepKind, StepState>;
   factCheckChat?: StepChatTurn[]; // 스크립트 팩트체크 전용 대화 로그(2단계, 스크립트 다듬기와 별개). 없으면 [].

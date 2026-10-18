@@ -57,6 +57,7 @@ export async function POST(req: NextRequest) {
       quality: body.quality ?? "low",
       count: 3,
       referenceImageUrl: project.keyframeReferenceUrl, // 업로드한 참조본이 있으면 img2img
+      referenceMode: project.keyframeReferenceMode, // 없으면 기존 동작(구도까지 유지)
       // [cliche] 캐스팅 포트레이트 — 등장인물 외모를 시트로 고정.
       portraitUrls: project.castMembers
         ?.map((m) => m.portraitUrl)

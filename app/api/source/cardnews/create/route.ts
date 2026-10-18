@@ -106,6 +106,9 @@ export async function POST(req: NextRequest) {
     const ref = str(payload.keyframeReferenceUrl);
     if (ref && /^https:\/\//.test(ref)) {
       project.keyframeReferenceUrl = ref;
+      // 카드 삽화는 가로로 넓다 — 구도를 지키라고 하면 세로 틀에 눌린다. 인물·화풍만
+      // 가져오고 구도는 출력 비율에 맞춰 다시 잡게 한다.
+      project.keyframeReferenceMode = "subject";
       project.updatedAt = Date.now();
       await saveProject(project);
     }
