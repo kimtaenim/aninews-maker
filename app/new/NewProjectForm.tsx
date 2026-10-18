@@ -15,6 +15,9 @@ type Mode = "rss" | "url" | "wiki" | "trend" | "text" | "file" | "script" | "car
 // 카드뉴스 탭 — 카드 이미지만 받는다(PNG·JPG·WEBP).
 const CARDNEWS_ACCEPT = "image/png,image/jpeg,image/webp";
 const CARDNEWS_MAX_CARDS = 12;
+// 카드는 한 장씩 따로 올린다 — 서버리스 요청 본문 한계(4.5MB)를 넘지 않게 장당 상한을
+// 그보다 낮게 둔다. 한계를 넘으면 우리 코드가 돌기도 전에 막혀 오류 문구도 안 읽힌다.
+const CARDNEWS_MAX_CARD_BYTES = 4 * 1024 * 1024;
 
 // 카드에서 잘라낸 삽화 — /api/source/cardnews/read 가 Blob 에 올려 돌려준다.
 interface CardnewsArtwork {
@@ -184,8 +187,8 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
           setError(`${f.name} 은(는) 카드 이미지가 아니에요 (PNG·JPG)`);
           continue;
         }
-        if (f.size > MAX_FILE_SIZE) {
-          setError(`${f.name} 이(가) 10MB를 초과해요.`);
+        if (f.size > CARDNEWS_MAX_CARD_BYTES) {
+          setError(`${f.name} 이(가) 4MB를 초과해요 — 카드 한 장은 4MB까지예요.`);
           continue;
         }
         if (next.some((p) => p.name === f.name && p.size === f.size)) continue;
@@ -232,6 +235,12 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
   }
 
   // ① 카드 읽기 → 꼭지별 제목·본문·출처를 화면에 띄운다.
+  //
+  // ★ 카드를 한 장씩 따로 보낸다. 서버리스 요청 본문은 4.5MB 가 한계라(같은 이유로
+  // /api/upload 는 Blob 직접 업로드를 쓴다) 여러 장을 한 요청에 담으면 카드 6장쯤에서
+  // 넘어간다. 그때는 우리 코드가 돌기도 전에 막혀 JSON 이 아닌 응답이 와서, 사파리가
+  // "The string did not match the expected pattern." 으로 말한다.
+  // 카드는 서로 독립이라 한 장씩 보내도 결과가 같고, 요청끼리 동시에 돈다.
   async function readCards() {
     if (cardFiles.length === 0) {
       setError("카드 이미지를 1장 이상 올려주세요");
@@ -241,16 +250,37 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
     resetCardRead();
     setCardReading(true);
     try {
-      const fd = new FormData();
-      for (const f of cardFiles) fd.append("file", f);
-      const r = await fetch("/api/source/cardnews/read", { method: "POST", body: fd });
-      const data = await r.json();
-      if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
-      const items = (data.items as CardnewsItem[]).map((it) => ({
-        ...it,
-        include: true,
-      }));
-      const arts = (data.artworks as CardnewsArtwork[]) ?? [];
+      const results = await Promise.all(
+        cardFiles.map(async (f, idx) => {
+          const fd = new FormData();
+          fd.append("file", f);
+          const r = await fetch("/api/source/cardnews/read", { method: "POST", body: fd });
+          // JSON 이 아닌 응답(413·504·프록시 오류 페이지 등)도 읽을 수 있는 말로 띄운다.
+          const raw = await r.text();
+          let data: { ok?: boolean; error?: string; items?: CardnewsItem[]; artworks?: CardnewsArtwork[] };
+          try {
+            data = JSON.parse(raw);
+          } catch {
+            throw new Error(
+              `카드 ${idx + 1}: 서버 응답을 읽지 못했어요 (HTTP ${r.status}) ${raw.slice(0, 120)}`
+            );
+          }
+          if (!r.ok || !data.ok) throw new Error(`카드 ${idx + 1}: ${data.error || `HTTP ${r.status}`}`);
+          return { idx, data };
+        })
+      );
+
+      // 올린 순서대로 번호를 다시 매긴다(요청이 따로 돌아 각자 1번으로 온다).
+      const items: CardItemState[] = [];
+      const arts: CardnewsArtwork[] = [];
+      for (const { idx, data } of results.sort((a, b) => a.idx - b.idx)) {
+        const it = data.items?.[0];
+        if (it) items.push({ ...it, index: idx + 1, include: true });
+        const art = data.artworks?.[0];
+        if (art) arts.push({ ...art, index: idx + 1 });
+      }
+      if (items.length === 0) throw new Error("카드에서 읽어낸 글자가 없어요");
+
       setCardItems(items);
       setCardArtworks(arts);
       setCardKeyframePick(arts[0]?.index ?? 0); // 첫 그림을 기본으로, 없으면 쓰지 않음
@@ -998,7 +1028,7 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
             />
             <span className="text-sm font-medium">카드 이미지 선택 또는 드래그</span>
             <span className="text-[11px] text-zinc-500">
-              PNG·JPG · 최대 {CARDNEWS_MAX_CARDS}장 · 장당 10MB · 전체 30MB
+              PNG·JPG · 최대 {CARDNEWS_MAX_CARDS}장 · 장당 4MB
             </span>
           </label>
           <p className="text-[11px] text-zinc-400">
