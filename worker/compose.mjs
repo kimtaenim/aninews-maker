@@ -301,19 +301,28 @@ async function downloadSegment(segId, idx, total, dir, log) {
 // +무음 트랙을 함께 갖고, concat 의 오디오 무음 채움이 타임라인을 1:1 로 고정한다.
 const GAP_SEC = 0.7;
 const FADE_SEC = 0.4;
+// [끝맺음] 최종 영상 맨 끝 — 페이드아웃 뒤 검은 화면 1초. 어디서 끝났는지 알 수 있게.
+// 중간 조각(섹션 영상)에는 붙이지 않는다. 이어붙이면 중간에 검은 화면이 끼게 된다.
+const OUTRO_BLACK_SEC = 1.0;
 
-async function makeGapClip(dir, W, H) {
-  const out = join(dir, "gap.mp4");
+async function makeGapClip(dir, W, H, sec = GAP_SEC, name = "gap.mp4") {
+  const out = join(dir, name);
   await run("ffmpeg", [
     "-y",
-    "-f", "lavfi", "-i", `color=black:s=${W}x${H}:r=${FPS}:d=${GAP_SEC}`,
+    "-f", "lavfi", "-i", `color=black:s=${W}x${H}:r=${FPS}:d=${sec}`,
     "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
-    "-t", String(GAP_SEC),
+    "-t", String(sec),
     "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-crf", "23",
     "-c:a", "aac", "-b:a", "128k",
     out,
   ]);
   return out;
+}
+
+// 최종 영상 맨 끝에 붙일 검은 1초.
+async function makeOutroClip(dir, W, H, log) {
+  if (log) await log(`끝맺음 암전 ${OUTRO_BLACK_SEC}초 준비…`);
+  return makeGapClip(dir, W, H, OUTRO_BLACK_SEC, "outro.mp4");
 }
 
 // src 의 t 이전 마지막 비디오 키프레임 시각 — 꼬리만 재인코딩할 분할점. 못 찾으면 0.
@@ -572,7 +581,8 @@ async function runLongformConcat(project, lang, dir, log, W, H) {
     entries.push({ f: await renderHostSceneClip(s, dir, `close${ci++}`, hostSub, W, H, hostWmPng), kind: "host" });
   }
 
-  const finalPath = await concatClips(interleaveGaps(entries, gap), dir, log);
+  const outro = await makeOutroClip(dir, W, H, log);
+  const finalPath = await concatClips([...interleaveGaps(entries, gap), outro], dir, log);
   const url = await uploadAndSaveFinal(project, lang, finalPath, log);
   await log("롱폼 합성 완료");
   return url;
@@ -669,7 +679,8 @@ async function runLongformJoin(project, lang, dir, log, W, H) {
     entries.push({ f: await renderHostSceneClip(s, dir, `close${ci++}`, hostSub, W, H, hostWmPng), kind: "host" });
   }
 
-  const finalPath = await concatClips(interleaveGaps(entries, gap), dir, log);
+  const outro = await makeOutroClip(dir, W, H, log);
+  const finalPath = await concatClips([...interleaveGaps(entries, gap), outro], dir, log);
   const url = await uploadAndSaveFinal(project, lang, finalPath, log);
   await log("롱폼 최종 합성 완료");
   return url;
@@ -878,9 +889,22 @@ export async function composeProject(projectId, lang, opts = {}) {
       sceneFiles.push(out);
     }
 
+    // [끝맺음] 마지막 씬 꼬리에 페이드아웃(롱폼과 같은 fadeTail) + 검은 1초.
+    // 숏폼은 끝 페이드가 없어 영상이 뚝 끊겼다 — 어디서 끝났는지 알게 한다.
+    const lastIdx = sceneFiles.length - 1;
+    if (lastIdx >= 0) {
+      try {
+        sceneFiles[lastIdx] = await fadeTail(sceneFiles[lastIdx], dir, "last", log);
+      } catch (e) {
+        // 페이드 실패가 합성 전체를 막지 않게 — 페이드 없이 그대로 간다.
+        await log(`끝 페이드 생략(${e instanceof Error ? e.message : "실패"})`);
+      }
+    }
+    const outro = await makeOutroClip(dir, W, H, log);
+
     // 이어붙이기 — concatClips 3단계(비디오 무손실 + 오디오 패딩·한 줄 인코딩 + 합치기).
     // 씬마다 오디오가 비디오보다 몇십 ms 짧아 누적되던 싱크 밀림까지 같이 잡는다.
-    const finalPath = await concatClips(sceneFiles, dir, log, "final.mp4");
+    const finalPath = await concatClips([...sceneFiles, outro], dir, log, "final.mp4");
 
     await log("Blob 업로드…");
     // 스트리밍 업로드 — 최종 영상을 통째로 메모리에 읽지 않는다(OOM 방지).
