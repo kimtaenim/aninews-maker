@@ -1739,8 +1739,16 @@ export default function Studio({
   // 씬 버퍼를 서버에 저장(무음). 저장 중이면 끝난 뒤 dirty 가 다시 트리거한다.
   async function autoSaveScenes() {
     if (savingScenesRef.current) return;
-    savingScenesRef.current = true;
     const snapshot = scenes;
+    // 씬이 아직 없으면 보낼 것도 없다. 빈 배열을 보내면 라우트가 400("scenes 배열
+    // 필요")으로 막아 "저장 실패"만 뜬다 — 실제로 잃는 편집은 없는데 경고만 남았다.
+    if (snapshot.length === 0) {
+      setDirty(false);
+      setSaveState("idle");
+      setSaveErrMsg(null);
+      return;
+    }
+    savingScenesRef.current = true;
     setSaveState("saving");
     try {
       const r = await fetch("/api/script/scenes", {
