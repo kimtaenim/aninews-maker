@@ -559,8 +559,9 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
         setError(null);
       }}
       className={
-        // 모바일에선 좌우 여백을 줄여 한 줄에 더 들어가게(데스크톱은 기존 그대로).
-        "px-3 sm:px-4 py-2 text-sm font-medium rounded-xl transition-colors " +
+        // shrink-0·whitespace-nowrap 이 없으면 탭이 가로로 눌려 글자가 한 자씩
+        // 세로로 쪼개진다. 눌리지 않게 두고 넘치는 탭은 윗 줄의 flex-wrap 으로 내린다.
+        "shrink-0 whitespace-nowrap px-3 sm:px-4 py-2 text-sm font-medium rounded-xl transition-colors " +
         (mode === m
           ? "bg-accent text-white"
           : "bg-zinc-100 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300")
