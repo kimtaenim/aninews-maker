@@ -7,7 +7,7 @@ import type { RssItem, RssCategory } from "@/lib/rss";
 import type { ArticleBriefing } from "@/lib/briefing";
 import type { WikiSearchResult } from "@/lib/wikipedia";
 import { ACCEPT_ATTR, MAX_FILE_SIZE, MAX_TOTAL_SIZE } from "@/lib/attachments";
-import type { CardnewsItem, CardnewsLink } from "@/lib/cardnews";
+import type { CardnewsItem } from "@/lib/cardnews";
 import trendLangsData from "@/config/languages.json";
 
 type Mode = "rss" | "url" | "wiki" | "trend" | "text" | "file" | "script" | "cardnews";
@@ -24,14 +24,8 @@ interface CardnewsArtwork {
   height: number;
 }
 
-// 카드 한 장 = 뉴스 한 꼭지. 화면에서 고치고, 출처를 꼭지마다 따로 찾는다.
-type CardItemState = CardnewsItem & {
-  include: boolean;
-  report: string | null;
-  links: CardnewsLink[];
-  searched: boolean | null;
-  researching: boolean;
-};
+// 카드 한 장 = 뉴스 한 꼭지. 화면에서 고치고 넣고 뺀다.
+type CardItemState = CardnewsItem & { include: boolean };
 
 // 트렌드 언어 목록(config/languages.json) — 버튼용.
 const TREND_LANGS = (trendLangsData as {
@@ -237,7 +231,7 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
     resetCardRead();
   }
 
-  // ① 카드 읽기 → 꼭지별 내용·출처를 화면에 띄우고, 출처가 잡힌 꼭지는 바로 ②검색까지.
+  // ① 카드 읽기 → 꼭지별 제목·본문·출처를 화면에 띄운다.
   async function readCards() {
     if (cardFiles.length === 0) {
       setError("카드 이미지를 1장 이상 올려주세요");
@@ -255,58 +249,19 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
       const items = (data.items as CardnewsItem[]).map((it) => ({
         ...it,
         include: true,
-        report: null,
-        links: [] as CardnewsLink[],
-        searched: null,
-        researching: false,
       }));
       const arts = (data.artworks as CardnewsArtwork[]) ?? [];
       setCardItems(items);
       setCardArtworks(arts);
       setCardKeyframePick(arts[0]?.index ?? 0); // 첫 그림을 기본으로, 없으면 쓰지 않음
       setCardReading(false);
-      // 출처가 잡힌 꼭지는 바로 찾아 둔다 — 화면에서 고쳐 다시 찾을 수 있다.
-      for (const it of items) {
-        if (it.attribution) void researchItem(it.index, it);
-      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "카드 읽기 실패");
       setCardReading(false);
     }
   }
 
-  // ② 꼭지 하나의 출처 검색 — 화면에서 출처를 고쳐 다시 부를 수 있다.
-  async function researchItem(index: number, override?: CardnewsItem) {
-    const it = override ?? cardItems?.find((c) => c.index === index);
-    if (!it) return;
-    const attr = it.attribution.trim();
-    if (!attr) {
-      setError("찾을 출처를 입력해주세요");
-      return;
-    }
-    setError(null);
-    patchCardItem(index, { researching: true, report: null, links: [], searched: null });
-    try {
-      const r = await fetch("/api/source/cardnews/research", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ attribution: attr, title: it.title, body: it.body }),
-      });
-      const data = await r.json();
-      if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
-      patchCardItem(index, {
-        report: (data.report as string) ?? "",
-        links: (data.links as CardnewsLink[]) ?? [],
-        searched: Boolean(data.searched),
-        researching: false,
-      });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "출처 검색 실패");
-      patchCardItem(index, { researching: false });
-    }
-  }
-
-  // ③ 고른 꼭지로 프로젝트 생성(2개 이상이면 한 편으로 종합).
+  // ② 고른 꼭지로 프로젝트 생성(2개 이상이면 한 편으로 종합).
   // 대본은 스튜디오의 기존 대본 단계에서 만든다.
   async function submitCardnews() {
     const picked = (cardItems ?? []).filter((it) => it.include && it.body.trim());
@@ -325,7 +280,6 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
             title: it.title,
             body: it.body,
             attribution: it.attribution,
-            research: it.searched ? (it.report ?? "") : "",
           })),
           keyframeReferenceUrl:
             cardArtworks.find((a) => a.index === cardKeyframePick)?.url ?? "",
@@ -1048,9 +1002,9 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
             </span>
           </label>
           <p className="text-[11px] text-zinc-400">
-            🗂 카드 <span className="font-medium">한 장이 뉴스 한 꼭지</span>예요. 꼭지마다
-            본문 끝 괄호의 <span className="font-medium">출처를 웹에서 찾아</span> 사실을
-            확인하고, 고른 꼭지들을 <span className="font-medium">한 편으로 종합</span>해요.
+            🗂 카드 <span className="font-medium">한 장이 뉴스 한 꼭지</span>예요. 카드에서
+            제목·본문·출처를 읽어, 고른 꼭지들을{" "}
+            <span className="font-medium">한 편으로 종합</span>해요.
           </p>
 
           {cardFiles.length > 0 && (
@@ -1159,71 +1113,9 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
                     className={inputCls + " resize-y"}
                   />
 
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="본문 끝 괄호의 출처 — 비어 있으면 직접 입력"
-                      value={it.attribution}
-                      onChange={(e) =>
-                        patchCardItem(it.index, { attribution: e.target.value })
-                      }
-                      className={inputCls + " flex-1"}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => void researchItem(it.index)}
-                      disabled={it.researching || !it.attribution.trim()}
-                      className="shrink-0 rounded-xl bg-accent hover:bg-accent-strong disabled:opacity-40 text-white text-sm font-medium px-4"
-                    >
-                      {it.researching ? (
-                        <span className="inline-flex items-center gap-1.5">
-                          <Spinner /> 찾는 중…
-                        </span>
-                      ) : it.report !== null ? (
-                        "다시 찾기"
-                      ) : (
-                        "출처 찾기"
-                      )}
-                    </button>
-                  </div>
-
-                  {!it.attribution && (
-                    <p className="text-[11px] text-amber-600">
-                      이 꼭지에서 출처를 못 찾았어요. 직접 적어 넣고 찾아보세요. 비워 두면
-                      카드 내용만 씁니다.
-                    </p>
-                  )}
-                  {it.searched === false && (
-                    <p className="text-[11px] text-amber-600">
-                      웹 검색이 돌지 않아 확인된 사실이 없어요. 검색 없이 나온 글은 쓰지
-                      않습니다 — 출처를 바꿔 다시 찾아보세요.
-                    </p>
-                  )}
-                  {it.searched && it.report && (
-                    <div className="grid gap-2 rounded-xl bg-zinc-50 dark:bg-zinc-900 p-3">
-                      <p className="text-xs font-medium text-zinc-500">
-                        출처에서 확인한 내용
-                      </p>
-                      <p className="whitespace-pre-wrap text-xs leading-relaxed">
-                        {it.report}
-                      </p>
-                      {it.links.length > 0 && (
-                        <ul className="grid gap-1 border-t border-zinc-200 dark:border-zinc-800 pt-2">
-                          {it.links.map((l) => (
-                            <li key={l.url} className="truncate text-[11px]">
-                              <a
-                                href={l.url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-accent hover:underline"
-                              >
-                                {l.title}
-                              </a>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
+                  {/* 출처는 카드에 적힌 표기를 그대로 기록만 한다(확인은 카드뉴스 쪽에서). */}
+                  {it.attribution && (
+                    <p className="text-[11px] text-zinc-500">출처 {it.attribution}</p>
                   )}
                 </div>
               ))}
@@ -1294,8 +1186,6 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
               <button
                 type="button"
                 onClick={() => void submitCardnews()}
-                // 출처 검색은 기다릴 필요가 없다 — 끝나기 전에 만들면 그 꼭지는
-                // 검색 결과 없이 카드 내용만으로 들어간다.
                 disabled={
                   loading ||
                   cardItems.filter((it) => it.include && it.body.trim()).length === 0
@@ -1315,12 +1205,6 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
                   })()
                 )}
               </button>
-              {cardItems.some((it) => it.include && it.researching) && (
-                <p className="text-[11px] text-zinc-400">
-                  출처를 찾는 중이에요. 기다리지 않고 지금 만들어도 됩니다 — 그 꼭지는
-                  카드 내용만으로 들어가요.
-                </p>
-              )}
             </>
           )}
         </div>
