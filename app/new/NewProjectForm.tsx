@@ -52,7 +52,7 @@ function formatSize(bytes: number): string {
 // 첫 화면은 소스 입력만. 스타일·모델·음성·자막은 모두 스튜디오 각 단계에서 지정/변경.
 export default function NewProjectForm({ categories }: { categories: RssCategory[] }) {
   const router = useRouter();
-  const [mode, setMode] = useState<Mode>("rss");
+  const [mode, setMode] = useState<Mode>("cardnews"); // 처음 열리는 탭 — 맨 왼쪽과 같게
   const [url, setUrl] = useState("");
   const [wiki, setWiki] = useState("");
   const [wikiResults, setWikiResults] = useState<WikiSearchResult[] | null>(null);
