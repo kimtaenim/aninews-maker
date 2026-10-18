@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createProject } from "@/lib/projectStore";
+import { createProject, saveProject } from "@/lib/projectStore";
 import { getSessionEmail } from "@/lib/auth";
 import { mergeSources } from "@/lib/mergeSources";
 import { type SourceMaterial, SOURCE_MAX_INPUT_CHARS } from "@/lib/source";
@@ -13,8 +13,11 @@ export const maxDuration = 120; // 꼭지 여러 개를 한 편으로 묶는 호
 // 꼭지가 여럿이면 기존 mergeSources 가 한 편으로 묶는다(여기서 다시 만들지 않는다).
 // 대본은 만들지 않는다 — 스튜디오의 기존 대본 단계가 기존 원칙으로 만든다.
 //
-// JSON: { items: [{ title, body, attribution?, artwork?, research? }], userPrompt?,
-//         styleProfileId?, videoModelId?, ttsEnabled? }
+// 고른 카드 삽화가 있으면 keyframeReferenceUrl 로 달아 둔다 — 키프레임 단계가 그걸
+// 참조로 프로젝트 포맷에 맞춰 새로 그린다(그림이 키프레임 자체가 되는 게 아니다).
+//
+// JSON: { items: [{ title, body, attribution?, research? }], keyframeReferenceUrl?,
+//         userPrompt?, styleProfileId?, videoModelId?, ttsEnabled? }
 export async function POST(req: NextRequest) {
   let payload: Record<string, unknown>;
   try {
@@ -33,7 +36,6 @@ export async function POST(req: NextRequest) {
         title: str(o.title),
         body: str(o.body),
         attribution: str(o.attribution),
-        artwork: str(o.artwork),
         research: str(o.research),
       };
     })
@@ -63,8 +65,6 @@ export async function POST(req: NextRequest) {
   // 꼭지 하나 = 소스 하나. 출처에서 확인한 내용은 그 꼭지 본문 뒤에 붙인다.
   const materials: SourceMaterial[] = items.map((it) => {
     const parts = [it.body];
-    // 삽화는 그림이지 근거가 아니다 — 참고로만 들어간다고 표시해 둔다.
-    if (it.artwork) parts.push(`카드 삽화에 그려진 것 (사실 근거 아님, 참고): ${it.artwork}`);
     if (it.research) {
       parts.push(
         [
@@ -101,6 +101,15 @@ export async function POST(req: NextRequest) {
       ttsEnabled,
       userPrompt,
     });
+
+    // 고른 카드 삽화를 키프레임 참조로. createProject 가 받지 않는 필드라 생성 뒤에 단다.
+    const ref = str(payload.keyframeReferenceUrl);
+    if (ref && /^https:\/\//.test(ref)) {
+      project.keyframeReferenceUrl = ref;
+      project.updatedAt = Date.now();
+      await saveProject(project);
+    }
+
     return NextResponse.json({ ok: true, projectId: project.id, merged: items.length });
   } catch (e) {
     return NextResponse.json(

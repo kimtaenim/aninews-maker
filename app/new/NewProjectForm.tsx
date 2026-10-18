@@ -16,6 +16,14 @@ type Mode = "rss" | "url" | "wiki" | "trend" | "text" | "file" | "script" | "car
 const CARDNEWS_ACCEPT = "image/png,image/jpeg,image/webp";
 const CARDNEWS_MAX_CARDS = 12;
 
+// 카드에서 잘라낸 삽화 — /api/source/cardnews/read 가 Blob 에 올려 돌려준다.
+interface CardnewsArtwork {
+  index: number;
+  url: string;
+  width: number;
+  height: number;
+}
+
 // 카드 한 장 = 뉴스 한 꼭지. 화면에서 고치고, 출처를 꼭지마다 따로 찾는다.
 type CardItemState = CardnewsItem & {
   include: boolean;
@@ -65,7 +73,10 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
   const [cardFiles, setCardFiles] = useState<File[]>([]);
   const [cardItems, setCardItems] = useState<CardItemState[] | null>(null);
   const [cardReading, setCardReading] = useState(false);
-  const [cardUseArtwork, setCardUseArtwork] = useState(false); // 삽화 참고 여부
+  // 카드에서 잘라낸 삽화들. 그 중 하나를 키프레임 "참조"로 고른다(0 = 쓰지 않음).
+  // 키프레임 출력은 프로젝트 포맷(숏폼이면 세로 9:16)으로 새로 그려진다.
+  const [cardArtworks, setCardArtworks] = useState<CardnewsArtwork[]>([]);
+  const [cardKeyframePick, setCardKeyframePick] = useState(0);
 
   // RSS 상태
   const [category, setCategory] = useState(categories[0]?.key ?? "");
@@ -200,6 +211,8 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
 
   function resetCardRead() {
     setCardItems(null);
+    setCardArtworks([]);
+    setCardKeyframePick(0);
   }
 
   function patchCardItem(index: number, patch: Partial<CardItemState>) {
@@ -236,7 +249,6 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
     try {
       const fd = new FormData();
       for (const f of cardFiles) fd.append("file", f);
-      fd.append("useArtwork", cardUseArtwork ? "true" : "false");
       const r = await fetch("/api/source/cardnews/read", { method: "POST", body: fd });
       const data = await r.json();
       if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
@@ -248,7 +260,10 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
         searched: null,
         researching: false,
       }));
+      const arts = (data.artworks as CardnewsArtwork[]) ?? [];
       setCardItems(items);
+      setCardArtworks(arts);
+      setCardKeyframePick(arts[0]?.index ?? 0); // 첫 그림을 기본으로, 없으면 쓰지 않음
       setCardReading(false);
       // 출처가 잡힌 꼭지는 바로 찾아 둔다 — 화면에서 고쳐 다시 찾을 수 있다.
       for (const it of items) {
@@ -310,9 +325,10 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
             title: it.title,
             body: it.body,
             attribution: it.attribution,
-            artwork: it.artwork,
             research: it.searched ? (it.report ?? "") : "",
           })),
+          keyframeReferenceUrl:
+            cardArtworks.find((a) => a.index === cardKeyframePick)?.url ?? "",
         }),
       });
       const data = await r.json();
@@ -1080,40 +1096,7 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
             </ul>
           )}
 
-          {/* ② 그림 참고 여부 — 읽기 전에 고른다 */}
-          <div className="grid gap-1.5 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
-            <p className="text-xs font-medium text-zinc-500">카드 속 그림</p>
-            {(
-              [
-                [false, "글자만 읽기", "제목과 본문만 읽어요. 삽화와 그 안의 글자는 건너뜁니다."],
-                [
-                  true,
-                  "그림도 참고",
-                  "삽화에 뭐가 그려졌는지도 받아 소재에 참고로 넣어요. 그림은 사실 근거가 아니라 참고로만 들어갑니다.",
-                ],
-              ] as const
-            ).map(([val, label, desc]) => (
-              <label key={String(val)} className="flex items-start gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="cardnews-artwork"
-                  checked={cardUseArtwork === val}
-                  onChange={() => {
-                    setCardUseArtwork(val);
-                    resetCardRead();
-                  }}
-                  disabled={cardReading}
-                  className="mt-0.5 accent-[var(--accent)]"
-                />
-                <span className="grid gap-0.5">
-                  <span className="text-sm">{label}</span>
-                  <span className="text-[11px] text-zinc-400">{desc}</span>
-                </span>
-              </label>
-            ))}
-          </div>
-
-          {/* ③ 카드 읽기 */}
+          {/* ② 카드 읽기 */}
           <button
             type="button"
             onClick={() => void readCards()}
@@ -1172,23 +1155,6 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
                     placeholder="본문 (고칠 수 있어요)"
                     className={inputCls + " resize-y"}
                   />
-
-                  {cardUseArtwork && (
-                    <div className="grid gap-1">
-                      <label className="text-[11px] text-zinc-500">
-                        삽화에 그려진 것 (참고용 — 사실 근거로 쓰지 않아요)
-                      </label>
-                      <textarea
-                        value={it.artwork}
-                        onChange={(e) =>
-                          patchCardItem(it.index, { artwork: e.target.value })
-                        }
-                        rows={2}
-                        placeholder="삽화에서 읽어낸 것이 없어요"
-                        className={inputCls + " resize-y"}
-                      />
-                    </div>
-                  )}
 
                   <div className="flex gap-2">
                     <input
@@ -1258,6 +1224,68 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
                   )}
                 </div>
               ))}
+
+              {/* ⑤ 키프레임에 쓸 그림 고르기 — 한 편에 한 장 */}
+              {cardArtworks.length > 0 && (
+                <div className="grid gap-2 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
+                  <p className="text-xs font-medium text-zinc-500">키프레임에 쓸 그림</p>
+                  <p className="text-[11px] text-zinc-400">
+                    고른 그림은 <span className="font-medium">참조</span>로 들어가요. 키프레임은
+                    영상 비율(숏폼이면 세로)에 맞춰 새로 그려집니다 — 그림이 그대로 키프레임이
+                    되는 게 아니에요. 기사 글과 그림은 서로 영향을 주지 않습니다.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {cardArtworks.map((a) => (
+                      <label
+                        key={a.index}
+                        className={
+                          "cursor-pointer rounded-xl border p-1.5 transition-colors " +
+                          (cardKeyframePick === a.index
+                            ? "border-accent bg-accent/10"
+                            : "border-zinc-200 dark:border-zinc-800 hover:border-accent")
+                        }
+                      >
+                        <input
+                          type="radio"
+                          name="cardnews-keyframe"
+                          checked={cardKeyframePick === a.index}
+                          onChange={() => setCardKeyframePick(a.index)}
+                          className="sr-only"
+                        />
+                        {/* 잘라낸 삽화 미리보기 — 원본 비율 그대로 */}
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={a.url}
+                          alt={`꼭지 ${a.index} 삽화`}
+                          className="w-full rounded-lg"
+                        />
+                        <span className="mt-1 block text-[11px] text-zinc-500">
+                          {cardKeyframePick === a.index && (
+                            <span className="mr-1 text-accent">✓</span>
+                          )}
+                          꼭지 {a.index}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="cardnews-keyframe"
+                      checked={cardKeyframePick === 0}
+                      onChange={() => setCardKeyframePick(0)}
+                      className="accent-[var(--accent)]"
+                    />
+                    <span className="text-sm">그림 쓰지 않음</span>
+                  </label>
+                </div>
+              )}
+              {cardItems.length > 0 && cardArtworks.length === 0 && (
+                <p className="text-[11px] text-amber-600">
+                  카드에서 그림 영역을 못 찾았어요. 글자만으로 진행합니다 — 키프레임은
+                  참조 없이 만들어져요.
+                </p>
+              )}
 
               {/* ⑥ 생성 */}
               <button

@@ -42,24 +42,6 @@ console.log("[정상 응답 — 꼭지 2개]");
   );
 }
 
-console.log("\n[그림 참고 — artwork 필드]");
-{
-  const items = parseCardnewsRead(
-    JSON.stringify({
-      items: [
-        { index: 1, title: "제목", body: "본문", attribution: "매체", artwork: "교차로에 선 로봇" },
-      ],
-    })
-  );
-  check("artwork 보존", items[0].artwork === "교차로에 선 로봇", items[0].artwork);
-}
-{
-  const items = parseCardnewsRead(
-    JSON.stringify({ items: [{ index: 1, title: "제목", body: "본문", attribution: "매체" }] })
-  );
-  check("artwork 누락 → 빈 문자열", items[0].artwork === "", items[0].artwork);
-}
-
 console.log("\n[출처를 괄호째 돌려준 경우 — 양끝 괄호만 벗긴다]");
 {
   const items = parseCardnewsRead(
