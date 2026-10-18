@@ -21,8 +21,9 @@ export const CARDNEWS_MAX_IMAGES = 12;
 const READ_MODEL = MODELS.sonnet;
 // web_search 서버 도구를 쓰므로 haiku 는 불가(400 invalid_request).
 const RESEARCH_MODEL = MODELS.sonnet;
-// 검색 결과가 토큰으로 들어와 매 턴 재전송된다 — 횟수가 곧 비용이다(확장판 실측 기준).
-const SEARCH_MAX_USES = 5;
+// 검색 결과가 토큰으로 들어와 매 턴 재전송된다 — 횟수가 곧 비용이고 기다리는 시간이다.
+// 출처 하나를 확인하는 일이라 넉넉할 필요가 없다.
+const SEARCH_MAX_USES = 3;
 const MAX_ROUNDS = 2;
 
 // 카드 한 장에서 읽어낸 뉴스 한 꼭지.
@@ -93,8 +94,11 @@ function usdOf(r: Msg, model: string): number {
 }
 
 // ----------------------------------------------------------------------------
-// ① 카드 이미지 읽기 — 꼭지 단위로 한 호출에.
+// ① 카드 이미지 읽기 — 장마다 따로, 동시에.
 // ----------------------------------------------------------------------------
+// 카드는 서로 독립된 꼭지라 한 호출에 몰아넣을 이유가 없다. 몰아넣으면 장수만큼
+// 출력 토큰이 쌓여 기다리는 시간도 그만큼 길어진다. 장별로 쪼개 동시에 보내면
+// 전체 시간이 가장 느린 한 장만큼으로 줄어든다.
 export async function readCardnews(args: {
   images: CardnewsImageInput[];
   projectId?: string;
@@ -105,45 +109,59 @@ export async function readCardnews(args: {
     throw new Error(`카드 이미지는 ${CARDNEWS_MAX_IMAGES}장까지예요`);
   }
 
-  const content: Array<Record<string, unknown>> = [];
-  images.forEach((img, i) => {
-    content.push({ type: "text", text: `카드 ${i + 1}` });
-    content.push({
-      type: "image",
-      source: {
-        type: "base64",
-        media_type: normalizeMime(img.mediaType),
-        data: img.bytes.toString("base64"),
-      },
-    });
-  });
-  content.push({
-    type: "text",
-    text: `카드 ${images.length}장을 각각 한 꼭지로 읽고 JSON 으로만 답해줘.`,
-  });
-
   const client = getAnthropic();
-  const r = (await client.messages.create({
-    model: READ_MODEL,
-    max_tokens: 8000,
-    system: CARDNEWS_READ_SYSTEM,
-    messages: [{ role: "user", content: content as never }],
-  })) as unknown as Msg;
+  const results = await Promise.allSettled(
+    images.map(async (img) => {
+      const r = (await client.messages.create({
+        model: READ_MODEL,
+        max_tokens: 2000, // 한 꼭지 분량이면 충분하다
+        system: CARDNEWS_READ_SYSTEM,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "image",
+                source: {
+                  type: "base64",
+                  media_type: normalizeMime(img.mediaType),
+                  data: img.bytes.toString("base64"),
+                },
+              },
+              { type: "text", text: "이 카드 한 장을 한 꼭지로 읽고 JSON 으로만 답해줘." },
+            ] as never,
+          },
+        ],
+      })) as unknown as Msg;
+      return { item: parseCardnewsRead(textOf(r))[0], costUsd: usdOf(r, READ_MODEL) };
+    })
+  );
 
-  const costUsd = usdOf(r, READ_MODEL);
+  // 한 장이 실패해도 나머지로 진행한다. 번호는 올린 순서를 그대로 쓴다.
+  const items: CardnewsItem[] = [];
+  let costUsd = 0;
+  results.forEach((res, i) => {
+    if (res.status !== "fulfilled" || !res.value.item) return;
+    costUsd += res.value.costUsd;
+    items.push({ ...res.value.item, index: i + 1 });
+  });
+  if (items.length === 0) {
+    throw new Error("카드에서 읽어낸 글자가 없어요. 다른 이미지로 시도해주세요.");
+  }
+
   try {
     await recordCost({
       projectId: args.projectId,
       vendor: "anthropic",
       model: READ_MODEL,
       costUsd,
-      meta: { kind: "cardnews-read", cards: images.length },
+      meta: { kind: "cardnews-read", cards: images.length, read: items.length },
     });
   } catch {
     /* 비용 기록 실패는 흐름을 끊지 않는다 */
   }
 
-  return { items: parseCardnewsRead(textOf(r)), costUsd };
+  return { items, costUsd };
 }
 
 // 모델 응답 → 꼭지 배열. 순수 함수 — scripts/test-cardnews-parse.ts 로 검증한다.

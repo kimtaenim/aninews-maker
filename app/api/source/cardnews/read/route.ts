@@ -64,13 +64,13 @@ export async function POST(req: NextRequest) {
         mediaType: f.type || "image/png",
       }))
     );
-    const read = await readCardnews({ images });
-
-    // 삽화 잘라 Blob 에 올린다 — 키프레임 참조 후보. 못 찾거나 실패한 장은 건너뛴다
-    // (그림 없이도 글자만으로 진행할 수 있어야 한다).
+    // 글자 읽기와 삽화 자르기는 서로 기다릴 필요가 없다 — 같이 돌린다.
     const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const artworks = (
-      await Promise.all(
+    const [read, artworksRaw] = await Promise.all([
+      readCardnews({ images }),
+      // 삽화 잘라 Blob 에 올린다 — 키프레임 참조 후보. 못 찾거나 실패한 장은 건너뛴다
+      // (그림 없이도 글자만으로 진행할 수 있어야 한다).
+      Promise.all(
         images.map(async (img, i) => {
           try {
             const got = await extractArtwork(img.bytes);
@@ -85,8 +85,9 @@ export async function POST(req: NextRequest) {
             return null;
           }
         })
-      )
-    ).filter((a): a is NonNullable<typeof a> => a !== null);
+      ),
+    ]);
+    const artworks = artworksRaw.filter((a): a is NonNullable<typeof a> => a !== null);
 
     return NextResponse.json({ ok: true, ...read, artworks });
   } catch (e) {
