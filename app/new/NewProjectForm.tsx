@@ -559,7 +559,8 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
         setError(null);
       }}
       className={
-        "px-4 py-2 text-sm font-medium rounded-xl transition-colors " +
+        // 모바일에선 좌우 여백을 줄여 한 줄에 더 들어가게(데스크톱은 기존 그대로).
+        "px-3 sm:px-4 py-2 text-sm font-medium rounded-xl transition-colors " +
         (mode === m
           ? "bg-accent text-white"
           : "bg-zinc-100 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300")
@@ -576,7 +577,8 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
 
   return (
     <div className="mt-6 grid gap-5">
-      <div className="flex gap-2">
+      {/* 탭 8개 — 모바일 가로폭을 넘지 않게 줄바꿈한다(URL·RSS 가 아랫줄로). */}
+      <div className="flex flex-wrap gap-2">
         {tab("cardnews", "카드뉴스")}
         {tab("file", "파일")}
         {tab("script", "스크립트")}
