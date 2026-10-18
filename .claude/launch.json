@@ -4,21 +4,95 @@
     {
       "name": "aninews-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "port": 3000,
       "autoPort": true
     },
     {
       "name": "rank-tracker",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["C:\\myapps\\gift-rank-tracker\\tracker.mjs"],
+      "runtimeArgs": [
+        "C:\\myapps\\gift-rank-tracker\\tracker.mjs"
+      ],
       "port": 4321
     },
     {
       "name": "nlize-pages",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "8899", "-d", "C:\\myapps\\nlize-kakao-sample-test\\docs"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8899",
+        "-d",
+        "C:\\myapps\\nlize-kakao-sample-test\\docs"
+      ],
       "port": 8899
+    },
+    {
+      "name": "reanimator-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "C:/myapps/re-animator",
+        "--",
+        "-p",
+        "3210"
+      ],
+      "port": 3210
+    },
+    {
+      "name": "ax-dashboard",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "C:/myapps/nlize-ax-dashboard"
+      ],
+      "port": 5173
+    },
+    {
+      "name": "sisain-chatbot",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "C:/myapps/sisain/chatbot",
+        "--",
+        "-p",
+        "3220"
+      ],
+      "port": 3220
+    },
+    {
+      "name": "safety-dashboard",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--dir",
+        "C:/myapps/safety-dashboard-mockup",
+        "dev"
+      ],
+      "port": 3100
+    },
+    {
+      "name": "scribimus",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "C:/myapps/scribimus",
+        "--",
+        "-p",
+        "3230"
+      ],
+      "port": 3230
     }
   ]
 }
