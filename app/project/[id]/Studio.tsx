@@ -1111,19 +1111,36 @@ export default function Studio({
   // 나레이션 편집기(2단계) 참조 — 강조 버튼이 현재 선택 영역을 [[ ]] 로 감싼다.
   const narrRefs = useRef<Record<number, HTMLTextAreaElement | null>>({});
 
+  // 씬별 "마지막으로 잡힌 선택 영역". 모바일(iOS)은 버튼을 탭하는 순간 텍스트 선택이
+  // 풀리거나 접혀서, 클릭 시점의 selectionStart/End 만 믿으면 엉뚱한 범위를 집는다.
+  const narrSelRefs = useRef<Record<number, { s: number; e: number }>>({});
+
   // 선택한 부분을 강조 마크업 [[ ]] 로 토글(이미 감싸져 있으면 해제). 드래그로 원하는
   // 만큼만(조사 빼고 등) 정확히 선택해 누르면 그 조각만 크게·강조색으로 나온다(음성 무관).
   function wrapEmphasis(i: number) {
     const el = narrRefs.current[i];
     if (!el) return;
-    const s = el.selectionStart ?? 0;
-    const e = el.selectionEnd ?? 0;
-    if (s === e) return; // 선택 없음
     const v = el.value;
+    let s = el.selectionStart ?? 0;
+    let e = el.selectionEnd ?? 0;
+    // 선택이 풀렸으면(모바일) 마지막으로 잡아 둔 범위를 쓴다. 지금 글자 길이 안에
+    // 들어오는 범위일 때만 — 그 사이 글이 바뀌었으면 쓰지 않는다.
+    if (s === e) {
+      const last = narrSelRefs.current[i];
+      if (last && last.s < last.e && last.e <= v.length) {
+        s = last.s;
+        e = last.e;
+      }
+    }
+    if (s === e) return; // 선택 없음 — 아무것도 하지 않는다
     const sel = v.slice(s, e);
     const wrapped = sel.length > 4 && sel.startsWith("[[") && sel.endsWith("]]");
     const inner = wrapped ? sel.slice(2, -2) : "[[" + sel + "]]";
     const next = v.slice(0, s) + inner + v.slice(e);
+    // 안전장치 — 감싸기는 마커 4글자만 늘어야 하고, 해제는 4글자만 줄어야 한다.
+    // 어긋나면 범위가 틀어진 것이므로 글을 건드리지 않는다(글자가 사라지는 사고 방지).
+    const expected = wrapped ? v.length - 4 : v.length + 4;
+    if (next.length !== expected) return;
     patchScene(i, { narration: next });
     const ns = wrapped ? s : s + 2;
     const ne = wrapped ? e - 4 : e + 2;
@@ -3393,6 +3410,13 @@ export default function Studio({
                       }}
                       value={sc.narration}
                       onChange={(e) => patchScene(i, { narration: e.target.value })}
+                      // 선택이 잡힐 때마다 기억 — 버튼을 탭하며 선택이 풀려도 강조가 먹게.
+                      onSelect={(ev) => {
+                        const t = ev.currentTarget;
+                        const s = t.selectionStart ?? 0;
+                        const e2 = t.selectionEnd ?? 0;
+                        if (s < e2) narrSelRefs.current[i] = { s, e: e2 };
+                      }}
                       minRows={2}
                       maxRows={6}
                       className={fieldCls}

@@ -10,6 +10,7 @@ export default function AutoTextarea({
   onChange,
   onBlur,
   onKeyDown,
+  onSelect,
   placeholder,
   className,
   minRows = 2,
@@ -21,6 +22,9 @@ export default function AutoTextarea({
   onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
   onBlur?: () => void;
   onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+  // 선택 영역이 바뀔 때마다 알림 — 강조 버튼이 "마지막 선택"을 기억해 두기 위한 것.
+  // 모바일은 버튼을 누르는 순간 선택이 풀려서 클릭 시점의 선택만 믿으면 안 된다.
+  onSelect?: (e: React.SyntheticEvent<HTMLTextAreaElement>) => void;
   placeholder?: string;
   className?: string;
   minRows?: number;
@@ -62,6 +66,7 @@ export default function AutoTextarea({
       onChange={onChange}
       onBlur={onBlur}
       onKeyDown={onKeyDown}
+      onSelect={onSelect}
       placeholder={placeholder}
       rows={minRows}
       autoFocus={autoFocus}
