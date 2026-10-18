@@ -301,9 +301,10 @@ async function downloadSegment(segId, idx, total, dir, log) {
 // +무음 트랙을 함께 갖고, concat 의 오디오 무음 채움이 타임라인을 1:1 로 고정한다.
 const GAP_SEC = 0.7;
 const FADE_SEC = 0.4;
-// [끝맺음] 최종 영상 맨 끝 — 페이드아웃 뒤 검은 화면 1초. 어디서 끝났는지 알 수 있게.
+// [끝맺음] 최종 영상 맨 끝 — 페이드아웃 뒤 검은 화면. 어디서 끝났는지 알 수 있게.
 // 중간 조각(섹션 영상)에는 붙이지 않는다. 이어붙이면 중간에 검은 화면이 끼게 된다.
-const OUTRO_BLACK_SEC = 1.0;
+const OUTRO_BLACK_SEC = 1.0; // 롱폼
+const OUTRO_BLACK_SEC_SHORT = 0.5; // 숏폼(지시: 페이드 0.4초 + 검은 화면 0.5초)
 
 async function makeGapClip(dir, W, H, sec = GAP_SEC, name = "gap.mp4") {
   const out = join(dir, name);
@@ -319,10 +320,10 @@ async function makeGapClip(dir, W, H, sec = GAP_SEC, name = "gap.mp4") {
   return out;
 }
 
-// 최종 영상 맨 끝에 붙일 검은 1초.
-async function makeOutroClip(dir, W, H, log) {
-  if (log) await log(`끝맺음 암전 ${OUTRO_BLACK_SEC}초 준비…`);
-  return makeGapClip(dir, W, H, OUTRO_BLACK_SEC, "outro.mp4");
+// 최종 영상 맨 끝에 붙일 검은 화면.
+async function makeOutroClip(dir, W, H, log, sec = OUTRO_BLACK_SEC) {
+  if (log) await log(`끝맺음 암전 ${sec}초 준비…`);
+  return makeGapClip(dir, W, H, sec, "outro.mp4");
 }
 
 // src 의 t 이전 마지막 비디오 키프레임 시각 — 꼬리만 재인코딩할 분할점. 못 찾으면 0.
@@ -849,8 +850,17 @@ export async function composeProject(projectId, lang, opts = {}) {
       const base =
         `[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase,` +
         `crop=${W}:${H},setpts=${speed.toFixed(4)}*PTS,fps=${FPS}`;
+      // [끝맺음] 마지막 씬만 꼬리 페이드아웃. 페이드는 오버레이를 얹기 "전" 영상에만
+      // 건다 — 자막·워터마크는 그 위에 올라가므로 같이 어두워지지 않는다(지시: 자막은
+      // 페이드 대상 아님). 소리는 같이 잦아든다.
+      const isLastScene = i === scenes.length - 1;
+      const fadeSt = Math.max(0, duration - FADE_SEC).toFixed(2);
+      const vFade = isLastScene ? `,fade=t=out:st=${fadeSt}:d=${FADE_SEC}` : "";
+      const afadeExpr = isLastScene ? `afade=t=out:st=${fadeSt}:d=${FADE_SEC}` : "";
       // 입력은 0=video, 1=audio, 2=오버레이 concat(있으면), 그 뒤=효과음.
-      const filter = ovList ? `${base}[bg];[bg][2:v]overlay=0:0[v]` : `${base}[v]`;
+      const filter = ovList
+        ? `${base}${vFade}[bg];[bg][2:v]overlay=0:0[v]`
+        : `${base}${vFade}[v]`;
 
       const out = join(dir, `scene${i}.mp4`);
       const args = ["-y", "-i", vPath];
@@ -870,8 +880,12 @@ export async function composeProject(projectId, lang, opts = {}) {
         // 효과음은 지정 볼륨). normalize 옵션 없이 써서 구버전 ffmpeg 도 호환.
         filterFull =
           `${filter};[1:a]volume=2[voca];[${sfxIdx}:a]volume=${(sfxVol * 2).toFixed(2)}[sfxa];` +
-          `[voca][sfxa]amix=inputs=2:duration=longest[aout]`;
+          `[voca][sfxa]amix=inputs=2:duration=longest${afadeExpr ? `,${afadeExpr}` : ""}[aout]`;
         audioMap = "[aout]";
+      } else if (afadeExpr) {
+        // 효과음이 없는 씬 — 목소리 트랙에 바로 페이드를 건다.
+        filterFull = `${filter};[1:a]${afadeExpr}[aud]`;
+        audioMap = "[aud]";
       }
       args.push(
         "-filter_complex", filterFull,
@@ -889,18 +903,9 @@ export async function composeProject(projectId, lang, opts = {}) {
       sceneFiles.push(out);
     }
 
-    // [끝맺음] 마지막 씬 꼬리에 페이드아웃(롱폼과 같은 fadeTail) + 검은 1초.
-    // 숏폼은 끝 페이드가 없어 영상이 뚝 끊겼다 — 어디서 끝났는지 알게 한다.
-    const lastIdx = sceneFiles.length - 1;
-    if (lastIdx >= 0) {
-      try {
-        sceneFiles[lastIdx] = await fadeTail(sceneFiles[lastIdx], dir, "last", log);
-      } catch (e) {
-        // 페이드 실패가 합성 전체를 막지 않게 — 페이드 없이 그대로 간다.
-        await log(`끝 페이드 생략(${e instanceof Error ? e.message : "실패"})`);
-      }
-    }
-    const outro = await makeOutroClip(dir, W, H, log);
+    // [끝맺음] 페이드아웃은 마지막 씬을 구울 때 이미 걸었다(자막은 제외하려면 오버레이
+    // 얹기 전에 걸어야 하므로). 여기선 그 뒤에 검은 화면만 붙인다.
+    const outro = await makeOutroClip(dir, W, H, log, OUTRO_BLACK_SEC_SHORT);
 
     // 이어붙이기 — concatClips 3단계(비디오 무손실 + 오디오 패딩·한 줄 인코딩 + 합치기).
     // 씬마다 오디오가 비디오보다 몇십 ms 짧아 누적되던 싱크 밀림까지 같이 잡는다.
