@@ -7,7 +7,17 @@ export const runtime = "nodejs";
 const FONT = ["sans", "serif"];
 const WEIGHT = ["regular", "bold"];
 const SIZE = ["small", "medium", "large"];
-const POS = ["top", "one-third", "center", "two-thirds", "three-quarters", "bottom"];
+// SubtitleSettings["position"] 의 전체 목록과 같아야 한다. 빠진 값은 저장 때 조용히
+// 기존 값으로 되돌아가서, 화면만 바뀌고 합성에는 안 먹는다(¼ 가 그랬다).
+const POS = [
+  "top",
+  "one-quarter",
+  "one-third",
+  "center",
+  "two-thirds",
+  "three-quarters",
+  "bottom",
+];
 const ALIGN = ["center", "left"];
 const BOX = ["dark", "light"];
 const LANG = ["ko", "en", "both"];
