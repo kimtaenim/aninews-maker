@@ -1294,9 +1294,10 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
               <button
                 type="button"
                 onClick={() => void submitCardnews()}
+                // 출처 검색은 기다릴 필요가 없다 — 끝나기 전에 만들면 그 꼭지는
+                // 검색 결과 없이 카드 내용만으로 들어간다.
                 disabled={
                   loading ||
-                  cardItems.some((it) => it.include && it.researching) ||
                   cardItems.filter((it) => it.include && it.body.trim()).length === 0
                 }
                 className="rounded-xl bg-accent hover:bg-accent-strong disabled:opacity-40 text-white text-sm font-medium py-2.5"
@@ -1314,6 +1315,12 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
                   })()
                 )}
               </button>
+              {cardItems.some((it) => it.include && it.researching) && (
+                <p className="text-[11px] text-zinc-400">
+                  출처를 찾는 중이에요. 기다리지 않고 지금 만들어도 됩니다 — 그 꼭지는
+                  카드 내용만으로 들어가요.
+                </p>
+              )}
             </>
           )}
         </div>

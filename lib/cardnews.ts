@@ -22,8 +22,8 @@ const READ_MODEL = MODELS.sonnet;
 // web_search 서버 도구를 쓰므로 haiku 는 불가(400 invalid_request).
 const RESEARCH_MODEL = MODELS.sonnet;
 // 검색 결과가 토큰으로 들어와 매 턴 재전송된다 — 횟수가 곧 비용이고 기다리는 시간이다.
-// 출처 하나를 확인하는 일이라 넉넉할 필요가 없다.
-const SEARCH_MAX_USES = 3;
+// 매체 이름 하나로 그 보도를 찾는 일이라 두 번이면 된다.
+const SEARCH_MAX_USES = 2;
 const MAX_ROUNDS = 2;
 
 // 카드 한 장에서 읽어낸 뉴스 한 꼭지.
@@ -264,7 +264,7 @@ export async function researchCardnews(args: {
     const stream = client.messages.stream(
       {
         model: RESEARCH_MODEL,
-        max_tokens: 4000,
+        max_tokens: 1500, // 확인·원문·사실 몇 줄이면 된다 — 길게 쓸수록 기다린다
         system: CARDNEWS_RESEARCH_SYSTEM,
         tools: [webSearchTool] as never,
         messages: messages as never,
