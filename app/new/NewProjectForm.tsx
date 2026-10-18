@@ -577,14 +577,14 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
   return (
     <div className="mt-6 grid gap-5">
       <div className="flex gap-2">
-        {tab("rss", "RSS")}
-        {tab("url", "URL")}
-        {tab("wiki", "위키")}
-        {tab("trend", "트렌드")}
-        {tab("text", "텍스트")}
-        {tab("script", "스크립트")}
-        {tab("file", "파일")}
         {tab("cardnews", "카드뉴스")}
+        {tab("file", "파일")}
+        {tab("script", "스크립트")}
+        {tab("text", "텍스트")}
+        {tab("trend", "트렌드")}
+        {tab("wiki", "위키")}
+        {tab("url", "URL")}
+        {tab("rss", "RSS")}
       </div>
 
       {mode === "rss" && (
