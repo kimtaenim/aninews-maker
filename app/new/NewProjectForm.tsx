@@ -1113,10 +1113,6 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
                     className={inputCls + " resize-y"}
                   />
 
-                  {/* 출처는 카드에 적힌 표기를 그대로 기록만 한다(확인은 카드뉴스 쪽에서). */}
-                  {it.attribution && (
-                    <p className="text-[11px] text-zinc-500">출처 {it.attribution}</p>
-                  )}
                 </div>
               ))}
 
