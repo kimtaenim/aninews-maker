@@ -7,9 +7,14 @@ import type { RssItem, RssCategory } from "@/lib/rss";
 import type { ArticleBriefing } from "@/lib/briefing";
 import type { WikiSearchResult } from "@/lib/wikipedia";
 import { ACCEPT_ATTR, MAX_FILE_SIZE, MAX_TOTAL_SIZE } from "@/lib/attachments";
+import type { CardnewsReadResult, CardnewsLink } from "@/lib/cardnews";
 import trendLangsData from "@/config/languages.json";
 
-type Mode = "rss" | "url" | "wiki" | "trend" | "text" | "file" | "script";
+type Mode = "rss" | "url" | "wiki" | "trend" | "text" | "file" | "script" | "cardnews";
+
+// 카드뉴스 탭 — 카드 이미지만 받는다(PNG·JPG·WEBP).
+const CARDNEWS_ACCEPT = "image/png,image/jpeg,image/webp";
+const CARDNEWS_MAX_CARDS = 12;
 
 // 트렌드 언어 목록(config/languages.json) — 버튼용.
 const TREND_LANGS = (trendLangsData as {
@@ -45,6 +50,20 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
   const [text, setText] = useState("");
   const [scriptText, setScriptText] = useState(""); // 완성 스크립트 직접 입력(소스·생성 건너뜀)
   const [files, setFiles] = useState<File[]>([]);
+
+  // 카드뉴스 — 카드 읽기 → 출처 확인·검색 → 프로젝트 생성(3단계, 화면 순서대로).
+  // 기존 "파일" 탭과 상태를 섞지 않는다.
+  const [cardFiles, setCardFiles] = useState<File[]>([]);
+  const [cardRead, setCardRead] = useState<CardnewsReadResult | null>(null);
+  const [cardTitle, setCardTitle] = useState("");
+  const [cardBody, setCardBody] = useState("");
+  const [cardAttribution, setCardAttribution] = useState("");
+  const [cardReport, setCardReport] = useState<string | null>(null);
+  const [cardLinks, setCardLinks] = useState<CardnewsLink[]>([]);
+  const [cardSearched, setCardSearched] = useState<boolean | null>(null);
+  const [cardReading, setCardReading] = useState(false);
+  const [cardResearching, setCardResearching] = useState(false);
+  const [cardsOpen, setCardsOpen] = useState(false);
 
   // RSS 상태
   const [category, setCategory] = useState(categories[0]?.key ?? "");
@@ -138,6 +157,154 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
       const fd = new FormData();
       for (const f of files) fd.append("file", f);
       const r = await fetch("/api/source/from-files", { method: "POST", body: fd });
+      const data = await r.json();
+      if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      router.push(`/project/${data.projectId}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "생성 실패");
+      setLoading(false);
+    }
+  }
+
+  // ── 카드뉴스 ────────────────────────────────────────────────────────────────
+  function addCardFiles(picked: FileList | null) {
+    if (!picked || picked.length === 0) return;
+    setError(null);
+    setCardFiles((prev) => {
+      const next = [...prev];
+      for (const f of Array.from(picked)) {
+        if (!/^image\/(png|jpeg|webp)$/.test(f.type)) {
+          setError(`${f.name} 은(는) 카드 이미지가 아니에요 (PNG·JPG)`);
+          continue;
+        }
+        if (f.size > MAX_FILE_SIZE) {
+          setError(`${f.name} 이(가) 10MB를 초과해요.`);
+          continue;
+        }
+        if (next.some((p) => p.name === f.name && p.size === f.size)) continue;
+        next.push(f);
+      }
+      if (next.length > CARDNEWS_MAX_CARDS) {
+        setError(`카드는 ${CARDNEWS_MAX_CARDS}장까지예요.`);
+        return prev;
+      }
+      if (next.reduce((s, f) => s + f.size, 0) > MAX_TOTAL_SIZE) {
+        setError("전체 첨부가 30MB를 초과해요.");
+        return prev;
+      }
+      return next;
+    });
+  }
+
+  function resetCardRead() {
+    setCardRead(null);
+    setCardTitle("");
+    setCardBody("");
+    setCardAttribution("");
+    setCardReport(null);
+    setCardLinks([]);
+    setCardSearched(null);
+    setCardsOpen(false);
+  }
+
+  function removeCardFile(idx: number) {
+    setCardFiles((prev) => prev.filter((_, i) => i !== idx));
+    resetCardRead();
+  }
+
+  function moveCardFile(idx: number, dir: -1 | 1) {
+    const to = idx + dir;
+    setCardFiles((prev) => {
+      if (to < 0 || to >= prev.length) return prev;
+      const next = [...prev];
+      [next[idx], next[to]] = [next[to], next[idx]];
+      return next;
+    });
+    resetCardRead();
+  }
+
+  // ① 카드 읽기 → 읽은 내용·출처를 화면에 띄우고, 출처가 잡혔으면 바로 ②검색까지.
+  async function readCards() {
+    if (cardFiles.length === 0) {
+      setError("카드 이미지를 1장 이상 올려주세요");
+      return;
+    }
+    setError(null);
+    resetCardRead();
+    setCardReading(true);
+    try {
+      const fd = new FormData();
+      for (const f of cardFiles) fd.append("file", f);
+      const r = await fetch("/api/source/cardnews/read", { method: "POST", body: fd });
+      const data = await r.json();
+      if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      const read = data as CardnewsReadResult & { ok: true };
+      setCardRead(read);
+      setCardTitle(read.title);
+      setCardBody(read.body);
+      const attribution = (read.attributions ?? []).join(", ");
+      setCardAttribution(attribution);
+      setCardReading(false);
+      if (attribution) void researchCards(attribution, read.title, read.body);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "카드 읽기 실패");
+      setCardReading(false);
+    }
+  }
+
+  // ② 출처 검색 — 화면에서 출처를 고쳐 다시 부를 수 있다.
+  async function researchCards(attribution?: string, title?: string, body?: string) {
+    const attr = (attribution ?? cardAttribution).trim();
+    if (!attr) {
+      setError("찾을 출처를 입력해주세요");
+      return;
+    }
+    setError(null);
+    setCardReport(null);
+    setCardLinks([]);
+    setCardSearched(null);
+    setCardResearching(true);
+    try {
+      const r = await fetch("/api/source/cardnews/research", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          attribution: attr,
+          title: title ?? cardTitle,
+          body: body ?? cardBody,
+        }),
+      });
+      const data = await r.json();
+      if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      setCardReport((data.report as string) ?? "");
+      setCardLinks((data.links as CardnewsLink[]) ?? []);
+      setCardSearched(Boolean(data.searched));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "출처 검색 실패");
+    } finally {
+      setCardResearching(false);
+    }
+  }
+
+  // ③ 확인한 내용으로 프로젝트 생성. 대본은 스튜디오의 기존 대본 단계에서.
+  async function submitCardnews() {
+    if (!cardBody.trim()) {
+      setError("카드뉴스 내용이 비어 있어요");
+      return;
+    }
+    setError(null);
+    setLoading(true);
+    try {
+      const r = await fetch("/api/source/cardnews/create", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: cardTitle,
+          body: cardBody,
+          attribution: cardAttribution,
+          research: cardSearched ? (cardReport ?? "") : "",
+        }),
+      });
       const data = await r.json();
       if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
       router.push(`/project/${data.projectId}`);
@@ -391,6 +558,7 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
         {tab("text", "텍스트")}
         {tab("script", "스크립트")}
         {tab("file", "파일")}
+        {tab("cardnews", "카드뉴스")}
       </div>
 
       {mode === "rss" && (
@@ -824,6 +992,239 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
         </div>
       )}
 
+      {mode === "cardnews" && (
+        <div className="grid gap-3">
+          {/* ① 카드 올리기 — 첨부 순서가 카드 순서. */}
+          <label
+            className="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700 px-4 py-8 text-center cursor-pointer hover:border-accent transition-colors"
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              addCardFiles(e.dataTransfer.files);
+            }}
+          >
+            <input
+              type="file"
+              multiple
+              accept={CARDNEWS_ACCEPT}
+              className="hidden"
+              onChange={(e) => {
+                addCardFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
+            <span className="text-sm font-medium">카드 이미지 선택 또는 드래그</span>
+            <span className="text-[11px] text-zinc-500">
+              PNG·JPG · 최대 {CARDNEWS_MAX_CARDS}장 · 장당 10MB · 전체 30MB
+            </span>
+          </label>
+          <p className="text-[11px] text-zinc-400">
+            🗂 카드뉴스를 <span className="font-medium">순서대로</span> 읽고, 마지막 카드
+            괄호 안의 <span className="font-medium">출처를 웹에서 찾아</span> 관련 사실까지
+            확인해 소스를 만들어요. 아래 목록의 번호가 읽는 순서예요.
+          </p>
+
+          {cardFiles.length > 0 && (
+            <ul className="grid gap-1.5">
+              {cardFiles.map((f, i) => (
+                <li
+                  key={`${f.name}-${f.size}-${i}`}
+                  className="flex items-center gap-2 rounded-xl border border-zinc-200 dark:border-zinc-800 px-3 py-2"
+                >
+                  <span className="shrink-0 rounded bg-accent/10 px-1.5 py-0.5 text-[10px] text-accent">
+                    {i + 1}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-sm">{f.name}</span>
+                  <span className="shrink-0 text-[11px] text-zinc-500">
+                    {formatSize(f.size)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => moveCardFile(i, -1)}
+                    disabled={i === 0 || cardReading}
+                    className="shrink-0 text-zinc-400 hover:text-accent disabled:opacity-30 text-sm"
+                    aria-label="위로"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moveCardFile(i, 1)}
+                    disabled={i === cardFiles.length - 1 || cardReading}
+                    className="shrink-0 text-zinc-400 hover:text-accent disabled:opacity-30 text-sm"
+                    aria-label="아래로"
+                  >
+                    ↓
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeCardFile(i)}
+                    disabled={cardReading}
+                    className="shrink-0 text-zinc-400 hover:text-red-500 disabled:opacity-30 text-sm"
+                    aria-label="카드 제거"
+                  >
+                    ✕
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {/* ② 카드 읽기 */}
+          <button
+            type="button"
+            onClick={() => void readCards()}
+            disabled={cardReading || cardFiles.length === 0}
+            className="rounded-xl bg-accent hover:bg-accent-strong disabled:opacity-40 text-white text-sm font-medium py-2.5"
+          >
+            {cardReading ? (
+              <span className="inline-flex items-center justify-center gap-1.5">
+                <Spinner /> 카드 읽는 중…
+              </span>
+            ) : cardRead ? (
+              "다시 읽기"
+            ) : (
+              `카드 ${cardFiles.length || ""}장 읽기`
+            )}
+          </button>
+
+          {cardRead && (
+            <>
+              {/* ③ 읽은 내용 확인·수정 */}
+              <div className="grid gap-1">
+                <label className="text-xs font-medium text-zinc-500">주제</label>
+                <input
+                  type="text"
+                  value={cardTitle}
+                  onChange={(e) => setCardTitle(e.target.value)}
+                  className={inputCls}
+                />
+              </div>
+              <div className="grid gap-1">
+                <label className="text-xs font-medium text-zinc-500">
+                  읽은 내용 (고칠 수 있어요)
+                </label>
+                <textarea
+                  value={cardBody}
+                  onChange={(e) => setCardBody(e.target.value)}
+                  rows={8}
+                  className={inputCls + " resize-y"}
+                />
+              </div>
+
+              {cardRead.cards.length > 0 && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setCardsOpen((v) => !v)}
+                    className="text-xs text-accent"
+                  >
+                    {cardsOpen ? "카드별 원문 접기" : `카드별 원문 보기 (${cardRead.cards.length}장)`}
+                  </button>
+                  {cardsOpen && (
+                    <ul className="mt-2 grid gap-1.5 max-h-72 overflow-y-auto pr-1">
+                      {cardRead.cards.map((c) => (
+                        <li
+                          key={c.index}
+                          className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-3"
+                        >
+                          <p className="text-[11px] text-zinc-500">카드 {c.index}</p>
+                          <p className="mt-1 whitespace-pre-wrap text-xs">{c.text}</p>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+
+              {/* ④ 출처 확인 → 검색 */}
+              <div className="grid gap-1">
+                <label className="text-xs font-medium text-zinc-500">
+                  카드뉴스에 적힌 출처 (괄호 안)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="카드에서 출처를 못 찾았어요 — 직접 입력해주세요"
+                    value={cardAttribution}
+                    onChange={(e) => setCardAttribution(e.target.value)}
+                    className={inputCls + " flex-1"}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void researchCards()}
+                    disabled={cardResearching || !cardAttribution.trim()}
+                    className="shrink-0 rounded-xl bg-accent hover:bg-accent-strong disabled:opacity-40 text-white text-sm font-medium px-4"
+                  >
+                    {cardResearching ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <Spinner /> 찾는 중…
+                      </span>
+                    ) : cardReport !== null ? (
+                      "다시 찾기"
+                    ) : (
+                      "출처 찾기"
+                    )}
+                  </button>
+                </div>
+                {cardRead.attributions.length === 0 && (
+                  <p className="text-[11px] text-amber-600">
+                    카드에서 괄호 출처를 못 찾았어요. 직접 적어 넣고 찾아보세요. 비워 두고
+                    진행하면 카드 내용만으로 만들어요.
+                  </p>
+                )}
+              </div>
+
+              {/* ⑤ 검색 결과 */}
+              {cardSearched === false && (
+                <p className="text-[11px] text-amber-600">
+                  웹 검색이 돌지 않아 확인된 사실이 없어요. 검색 없이 나온 글은 쓰지 않습니다
+                  — 출처를 바꿔 다시 찾아보세요.
+                </p>
+              )}
+              {cardSearched && cardReport && (
+                <div className="grid gap-2 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
+                  <p className="text-xs font-medium text-zinc-500">출처에서 확인한 내용</p>
+                  <p className="whitespace-pre-wrap text-xs leading-relaxed">{cardReport}</p>
+                  {cardLinks.length > 0 && (
+                    <ul className="grid gap-1 border-t border-zinc-200 dark:border-zinc-800 pt-2">
+                      {cardLinks.map((l) => (
+                        <li key={l.url} className="truncate text-[11px]">
+                          <a
+                            href={l.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-accent hover:underline"
+                          >
+                            {l.title}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+
+              {/* ⑥ 생성 */}
+              <button
+                type="button"
+                onClick={() => void submitCardnews()}
+                disabled={loading || cardResearching || !cardBody.trim()}
+                className="rounded-xl bg-accent hover:bg-accent-strong disabled:opacity-40 text-white text-sm font-medium py-2.5"
+              >
+                {loading ? (
+                  <span className="inline-flex items-center justify-center gap-1.5">
+                    <Spinner /> 만드는 중…
+                  </span>
+                ) : (
+                  "이 내용으로 프로젝트 만들기"
+                )}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
       <p className="text-[11px] text-zinc-400">
         스타일(2D/3D)·영상 모델·음성·자막은 다음 스튜디오 단계에서 정하고 언제든 바꿀 수
         있어요.
@@ -831,8 +1232,8 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
-      {/* 위키·트렌드 모드는 자체 검색/클릭으로 진행하므로 이 버튼은 숨김. */}
-      {mode !== "wiki" && mode !== "trend" && (
+      {/* 위키·트렌드·카드뉴스 모드는 자체 버튼으로 진행하므로 이 버튼은 숨김. */}
+      {mode !== "wiki" && mode !== "trend" && mode !== "cardnews" && (
         <button
           type="button"
           onClick={submit}
