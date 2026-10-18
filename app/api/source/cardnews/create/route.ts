@@ -1,17 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createProject } from "@/lib/projectStore";
 import { getSessionEmail } from "@/lib/auth";
+import { mergeSources } from "@/lib/mergeSources";
 import { type SourceMaterial, SOURCE_MAX_INPUT_CHARS } from "@/lib/source";
 import { getStyleProfile, DEFAULT_STYLE_PROFILE_ID } from "@/lib/styleProfiles";
 import videoModels from "@/config/video-models.json";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 120; // 꼭지 여러 개를 한 편으로 묶는 호출이 들어간다
 
-// [카드뉴스 ③] 화면에서 확인·수정한 내용 + 출처 검색 결과 → 소스 재료 → 프로젝트 생성.
+// [카드뉴스 ③] 화면에서 확인·수정한 꼭지들 → 소스 재료 → 프로젝트 생성.
+// 꼭지가 여럿이면 기존 mergeSources 가 한 편으로 묶는다(여기서 다시 만들지 않는다).
 // 대본은 만들지 않는다 — 스튜디오의 기존 대본 단계가 기존 원칙으로 만든다.
 //
-// JSON: { title, body, attribution?, research?, sourceUrl?, userPrompt?,
+// JSON: { items: [{ title, body, attribution?, research? }], userPrompt?,
 //         styleProfileId?, videoModelId?, ttsEnabled? }
 export async function POST(req: NextRequest) {
   let payload: Record<string, unknown>;
@@ -21,19 +23,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "invalid JSON" }, { status: 400 });
   }
 
-  const str = (k: string): string =>
-    typeof payload[k] === "string" ? (payload[k] as string).trim() : "";
+  const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 
-  const cardBody = str("body");
-  if (!cardBody) {
+  const rawItems = Array.isArray(payload.items) ? payload.items : [];
+  const items = rawItems
+    .map((it) => {
+      const o = (it ?? {}) as Record<string, unknown>;
+      return {
+        title: str(o.title),
+        body: str(o.body),
+        attribution: str(o.attribution),
+        research: str(o.research),
+      };
+    })
+    .filter((it) => it.body || it.title);
+
+  if (items.length === 0) {
     return NextResponse.json(
-      { ok: false, error: "카드뉴스 내용이 비어 있어요" },
+      { ok: false, error: "넣을 꼭지가 없어요" },
       { status: 400 }
     );
   }
 
-  const styleProfileId = str("styleProfileId") || DEFAULT_STYLE_PROFILE_ID;
-  const videoModelId = str("videoModelId") || videoModels.default;
+  const styleProfileId = str(payload.styleProfileId) || DEFAULT_STYLE_PROFILE_ID;
+  const videoModelId = str(payload.videoModelId) || videoModels.default;
   try {
     getStyleProfile(styleProfileId);
   } catch {
@@ -44,45 +57,48 @@ export async function POST(req: NextRequest) {
   }
   const ttsEnabled =
     typeof payload.ttsEnabled === "boolean" ? (payload.ttsEnabled as boolean) : true;
+  const userPrompt = str(payload.userPrompt) || undefined;
 
-  const attribution = str("attribution");
-  const research = str("research");
-
-  // 카드뉴스 내용 + 출처에서 확인한 사실을 한 덩어리 원재료로 합친다.
-  const parts = [cardBody];
-  if (research) {
-    parts.push(
-      [
-        attribution ? `출처에서 확인한 내용 (카드뉴스 표기: ${attribution})` : "출처에서 확인한 내용",
-        research,
-      ].join("\n")
-    );
-  }
-  let body = parts.join("\n\n").trim();
-  let note: string | undefined;
-  if (body.length > SOURCE_MAX_INPUT_CHARS) {
-    body = body.slice(0, SOURCE_MAX_INPUT_CHARS);
-    note = `본문 ${SOURCE_MAX_INPUT_CHARS}자 초과 — 앞부분만 사용`;
-  }
-
-  const material: SourceMaterial = {
-    title: str("title").slice(0, 60) || "(제목 없음)",
-    body,
-    sourceName: attribution ? `카드뉴스 · ${attribution}` : "카드뉴스",
-    sourceUrl: str("sourceUrl"),
-    publishedAt: null,
-  };
+  // 꼭지 하나 = 소스 하나. 출처에서 확인한 내용은 그 꼭지 본문 뒤에 붙인다.
+  const materials: SourceMaterial[] = items.map((it) => {
+    const parts = [it.body];
+    if (it.research) {
+      parts.push(
+        [
+          it.attribution
+            ? `출처에서 확인한 내용 (카드 표기: ${it.attribution})`
+            : "출처에서 확인한 내용",
+          it.research,
+        ].join("\n")
+      );
+    }
+    return {
+      title: it.title || "(제목 없음)",
+      body: parts.join("\n\n").trim().slice(0, SOURCE_MAX_INPUT_CHARS),
+      sourceName: it.attribution ? `카드뉴스 · ${it.attribution}` : "카드뉴스",
+      sourceUrl: "",
+      publishedAt: null,
+    };
+  });
 
   try {
+    // 꼭지가 1개면 mergeSources 가 그대로 돌려준다(호출 비용 없음).
+    const merged = await mergeSources({ materials, userPrompt });
+    const material: SourceMaterial = {
+      ...merged,
+      title: merged.title.slice(0, 60) || "(제목 없음)",
+      body: merged.body.slice(0, SOURCE_MAX_INPUT_CHARS),
+    };
+
     const project = await createProject({
       material,
       ownerEmail: (await getSessionEmail()) ?? undefined,
       styleProfileId,
       videoModelId,
       ttsEnabled,
-      userPrompt: str("userPrompt") || undefined,
+      userPrompt,
     });
-    return NextResponse.json({ ok: true, projectId: project.id, note });
+    return NextResponse.json({ ok: true, projectId: project.id, merged: items.length });
   } catch (e) {
     return NextResponse.json(
       { ok: false, error: e instanceof Error ? e.message : "생성 실패" },

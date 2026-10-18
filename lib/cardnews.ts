@@ -1,9 +1,12 @@
 // ============================================================================
-// 카드뉴스 입력 — PNG/JPG 카드 묶음 → 글자 읽기 → 괄호 출처 → 웹 검색 확인
+// 카드뉴스 입력 — PNG/JPG 카드 → 꼭지별 글자 읽기 → 끝 괄호 출처 → 웹 검색 확인
 // ----------------------------------------------------------------------------
-// 1) readCardnews       — 카드 이미지들을 한 번의 vision 호출로 순서대로 읽고,
-//                         괄호 안 출처 표기를 뽑아낸다(프로젝트는 만들지 않음).
-// 2) researchCardnews   — 그 출처를 web_search 로 찾아 관련 사실을 확인한다.
+// 카드 한 장 = 뉴스 한 꼭지다(장끼리 이어지지 않는다). 꼭지마다 제목·본문·출처가
+// 따로 있어서 읽기도 검색도 꼭지 단위로 돈다. 여러 꼭지를 한 편으로 묶는 일은
+// 기존 lib/mergeSources.ts 가 한다 — 여기서 다시 만들지 않는다.
+//
+// 1) readCardnews       — 카드들을 한 번의 vision 호출로 읽어 꼭지 배열로.
+// 2) researchCardnews   — 꼭지 하나의 출처를 web_search 로 찾아 사실을 확인한다.
 // 화면에서 ①의 결과와 출처를 확인·수정한 뒤 ②를 돌리고, 그 다음에 프로젝트를
 // 만든다(확인 게이트). 대본은 기존 대본 단계가 만든다 — 여기서 만들지 않는다.
 // ============================================================================
@@ -22,16 +25,16 @@ const RESEARCH_MODEL = MODELS.sonnet;
 const SEARCH_MAX_USES = 5;
 const MAX_ROUNDS = 2;
 
-export interface CardnewsCard {
+// 카드 한 장에서 읽어낸 뉴스 한 꼭지.
+export interface CardnewsItem {
   index: number;
-  text: string;
+  title: string;
+  body: string;
+  attribution: string; // 본문 맨 끝 괄호 안 출처. 없으면 "".
 }
 
 export interface CardnewsReadResult {
-  cards: CardnewsCard[];
-  title: string;
-  body: string;
-  attributions: string[];
+  items: CardnewsItem[];
   costUsd: number;
 }
 
@@ -90,7 +93,7 @@ function usdOf(r: Msg, model: string): number {
 }
 
 // ----------------------------------------------------------------------------
-// ① 카드 이미지 읽기 — 순서대로 한 번에 넣어 복원까지 한 호출로.
+// ① 카드 이미지 읽기 — 꼭지 단위로 한 호출에.
 // ----------------------------------------------------------------------------
 export async function readCardnews(args: {
   images: CardnewsImageInput[];
@@ -116,7 +119,7 @@ export async function readCardnews(args: {
   });
   content.push({
     type: "text",
-    text: `카드 ${images.length}장을 받은 순서대로 읽고 JSON 으로만 답해줘.`,
+    text: `카드 ${images.length}장을 각각 한 꼭지로 읽고 JSON 으로만 답해줘.`,
   });
 
   const client = getAnthropic();
@@ -140,12 +143,13 @@ export async function readCardnews(args: {
     /* 비용 기록 실패는 흐름을 끊지 않는다 */
   }
 
-  const raw = textOf(r);
+  return { items: parseCardnewsRead(textOf(r)), costUsd };
+}
+
+// 모델 응답 → 꼭지 배열. 순수 함수 — scripts/test-cardnews-parse.ts 로 검증한다.
+export function parseCardnewsRead(raw: string): CardnewsItem[] {
   let parsed: {
-    cards?: Array<{ index?: number; text?: string }>;
-    title?: string;
-    body?: string;
-    attributions?: unknown;
+    items?: Array<{ index?: number; title?: string; body?: string; attribution?: string }>;
   } = {};
   try {
     const m = raw.match(/\{[\s\S]*\}/);
@@ -154,32 +158,25 @@ export async function readCardnews(args: {
     throw new Error("카드 읽기 응답을 해석 못 했어요. 다시 시도해주세요.");
   }
 
-  const cards: CardnewsCard[] = (parsed.cards ?? [])
-    .map((c, i) => ({
-      index: typeof c?.index === "number" ? c.index : i + 1,
-      text: typeof c?.text === "string" ? c.text.trim() : "",
+  const items: CardnewsItem[] = (Array.isArray(parsed.items) ? parsed.items : [])
+    .map((it, i) => ({
+      index: typeof it?.index === "number" ? it.index : i + 1,
+      title: typeof it?.title === "string" ? it.title.trim() : "",
+      body: typeof it?.body === "string" ? it.body.trim() : "",
+      attribution: normalizeAttribution(it?.attribution),
     }))
-    .filter((c) => c.text);
+    .filter((it) => it.title || it.body);
 
-  const body = (parsed.body ?? "").trim();
-  if (!body && cards.length === 0) {
+  if (items.length === 0) {
     throw new Error("카드에서 읽어낸 글자가 없어요. 다른 이미지로 시도해주세요.");
   }
+  return items;
+}
 
-  const attributions = Array.isArray(parsed.attributions)
-    ? parsed.attributions
-        .filter((a): a is string => typeof a === "string")
-        .map((a) => a.replace(/^[(（]|[)）]$/g, "").trim())
-        .filter(Boolean)
-    : [];
-
-  return {
-    cards,
-    title: (parsed.title ?? "").trim() || "(제목 없음)",
-    body: body || cards.map((c) => c.text).join("\n\n"),
-    attributions,
-    costUsd,
-  };
+// 모델이 괄호째 돌려주는 경우가 있어 양끝 괄호만 벗긴다. 본문 중간 괄호와는 무관하다.
+function normalizeAttribution(v: unknown): string {
+  if (typeof v !== "string") return "";
+  return v.trim().replace(/^[(（]\s*/, "").replace(/\s*[)）]$/, "").trim();
 }
 
 // ----------------------------------------------------------------------------
