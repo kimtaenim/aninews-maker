@@ -8,7 +8,7 @@ export const maxDuration = 300; // 카드 여러 장 vision 읽기 — 수십 �
 // [카드뉴스 ①] 카드 PNG/JPG 묶음 → 순서대로 글자 읽기 + 괄호 출처 추출.
 // 프로젝트는 만들지 않는다 — 화면에서 확인한 뒤 ②검색 → ③생성 순서로 진행한다.
 //
-// FormData: file (이미지 복수, 첨부 순서 = 카드 순서)
+// FormData: file (이미지 복수, 첨부 순서 = 카드 순서) + useArtwork? ("true" 면 삽화 참고)
 export async function POST(req: NextRequest) {
   let formData: FormData;
   try {
@@ -58,7 +58,8 @@ export async function POST(req: NextRequest) {
         mediaType: f.type || "image/png",
       }))
     );
-    const read = await readCardnews({ images });
+    const useArtwork = formData.get("useArtwork") === "true";
+    const read = await readCardnews({ images, useArtwork });
     return NextResponse.json({ ok: true, ...read });
   } catch (e) {
     return NextResponse.json(

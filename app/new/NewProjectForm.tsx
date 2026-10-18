@@ -65,6 +65,7 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
   const [cardFiles, setCardFiles] = useState<File[]>([]);
   const [cardItems, setCardItems] = useState<CardItemState[] | null>(null);
   const [cardReading, setCardReading] = useState(false);
+  const [cardUseArtwork, setCardUseArtwork] = useState(false); // 삽화 참고 여부
 
   // RSS 상태
   const [category, setCategory] = useState(categories[0]?.key ?? "");
@@ -235,6 +236,7 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
     try {
       const fd = new FormData();
       for (const f of cardFiles) fd.append("file", f);
+      fd.append("useArtwork", cardUseArtwork ? "true" : "false");
       const r = await fetch("/api/source/cardnews/read", { method: "POST", body: fd });
       const data = await r.json();
       if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
@@ -308,6 +310,7 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
             title: it.title,
             body: it.body,
             attribution: it.attribution,
+            artwork: it.artwork,
             research: it.searched ? (it.report ?? "") : "",
           })),
         }),
@@ -1077,7 +1080,40 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
             </ul>
           )}
 
-          {/* ② 카드 읽기 */}
+          {/* ② 그림 참고 여부 — 읽기 전에 고른다 */}
+          <div className="grid gap-1.5 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
+            <p className="text-xs font-medium text-zinc-500">카드 속 그림</p>
+            {(
+              [
+                [false, "글자만 읽기", "제목과 본문만 읽어요. 삽화와 그 안의 글자는 건너뜁니다."],
+                [
+                  true,
+                  "그림도 참고",
+                  "삽화에 뭐가 그려졌는지도 받아 소재에 참고로 넣어요. 그림은 사실 근거가 아니라 참고로만 들어갑니다.",
+                ],
+              ] as const
+            ).map(([val, label, desc]) => (
+              <label key={String(val)} className="flex items-start gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="cardnews-artwork"
+                  checked={cardUseArtwork === val}
+                  onChange={() => {
+                    setCardUseArtwork(val);
+                    resetCardRead();
+                  }}
+                  disabled={cardReading}
+                  className="mt-0.5 accent-[var(--accent)]"
+                />
+                <span className="grid gap-0.5">
+                  <span className="text-sm">{label}</span>
+                  <span className="text-[11px] text-zinc-400">{desc}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+
+          {/* ③ 카드 읽기 */}
           <button
             type="button"
             onClick={() => void readCards()}
@@ -1097,7 +1133,7 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
 
           {cardItems && (
             <>
-              {/* ③ 꼭지별 확인·수정 → ④ 출처 찾기 → ⑤ 확인한 내용 */}
+              {/* ④ 꼭지별 확인·수정 → ⑤ 출처 찾기 → ⑥ 확인한 내용 */}
               {cardItems.map((it) => (
                 <div
                   key={it.index}
@@ -1136,6 +1172,23 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
                     placeholder="본문 (고칠 수 있어요)"
                     className={inputCls + " resize-y"}
                   />
+
+                  {cardUseArtwork && (
+                    <div className="grid gap-1">
+                      <label className="text-[11px] text-zinc-500">
+                        삽화에 그려진 것 (참고용 — 사실 근거로 쓰지 않아요)
+                      </label>
+                      <textarea
+                        value={it.artwork}
+                        onChange={(e) =>
+                          patchCardItem(it.index, { artwork: e.target.value })
+                        }
+                        rows={2}
+                        placeholder="삽화에서 읽어낸 것이 없어요"
+                        className={inputCls + " resize-y"}
+                      />
+                    </div>
+                  )}
 
                   <div className="flex gap-2">
                     <input

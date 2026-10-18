@@ -13,7 +13,7 @@
 
 import { getAnthropic, MODELS } from "./anthropic";
 import { anthropicCostUsd, recordCost } from "./cost";
-import { CARDNEWS_READ_SYSTEM, CARDNEWS_RESEARCH_SYSTEM } from "./cardnewsPrompt";
+import { cardnewsReadSystem, CARDNEWS_RESEARCH_SYSTEM } from "./cardnewsPrompt";
 
 export const CARDNEWS_MAX_IMAGES = 12;
 
@@ -31,6 +31,7 @@ export interface CardnewsItem {
   title: string;
   body: string;
   attribution: string; // 본문 맨 끝 괄호 안 출처. 없으면 "".
+  artwork: string; // 삽화에서 본 것. "그림 참고" 를 껐으면 "".
 }
 
 export interface CardnewsReadResult {
@@ -97,6 +98,7 @@ function usdOf(r: Msg, model: string): number {
 // ----------------------------------------------------------------------------
 export async function readCardnews(args: {
   images: CardnewsImageInput[];
+  useArtwork?: boolean; // 삽화를 참고할지 — 화면 라디오에서 고른다. 기본 끔.
   projectId?: string;
 }): Promise<CardnewsReadResult> {
   const images = args.images ?? [];
@@ -126,7 +128,7 @@ export async function readCardnews(args: {
   const r = (await client.messages.create({
     model: READ_MODEL,
     max_tokens: 8000,
-    system: CARDNEWS_READ_SYSTEM,
+    system: cardnewsReadSystem(Boolean(args.useArtwork)),
     messages: [{ role: "user", content: content as never }],
   })) as unknown as Msg;
 
@@ -149,7 +151,13 @@ export async function readCardnews(args: {
 // 모델 응답 → 꼭지 배열. 순수 함수 — scripts/test-cardnews-parse.ts 로 검증한다.
 export function parseCardnewsRead(raw: string): CardnewsItem[] {
   let parsed: {
-    items?: Array<{ index?: number; title?: string; body?: string; attribution?: string }>;
+    items?: Array<{
+      index?: number;
+      title?: string;
+      body?: string;
+      attribution?: string;
+      artwork?: string;
+    }>;
   } = {};
   try {
     const m = raw.match(/\{[\s\S]*\}/);
@@ -164,6 +172,7 @@ export function parseCardnewsRead(raw: string): CardnewsItem[] {
       title: typeof it?.title === "string" ? it.title.trim() : "",
       body: typeof it?.body === "string" ? it.body.trim() : "",
       attribution: normalizeAttribution(it?.attribution),
+      artwork: typeof it?.artwork === "string" ? it.artwork.trim() : "",
     }))
     .filter((it) => it.title || it.body);
 
