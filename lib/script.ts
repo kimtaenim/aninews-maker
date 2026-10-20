@@ -8,6 +8,7 @@
 import { getAnthropic, MODELS } from "./anthropic";
 import { getPrompt, formatPrompt } from "./prompts";
 import principles from "../config/script-principles.json";
+import { todayGuard } from "./today";
 import { parseScenes, parseClicheScenes } from "./scenes";
 import { anthropicCostUsd, recordCost } from "./cost";
 import { EMOTIONS } from "./emotions";
@@ -33,6 +34,9 @@ export async function generateScript(
     typeof section.max_tokens === "number" ? section.max_tokens : 4000;
 
   const userMsg = [
+    // 모델에 오늘이 언제인지 알려준다 — 안 알려주면 학습 시점을 지금으로 알고
+    // 원문 날짜를 제 기억 속 연도로 고쳐 쓴다.
+    `${todayGuard()}\n`,
     userPrompt ? `추가 지시: ${userPrompt}\n` : "",
     `제목: ${material.title}`,
     material.sourceName ? `출처: ${material.sourceName}` : "",
@@ -110,6 +114,9 @@ export async function generateClicheScript(args: {
   const max_tokens = typeof section.max_tokens === "number" ? section.max_tokens : 4000;
 
   const userMsg = [
+    // 모델에 오늘이 언제인지 알려준다 — 안 알려주면 학습 시점을 지금으로 알고
+    // 원문 날짜를 제 기억 속 연도로 고쳐 쓴다.
+    `${todayGuard()}\n`,
     userPrompt ? `추가 지시: ${userPrompt}\n` : "",
     `연애 클리셰(트로프): ${tropes.filter(Boolean).join(", ") || "설렘 가득한 로맨스"}`,
     "",

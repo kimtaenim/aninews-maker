@@ -8,6 +8,7 @@
 import { getAnthropic, MODELS } from "./anthropic";
 import { anthropicCostUsd, recordCost } from "./cost";
 import type { SourceMaterial } from "./source";
+import { todayGuard } from "./today";
 
 function parseJson(raw: string): { reply?: unknown; style_bible?: unknown } | null {
   const m = raw.match(/\{[\s\S]*\}/);
@@ -128,6 +129,7 @@ export async function runSourceChat(args: {
     "and return the FULL updated material. Keep the body as ONE coherent Korean narrative (no markdown, no " +
     "bullet lists, no '소스1/2' labels). Preserve important facts and numbers unless asked to change them. " +
     "Aim for high-quality, engaging, accurate content. Also write a short Korean reply summarizing what changed. " +
+    `${todayGuard()}\n` +
     "You have a web_search tool. When the user asks you to look something up, or to add/verify facts the " +
     "given material does not contain, USE it — do not answer from memory. Add only facts you actually " +
     "confirmed by searching, and name who said or reported each added fact inside the body. If a search " +
@@ -229,6 +231,7 @@ export async function runScriptChat(args: {
     "the user's on-screen SUBTITLE LINE BREAKS. Preserve every newline exactly where it is; do not remove, add, " +
     "or move them unless your edit changes that exact line. Keep newlines as real \\n inside the JSON strings. " +
     "Also write a short Korean reply summarizing what changed. " +
+    `${todayGuard()} ` +
     'Return ONLY JSON: {"reply":"...","scenes":["나레이션1","나레이션2", ...]}';
 
   const userMsg =

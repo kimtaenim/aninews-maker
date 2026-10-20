@@ -8,6 +8,7 @@
 import { getAnthropic, MODELS } from "./anthropic";
 import { anthropicCostUsd, recordCost } from "./cost";
 import type { SourceMaterial } from "./source";
+import { todayGuard } from "./today";
 
 const MAX_MERGE_INPUT = 50_000;
 
@@ -26,7 +27,8 @@ export async function mergeSources(args: {
     'Output ONLY JSON: {"title":"...","body":"..."}. ' +
     "title: a concise Korean headline. " +
     "body: one coherent Korean narrative that integrates the key facts across ALL sources — no bullet lists, no '소스1/소스2' labels, no markdown. " +
-    "Keep important facts and numbers, drop redundancy. If sources conflict, follow the main thread. Reflect the user's intent if given.";
+    "Keep important facts and numbers, drop redundancy. If sources conflict, follow the main thread. Reflect the user's intent if given. " +
+    todayGuard();
 
   const joined = valid
     .map(
