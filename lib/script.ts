@@ -7,6 +7,7 @@
 
 import { getAnthropic, MODELS } from "./anthropic";
 import { getPrompt, formatPrompt } from "./prompts";
+import principles from "../config/script-principles.json";
 import { parseScenes, parseClicheScenes } from "./scenes";
 import { anthropicCostUsd, recordCost } from "./cost";
 import { EMOTIONS } from "./emotions";
@@ -44,6 +45,13 @@ export async function generateScript(
     '{"scenes":[{"narration":"..."}]}',
     // 분량 축소(서버 부하↓): 씬마다 이미지·영상·음성을 생성하므로 씬 수가 곧 부하다.
     "narration 은 한국어 구어체, 한 씬에 한 문장(짧고 간결하게 — 핵심만, 길어도 두 문장을 넘기지 마).",
+    // 채널 원칙은 config/script-principles.json 단일 원천 — 여기 문구를 베껴 쓰지 않고
+    // 그 값을 그대로 넘긴다(발췌·재서술 금지). 전문을 통째로 주면 8씬 구조가 "4~6씬"
+    // 지시와 부딪히므로, 이 단계에 해당하는 항목만 꺼내 쓴다.
+    `쉬운 말: ${principles.style.plain_language}`,
+    `첫 씬: ${principles.structure.scene_1.rule}`,
+    `마지막 씬(자동으로 붙는 구독 문구 바로 앞): ${principles.structure.scene_7.rule}`,
+    `마지막 씬 금지: ${principles.structure.scene_7.ban.join(" / ")}`,
     "씬은 4~6개로 짧게 나눠(예전보다 30%가량 압축). 곁가지·중복은 빼고 핵심 흐름만 남겨.",
     // 마무리 구독 씬은 시스템이 자동으로 붙인다 — 모델이 직접 쓰면 중복된다.
     "영상 끝에 '구독·좋아요 눌러주세요' 마무리 씬은 자동으로 붙으니, 씬 안에 구독·좋아요·채널 유도 문구를 직접 쓰지 마.",
