@@ -16,7 +16,7 @@ export const maxDuration = 120; // 꼭지 여러 개를 한 편으로 묶는 호
 // 고른 카드 삽화가 있으면 keyframeReferenceUrl 로 달아 둔다 — 키프레임 단계가 그걸
 // 참조로 프로젝트 포맷에 맞춰 새로 그린다(그림이 키프레임 자체가 되는 게 아니다).
 //
-// JSON: { items: [{ title, body, attribution? }], keyframeReferenceUrl?,
+// JSON: { items: [{ title, body, attribution?, research? }], keyframeReferenceUrl?,
 //         userPrompt?, styleProfileId?, videoModelId?, ttsEnabled? }
 export async function POST(req: NextRequest) {
   let payload: Record<string, unknown>;
@@ -36,6 +36,7 @@ export async function POST(req: NextRequest) {
         title: str(o.title),
         body: str(o.body),
         attribution: str(o.attribution),
+        research: str(o.research),
       };
     })
     .filter((it) => it.body || it.title);
@@ -61,14 +62,28 @@ export async function POST(req: NextRequest) {
     typeof payload.ttsEnabled === "boolean" ? (payload.ttsEnabled as boolean) : true;
   const userPrompt = str(payload.userPrompt) || undefined;
 
-  // 꼭지 하나 = 소스 하나. 출처 표기는 어느 매체 걸 가져왔는지 기록으로만 남긴다.
-  const materials: SourceMaterial[] = items.map((it) => ({
-    title: it.title || "(제목 없음)",
-    body: it.body.slice(0, SOURCE_MAX_INPUT_CHARS),
-    sourceName: it.attribution ? `카드뉴스 · ${it.attribution}` : "카드뉴스",
-    sourceUrl: "",
-    publishedAt: null,
-  }));
+  // 꼭지 하나 = 소스 하나. 검색으로 확인한 최신 사실을 그 꼭지 본문 뒤에 붙인다 —
+  // 대본 생성기가 카드에 적힌 것만 보고 옛 기억으로 메우지 않게.
+  const materials: SourceMaterial[] = items.map((it) => {
+    const parts = [it.body];
+    if (it.research) {
+      parts.push(
+        [
+          it.attribution
+            ? `검색으로 확인한 내용 (카드 표기 출처: ${it.attribution})`
+            : "검색으로 확인한 내용",
+          it.research,
+        ].join("\n")
+      );
+    }
+    return {
+      title: it.title || "(제목 없음)",
+      body: parts.join("\n\n").trim().slice(0, SOURCE_MAX_INPUT_CHARS),
+      sourceName: it.attribution ? `카드뉴스 · ${it.attribution}` : "카드뉴스",
+      sourceUrl: "",
+      publishedAt: null,
+    };
+  });
 
   try {
     // 꼭지가 1개면 mergeSources 가 그대로 돌려준다(호출 비용 없음).

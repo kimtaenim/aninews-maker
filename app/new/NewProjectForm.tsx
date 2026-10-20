@@ -7,7 +7,7 @@ import type { RssItem, RssCategory } from "@/lib/rss";
 import type { ArticleBriefing } from "@/lib/briefing";
 import type { WikiSearchResult } from "@/lib/wikipedia";
 import { ACCEPT_ATTR, MAX_FILE_SIZE, MAX_TOTAL_SIZE } from "@/lib/attachments";
-import type { CardnewsItem } from "@/lib/cardnews";
+import type { CardnewsItem, CardnewsLink } from "@/lib/cardnews";
 import trendLangsData from "@/config/languages.json";
 
 type Mode = "rss" | "url" | "wiki" | "trend" | "text" | "file" | "script" | "cardnews";
@@ -28,7 +28,15 @@ interface CardnewsArtwork {
 }
 
 // 카드 한 장 = 뉴스 한 꼭지. 화면에서 고치고 넣고 뺀다.
-type CardItemState = CardnewsItem & { include: boolean };
+// 최신 뉴스라 검색으로 확인한 사실을 함께 들고 간다 — 그게 없으면 대본 생성기가
+// 카드에 적힌 것만 보고 제 기억(옛 연도)으로 메운다.
+type CardItemState = CardnewsItem & {
+  include: boolean;
+  report: string | null;
+  links: CardnewsLink[];
+  searched: boolean | null;
+  researching: boolean;
+};
 
 // 트렌드 언어 목록(config/languages.json) — 버튼용.
 const TREND_LANGS = (trendLangsData as {
@@ -275,7 +283,16 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
       const arts: CardnewsArtwork[] = [];
       for (const { idx, data } of results.sort((a, b) => a.idx - b.idx)) {
         const it = data.items?.[0];
-        if (it) items.push({ ...it, index: idx + 1, include: true });
+        if (it)
+          items.push({
+            ...it,
+            index: idx + 1,
+            include: true,
+            report: null,
+            links: [],
+            searched: null,
+            researching: false,
+          });
         const art = data.artworks?.[0];
         if (art) arts.push({ ...art, index: idx + 1 });
       }
@@ -285,9 +302,45 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
       setCardArtworks(arts);
       setCardKeyframePick(arts[0]?.index ?? 0); // 첫 그림을 기본으로, 없으면 쓰지 않음
       setCardReading(false);
+      // 출처가 잡힌 꼭지는 바로 최신 확인을 돌린다. 기다리지 않고 진행해도 된다.
+      for (const it of items) {
+        if (it.attribution) void researchItem(it.index, it);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "카드 읽기 실패");
       setCardReading(false);
+    }
+  }
+
+  // ② 꼭지 하나의 최신 확인 — 출처를 web_search 로 찾아 사실을 가져온다.
+  // 화면에서 출처를 고쳐 다시 부를 수 있다. 결과를 기다리지 않고 만들어도 된다.
+  async function researchItem(index: number, override?: CardnewsItem) {
+    const it = override ?? cardItems?.find((c) => c.index === index);
+    if (!it) return;
+    const attr = it.attribution.trim();
+    if (!attr) {
+      setError("찾을 출처를 입력해주세요");
+      return;
+    }
+    setError(null);
+    patchCardItem(index, { researching: true, report: null, links: [], searched: null });
+    try {
+      const r = await fetch("/api/source/cardnews/research", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ attribution: attr, title: it.title, body: it.body }),
+      });
+      const data = await r.json();
+      if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      patchCardItem(index, {
+        report: (data.report as string) ?? "",
+        links: (data.links as CardnewsLink[]) ?? [],
+        searched: Boolean(data.searched),
+        researching: false,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "최신 확인 실패");
+      patchCardItem(index, { researching: false });
     }
   }
 
@@ -310,6 +363,7 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
             title: it.title,
             body: it.body,
             attribution: it.attribution,
+            research: it.searched ? (it.report ?? "") : "",
           })),
           keyframeReferenceUrl:
             cardArtworks.find((a) => a.index === cardKeyframePick)?.url ?? "",
@@ -1033,8 +1087,9 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
           </label>
           <p className="text-[11px] text-zinc-400">
             🗂 카드 <span className="font-medium">한 장이 뉴스 한 꼭지</span>예요. 카드에서
-            제목·본문·출처를 읽어, 고른 꼭지들을{" "}
-            <span className="font-medium">한 편으로 종합</span>해요.
+            제목·본문·출처를 읽고, 출처를{" "}
+            <span className="font-medium">웹에서 찾아 최신 사실을 확인</span>한 뒤 고른
+            꼭지들을 한 편으로 종합해요. 검색을 기다리지 않고 만들어도 됩니다.
           </p>
 
           {cardFiles.length > 0 && (
@@ -1143,6 +1198,65 @@ export default function NewProjectForm({ categories }: { categories: RssCategory
                     className={inputCls + " resize-y"}
                   />
 
+                  {/* 최신 확인 — 출처를 웹에서 찾아 사실을 가져온다. 이게 있어야 대본이
+                      카드에 적힌 것만 보고 옛 기억으로 메우지 않는다. */}
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="본문 끝 괄호의 출처 — 비어 있으면 직접 입력"
+                      value={it.attribution}
+                      onChange={(e) =>
+                        patchCardItem(it.index, { attribution: e.target.value })
+                      }
+                      className={inputCls + " flex-1"}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void researchItem(it.index)}
+                      disabled={it.researching || !it.attribution.trim()}
+                      className="shrink-0 rounded-xl bg-accent hover:bg-accent-strong disabled:opacity-40 text-white text-sm font-medium px-4"
+                    >
+                      {it.researching ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <Spinner /> 찾는 중…
+                        </span>
+                      ) : it.report !== null ? (
+                        "다시 찾기"
+                      ) : (
+                        "최신 확인"
+                      )}
+                    </button>
+                  </div>
+                  {it.searched === false && (
+                    <p className="text-[11px] text-amber-600">
+                      웹 검색이 돌지 않아 확인된 사실이 없어요 — 검색 없이 나온 글은 쓰지
+                      않습니다. 출처를 바꿔 다시 찾아보세요.
+                    </p>
+                  )}
+                  {it.searched && it.report && (
+                    <div className="grid gap-2 rounded-xl bg-zinc-50 dark:bg-zinc-900 p-3">
+                      <p className="text-xs font-medium text-zinc-500">검색으로 확인한 내용</p>
+                      <p className="whitespace-pre-wrap text-xs leading-relaxed">
+                        {it.report}
+                      </p>
+                      {it.links.length > 0 && (
+                        <ul className="grid gap-1 border-t border-zinc-200 dark:border-zinc-800 pt-2">
+                          {it.links.map((l) => (
+                            <li key={l.url} className="truncate text-[11px]">
+                              <a
+                                href={l.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-accent hover:underline"
+                              >
+                                {l.title}
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
 
