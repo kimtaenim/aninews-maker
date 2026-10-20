@@ -3264,6 +3264,8 @@ export default function Studio({
             <p className="text-xs font-semibold text-zinc-600 dark:text-zinc-300">소스 다듬기 (AI 대화)</p>
             <p className="mt-0.5 text-[11px] text-zinc-400">
               예: “이 부분을 강조해줘”, “두 소식을 하나로 합쳐줘”, “더 짧고 쉽게”, “핵심 수치만 남겨줘”. 반영되면 위 본문이 바뀝니다.
+              <br />
+              🔎 <span className="font-medium">웹 검색도 합니다</span> — “검색해서 내용 보충해줘”, “이 수치 최신인지 확인해줘”처럼 시키면 찾아서 넣어요(검색이 돌면 좀 걸립니다).
             </p>
             {sourceChat.length > 0 && (
               <ul className="mt-2 grid gap-1.5 max-h-48 overflow-y-auto">

@@ -91,6 +91,28 @@ function textOf(content: Array<{ type: string; text?: string }>): string {
     .trim();
 }
 
+// 소스 대화는 웹 검색을 쓴다 — "검색해서 보충해줘" 가 실제로 되게. 카드뉴스처럼 짧은
+// 자료를 늘릴 때 꼭 필요하다. 검색 결과는 토큰으로 매 턴 재전송되므로 횟수가 곧 비용·
+// 시간이다. (도구를 쓰므로 haiku 는 불가 — 400. 여기선 opus 를 그대로 쓴다.)
+const SOURCE_SEARCH_MAX_USES = 5;
+const SOURCE_MAX_ROUNDS = 3;
+const sourceSearchTool = {
+  type: "web_search_20260209",
+  name: "web_search",
+  max_uses: SOURCE_SEARCH_MAX_USES,
+};
+
+type SourceMsg = {
+  content: Array<{ type: string; text?: string }>;
+  stop_reason?: string | null;
+  usage: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_read_input_tokens?: number | null;
+    cache_creation_input_tokens?: number | null;
+  };
+};
+
 export async function runSourceChat(args: {
   projectId: string;
   material: SourceMaterial;
@@ -106,33 +128,65 @@ export async function runSourceChat(args: {
     "and return the FULL updated material. Keep the body as ONE coherent Korean narrative (no markdown, no " +
     "bullet lists, no '소스1/2' labels). Preserve important facts and numbers unless asked to change them. " +
     "Aim for high-quality, engaging, accurate content. Also write a short Korean reply summarizing what changed. " +
+    "You have a web_search tool. When the user asks you to look something up, or to add/verify facts the " +
+    "given material does not contain, USE it — do not answer from memory. Add only facts you actually " +
+    "confirmed by searching, and name who said or reported each added fact inside the body. If a search " +
+    "finds nothing, say so in the reply and leave the body's facts alone rather than inventing them. " +
     'Return ONLY JSON: {"reply":"...","title":"...","body":"..."}';
 
   const userMsg =
     `현재 소스 제목: ${material.title}\n\n현재 소스 본문:\n${material.body}\n\n요청: ${userMessage}`;
 
-  const r = await client.messages.create({
-    model: MODELS.opus,
-    max_tokens: 8000,
-    system,
-    messages: [{ role: "user", content: userMsg }],
-  });
+  // 검색이 도는 응답은 오래 걸린다 — 스트리밍으로 연결을 살려 둔다(비스트리밍은 타임아웃).
+  // pause_turn 이 오면 그때까지의 대화를 이어 붙여 다시 돌린다(확장판과 같은 규약).
+  const messages: Array<{ role: "user" | "assistant"; content: unknown }> = [
+    { role: "user", content: userMsg },
+  ];
+  let costUsd = 0;
+  let last: SourceMsg | null = null;
+  let searched = false;
+  for (let round = 0; round < SOURCE_MAX_ROUNDS; round++) {
+    const stream = client.messages.stream(
+      {
+        model: MODELS.opus,
+        max_tokens: 8000,
+        system,
+        tools: [sourceSearchTool] as never,
+        messages: messages as never,
+      },
+      { maxRetries: 0 }
+    );
+    const r = (await stream.finalMessage()) as unknown as SourceMsg;
+    costUsd += anthropicCostUsd({
+      inputTokens: r.usage.input_tokens,
+      outputTokens: r.usage.output_tokens,
+      cacheReadTokens: r.usage.cache_read_input_tokens ?? undefined,
+      cacheWriteTokens: r.usage.cache_creation_input_tokens ?? undefined,
+      model: MODELS.opus,
+    });
+    if (
+      r.content.some(
+        (b) => b.type === "web_search_tool_result" || b.type === "server_tool_use"
+      )
+    ) {
+      searched = true;
+    }
+    last = r;
+    if (r.stop_reason === "pause_turn") {
+      messages.push({ role: "assistant", content: r.content });
+      continue;
+    }
+    break;
+  }
 
-  const raw = textOf(r.content);
+  const raw = textOf(last?.content ?? []);
 
-  const costUsd = anthropicCostUsd({
-    inputTokens: r.usage.input_tokens,
-    outputTokens: r.usage.output_tokens,
-    cacheReadTokens: r.usage.cache_read_input_tokens ?? undefined,
-    cacheWriteTokens: r.usage.cache_creation_input_tokens ?? undefined,
-    model: MODELS.opus,
-  });
   await recordCost({
     projectId,
     vendor: "anthropic",
     model: MODELS.opus,
     costUsd,
-    meta: { kind: "source-chat" },
+    meta: { kind: "source-chat", searched },
   }).catch(() => {});
 
   let parsed: { reply?: unknown; title?: unknown; body?: unknown } = {};
