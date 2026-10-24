@@ -15,6 +15,7 @@ import {
 } from "@/lib/types";
 import { upload } from "@vercel/blob/client";
 import { estimateDuration } from "@/lib/scenes";
+import { pendingVideoScenes, pendingAudioScenes } from "@/lib/pendingWork";
 import { stripMarks } from "@/lib/emphasis";
 import type { SourceMaterial } from "@/lib/source";
 import { resolveLang, otherLanguages } from "@/lib/languages";
@@ -901,6 +902,68 @@ export default function Studio({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ── 끊긴 작업 이어받기 ──────────────────────────────────────────────────────
+  // 영상 제출 루프와 음성 생성 루프는 브라우저 탭 안에서 돈다. 탭을 벗어나면 루프가
+  // 죽어 남은 씬이 빠진 채로 남는다(이미 제출된 영상만 아래 폴링이 되살린다).
+  // 서버(project.scenes)가 진실이므로, 거기서 빠진 것을 세어 배너로 알리고 버튼으로
+  // 그것만 마저 돌린다. 자동으로 돌리지 않는다 — 생성은 돈이 나가는 일이라 사용자가
+  // 보고 누를 때만 한다.
+  //
+  // "시작한 적 있는 공정"일 때만 센다(한 씬이라도 결과가 있으면 시작한 것). 아직 손도
+  // 안 댄 단계에 배너가 뜨면 안 된다.
+  const pendingVideoIdx = pendingVideoScenes(project.scenes);
+  const pendingAudioIdx = pendingAudioScenes(project.scenes, project.ttsEnabled);
+  const [resuming, setResuming] = useState(false);
+
+  // 빠진 것만 마저 돌린다. 영상·음성은 레인이 달라 같이 돌려도 된다.
+  async function resumePending() {
+    if (resuming) return;
+    setResuming(true);
+    setError(null);
+    try {
+      const jobs: Promise<unknown>[] = [];
+      if (pendingVideoIdx.length > 0 && busy === null) {
+        jobs.push(
+          (async () => {
+            setBusy("videos-all");
+            try {
+              const submitted: number[] = [];
+              for (const i of pendingVideoIdx) {
+                try {
+                  await submitVideoOnly(i);
+                  submitted.push(i);
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : `씬${i + 1} 제출 실패`);
+                }
+              }
+              await Promise.all(submitted.map((i) => pollVideoUntilDone(i)));
+            } finally {
+              setActiveVideo(null);
+              setBusy(null);
+            }
+          })()
+        );
+      }
+      if (pendingAudioIdx.length > 0 && voiceBusy === null) {
+        jobs.push(
+          (async () => {
+            setVoiceBusy("audio-all");
+            try {
+              for (const i of pendingAudioIdx) await generateOneAudio(i);
+            } catch (e) {
+              setError(e instanceof Error ? e.message : "음성 생성 실패");
+            } finally {
+              setVoiceBusy(null);
+            }
+          })()
+        );
+      }
+      await Promise.all(jobs);
+    } finally {
+      setResuming(false);
+    }
+  }
 
   // 제출됐지만 아직 저장 전인 영상 작업을, 상태가 바뀔 때마다 자동으로 마저 폴링한다.
   // (직접 생성하든, 복원으로 알게 됐든 동일 경로. videoPollRef 로 씬당 1개만.)
@@ -3234,6 +3297,37 @@ export default function Studio({
       {/* 단계와 무관한 에러만 여기(상단). 단계별 에러는 각 단계 패널에 표시된다. */}
       {error && !errorStep && (
         <p className="mt-4 text-sm text-red-600">{error}</p>
+      )}
+
+      {/* 끊긴 작업 — 탭을 벗어나 루프가 죽은 뒤 남은 씬. 아무것도 안 돌 때만 띄운다. */}
+      {busy === null &&
+        voiceBusy === null &&
+        !resuming &&
+        pendingVideoIdx.length + pendingAudioIdx.length > 0 && (
+          <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/40">
+            <p className="flex-1 text-xs text-amber-800 dark:text-amber-200">
+              ⏸ 끊긴 작업이 있어요 —{" "}
+              {[
+                pendingVideoIdx.length > 0 ? `영상 ${pendingVideoIdx.length}개` : "",
+                pendingAudioIdx.length > 0 ? `음성 ${pendingAudioIdx.length}개` : "",
+              ]
+                .filter(Boolean)
+                .join(" · ")}{" "}
+              가 아직 안 만들어졌어요. 화면을 떠나 있는 동안 멈춘 거예요.
+            </p>
+            <button
+              type="button"
+              onClick={() => void resumePending()}
+              className="shrink-0 rounded-xl bg-accent hover:bg-accent-strong text-white text-xs font-medium px-3 py-2"
+            >
+              이어서 생성
+            </button>
+          </div>
+        )}
+      {resuming && (
+        <p className="mt-4 text-xs text-zinc-500">
+          <Spinner /> 끊긴 작업을 이어서 만드는 중…
+        </p>
       )}
 
       {/* 1단계: 소스 검수 */}
