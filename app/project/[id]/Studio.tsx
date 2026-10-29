@@ -2283,12 +2283,51 @@ export default function Studio({
     }
   }
 
+  // ── 끊긴 대화 건져내기 ──────────────────────────────────────────────────────
+  // 소스·스크립트 대화는 웹 검색까지 돌아 길다(최대 300초). 폰이 탭을 백그라운드로
+  // 내리면 진행 중이던 요청이 끊기고 사파리가 "Load failed" 를 던진다.
+  // 그런데 서버는 결과를 저장한 뒤에 응답한다(stepchat 라우트가 saveProject 먼저).
+  // 즉 연결만 끊긴 것이고 결과는 Redis 에 남아 있을 수 있다 — 버리지 말고 되묻는다.
+  //
+  // 표식은 대화 로그 길이다. 보내기 전 길이를 적어 두고, 끊기면 서버 상태를 주기적으로
+  // 읽어 로그가 늘었는지 본다. 늘었으면 그 결과를 그대로 쓴다.
+  const RECOVER_TRIES = 40; // 5초 간격 — 약 3분(서버 maxDuration 300초를 덮는다)
+  const RECOVER_INTERVAL_MS = 5000;
+
+  async function recoverStepChat(
+    step: "source" | "script",
+    chatLenBefore: number
+  ): Promise<Project | null> {
+    for (let t = 0; t < RECOVER_TRIES; t++) {
+      await new Promise((r) => setTimeout(r, RECOVER_INTERVAL_MS));
+      // 화면이 가려져 있으면 세지 않고 기다린다 — 돌아왔을 때 마저 확인한다.
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+        t--;
+        continue;
+      }
+      try {
+        const r = await fetch(
+          `/api/project/state?projectId=${encodeURIComponent(project.id)}`
+        );
+        if (!r.ok) continue;
+        const d = await r.json();
+        const p = d?.project as Project | undefined;
+        if (!p) continue;
+        if ((p.steps[step].chat?.length ?? 0) > chatLenBefore) return p;
+      } catch {
+        /* 오프라인 등 — 다음 차례에 다시 */
+      }
+    }
+    return null;
+  }
+
   // 1단계 소스 대화: 요청대로 소스 자료를 다듬는다(강조·조합·톤/길이). 서버가 material 갱신.
   async function sendSourceChat() {
     const msg = sourceChatInput.trim();
     if (!msg || busy !== null) return;
     setError(null);
     setBusy("source-chat");
+    const chatLenBefore = project.steps.source.chat?.length ?? 0;
     try {
       const data = await call("/api/stepchat", {
         projectId: project.id,
@@ -2308,7 +2347,20 @@ export default function Studio({
       }));
       setSourceChatInput("");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "소스 대화 실패");
+      // 연결이 끊긴 것일 수 있다 — 서버에 결과가 내려앉았는지 확인하고 건져낸다.
+      setError("연결이 끊겼어요 — 서버에서 결과를 확인하는 중이에요. 기다려 주세요.");
+      const p = await recoverStepChat("source", chatLenBefore);
+      if (p) {
+        setProject(p);
+        setSourceChat((p.steps.source.chat ?? []) as typeof sourceChat);
+        setSourceChatInput("");
+        setError(null);
+      } else {
+        setError(
+          (e instanceof Error ? e.message : "소스 대화 실패") +
+            " — 서버에도 결과가 없어요. 다시 보내주세요."
+        );
+      }
     } finally {
       setBusy(null);
     }
@@ -2321,6 +2373,7 @@ export default function Studio({
     if (!msg || busy !== null) return;
     setError(null);
     setBusy("script-chat");
+    const chatLenBefore = project.steps.script.chat?.length ?? 0;
     try {
       await flushScenes(); // 미저장 나레이션 편집을 먼저 서버에 반영(대화가 최신 기준으로)
       const data = await call("/api/stepchat", {
@@ -2332,7 +2385,21 @@ export default function Studio({
       setScriptChat(data.chat as typeof scriptChat);
       if (!overrideMsg) setScriptChatInput("");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "스크립트 대화 실패");
+      // 소스 대화와 같은 이유 — 연결만 끊기고 서버엔 결과가 남아 있을 수 있다.
+      setError("연결이 끊겼어요 — 서버에서 결과를 확인하는 중이에요. 기다려 주세요.");
+      const p = await recoverStepChat("script", chatLenBefore);
+      if (p) {
+        setProject(p);
+        applySavedScenes(p.scenes);
+        setScriptChat((p.steps.script.chat ?? []) as typeof scriptChat);
+        if (!overrideMsg) setScriptChatInput("");
+        setError(null);
+      } else {
+        setError(
+          (e instanceof Error ? e.message : "스크립트 대화 실패") +
+            " — 서버에도 결과가 없어요. 다시 보내주세요."
+        );
+      }
     } finally {
       setBusy(null);
     }
@@ -3359,7 +3426,8 @@ export default function Studio({
             <p className="mt-0.5 text-[11px] text-zinc-400">
               예: “이 부분을 강조해줘”, “두 소식을 하나로 합쳐줘”, “더 짧고 쉽게”, “핵심 수치만 남겨줘”. 반영되면 위 본문이 바뀝니다.
               <br />
-              🔎 <span className="font-medium">웹 검색도 합니다</span> — “검색해서 내용 보충해줘”, “이 수치 최신인지 확인해줘”처럼 시키면 찾아서 넣어요(검색이 돌면 좀 걸립니다).
+              🔎 <span className="font-medium">웹 검색도 합니다</span> — “검색해서 내용 보충해줘”, “이 수치 최신인지 확인해줘”처럼 시키면 찾아서 넣어요.
+              검색이 돌면 1~3분 걸립니다. <span className="font-medium">화면을 떠났다 와도 결과는 서버에 저장돼요</span> — 연결이 끊기면 돌아와서 자동으로 건져냅니다.
             </p>
             {sourceChat.length > 0 && (
               <ul className="mt-2 grid gap-1.5 max-h-48 overflow-y-auto">
