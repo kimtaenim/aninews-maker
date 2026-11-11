@@ -45,15 +45,69 @@ export const ANTHROPIC_PRICING: Record<string, AnthropicPricing> = {
 };
 
 // USD per image (gpt-image-2). low 기본.
+// 장당 고정가 표 — 토큰 정보가 응답에 없을 때 쓰는 폴백이다.
+// GPT-Image-2.6 은 장당 고정가가 없고 토큰으로 매긴다(아래 OPENAI_IMAGE_TOKEN_PRICING).
+// 2.6 의 low/medium 은 추정치. high 는 공개된 추정치가 없어 medium 으로 떨어진다
+// (낮게 잡아 0 에 가깝게 보이는 것보다 낫다).
 export const OPENAI_IMAGE_PRICING: Record<string, Record<string, number>> = {
   "gpt-image-2": { low: 0.011, medium: 0.04, high: 0.167 },
-  // ★ 임시값 — GPT-Image-2.6 Sunburst 의 장당 단가를 아직 확인하지 못했다.
-  // 공개된 것은 토큰 과금($8/M 입력, $30/M 출력)뿐이라 이 표(장당)로 옮길 수가 없다.
-  // 표에 없으면 openaiImageCostUsd 가 0 을 돌려줘 돈이 나가는데 누적 비용이 0 으로
-  // 보인다 — 그게 더 위험해서, 확인될 때까지 gpt-image-2 수치를 그대로 쓴다.
-  // 실제 청구액을 보고 반드시 고칠 것.
-  "gpt-image-2.6-sunburst": { low: 0.011, medium: 0.04, high: 0.167 },
+  "gpt-image-2.6-sunburst": { low: 0.025, medium: 0.044 },
 };
+
+// GPT-Image-2.6 과금 — 100만 토큰당 USD. 응답의 usage 로 계산한다.
+export const OPENAI_IMAGE_TOKEN_PRICING = {
+  textInput: 5,
+  imageInput: 8,
+  imageOutput: 30,
+} as const;
+
+// OpenAI Images API 가 돌려주는 usage (SDK 버전에 따라 없을 수 있어 전부 옵셔널).
+export interface OpenAIImageUsage {
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  input_tokens_details?: {
+    text_tokens?: number | null;
+    image_tokens?: number | null;
+  } | null;
+}
+
+// usage 로 비용 계산. 토큰 정보가 없으면 null — 호출부가 장당 추정치로 넘어간다.
+export function openaiImageUsageCostUsd(
+  usage: OpenAIImageUsage | null | undefined
+): number | null {
+  if (!usage) return null;
+  const out = Number(usage.output_tokens ?? 0);
+  const inTotal = Number(usage.input_tokens ?? 0);
+  if (!(out > 0) && !(inTotal > 0)) return null;
+
+  const det = usage.input_tokens_details;
+  const text = Number(det?.text_tokens ?? 0);
+  const img = Number(det?.image_tokens ?? 0);
+  // 입력 내역이 없거나 비어 있으면 전부 텍스트 입력으로 본다(이미지를 안 넣은 generate).
+  const hasDetail = text > 0 || img > 0;
+  const textTok = hasDetail ? text : inTotal;
+  const imgTok = hasDetail ? img : 0;
+
+  const M = 1_000_000;
+  return (
+    (textTok * OPENAI_IMAGE_TOKEN_PRICING.textInput) / M +
+    (imgTok * OPENAI_IMAGE_TOKEN_PRICING.imageInput) / M +
+    (out * OPENAI_IMAGE_TOKEN_PRICING.imageOutput) / M
+  );
+}
+
+// 이미지 한 번 호출의 비용 — usage 가 오면 토큰으로, 없으면 장당 추정치로.
+// usage 는 그 호출 전체(n장)를 덮으므로 count 는 폴백에서만 쓴다.
+export function imageCallCostUsd(args: {
+  usage?: OpenAIImageUsage | null;
+  model: string;
+  quality?: "low" | "medium" | "high";
+  count?: number;
+}): number {
+  const fromUsage = openaiImageUsageCostUsd(args.usage);
+  if (fromUsage !== null) return fromUsage;
+  return openaiImageCostUsd(args.model, args.quality ?? "low", args.count ?? 1);
+}
 
 export function anthropicCostUsd(usage: AnthropicUsage): number {
   const p = ANTHROPIC_PRICING[usage.model];
@@ -74,7 +128,9 @@ export function openaiImageCostUsd(
 ): number {
   const tier = OPENAI_IMAGE_PRICING[model];
   if (!tier) return 0;
-  return (tier[quality] ?? tier.low ?? 0) * count;
+  // 해당 등급이 표에 없으면 medium → low 순으로 떨어진다. low 로 바로 떨어뜨리면
+  // 비싼 등급이 싸게 잡혀 "비용이 거의 안 나온 것처럼" 보인다.
+  return (tier[quality] ?? tier.medium ?? tier.low ?? 0) * count;
 }
 
 // USD per video (fal image-to-video). endpoint(모델 경로) 기준 대략값.

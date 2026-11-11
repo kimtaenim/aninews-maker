@@ -9,7 +9,12 @@
 import { toFile } from "openai";
 import { getOpenAI, IMAGE_MODEL, IMAGE_SIZE, type ImageQuality } from "./openai";
 import { uploadAsset } from "./blob";
-import { openaiImageCostUsd, recordCost } from "./cost";
+import {
+  imageCallCostUsd,
+  openaiImageUsageCostUsd,
+  recordCost,
+  type OpenAIImageUsage,
+} from "./cost";
 import { getStyleProfile } from "./styleProfiles";
 import eyecatchConfig from "../config/eyecatch.json";
 
@@ -167,7 +172,20 @@ export async function generateKeyframes(args: {
         })
       : client.images.generate({ model: IMAGE_MODEL, prompt, size: imageSize, quality, n });
 
+  // 호출이 여러 번 나갈 수 있으니 토큰 비용을 호출마다 더한다(usage 가 없으면 0).
+  let usageUsd = 0;
+  let sawUsage = false;
+  const addUsage = (r: unknown) => {
+    const u = (r as { usage?: OpenAIImageUsage }).usage;
+    const c = openaiImageUsageCostUsd(u);
+    if (c !== null) {
+      usageUsd += c;
+      sawUsage = true;
+    }
+  };
+
   const first = await genN(count);
+  addUsage(first);
   const b64s: string[] = (first.data ?? [])
     .map((it) => it.b64_json)
     .filter((b): b is string => typeof b === "string" && b.length > 0);
@@ -175,6 +193,7 @@ export async function generateKeyframes(args: {
   for (let t = 0; b64s.length < count && t < count; t++) {
     try {
       const more = await genN(1);
+      addUsage(more);
       const b = more.data?.[0]?.b64_json;
       if (b) b64s.push(b);
     } catch {
@@ -195,7 +214,10 @@ export async function generateKeyframes(args: {
   }
   if (urls.length === 0) throw new Error("이미지 업로드 실패");
 
-  const costUsd = openaiImageCostUsd(IMAGE_MODEL, quality, urls.length);
+  // 토큰 정보가 한 번이라도 왔으면 그 합을, 아예 없으면 장당 추정치로.
+  const costUsd = sawUsage
+    ? usageUsd
+    : imageCallCostUsd({ model: IMAGE_MODEL, quality, count: urls.length });
   await recordCost({
     projectId,
     vendor: "openai",
@@ -255,7 +277,11 @@ export async function convertToRealistic(args: {
     "image/png"
   );
 
-  const costUsd = openaiImageCostUsd(IMAGE_MODEL, quality, 1);
+  const costUsd = imageCallCostUsd({
+    usage: (result as { usage?: OpenAIImageUsage }).usage,
+    model: IMAGE_MODEL,
+    quality,
+  });
   await recordCost({
     projectId,
     vendor: "openai",
@@ -347,7 +373,11 @@ export async function generateScene(args: {
     "image/png"
   );
 
-  const costUsd = openaiImageCostUsd(IMAGE_MODEL, quality, 1);
+  const costUsd = imageCallCostUsd({
+    usage: (result as { usage?: OpenAIImageUsage }).usage,
+    model: IMAGE_MODEL,
+    quality,
+  });
   await recordCost({
     projectId,
     vendor: "openai",
@@ -429,7 +459,11 @@ export async function generatePortrait(args: {
     "image/png"
   );
 
-  const costUsd = openaiImageCostUsd(IMAGE_MODEL, quality, 1);
+  const costUsd = imageCallCostUsd({
+    usage: (result as { usage?: OpenAIImageUsage }).usage,
+    model: IMAGE_MODEL,
+    quality,
+  });
   await recordCost({
     ...(projectId ? { projectId } : {}),
     vendor: "openai",
@@ -492,7 +526,11 @@ export async function generateThumbnailImage(args: {
     : await client.images.generate({ model: IMAGE_MODEL, prompt: full, size: "1280x720", quality, n: 1 });
   const b64 = result.data?.[0]?.b64_json;
   if (!b64) throw new Error("썸네일 이미지 생성 실패 — 응답에 이미지가 없어요");
-  const costUsd = openaiImageCostUsd(IMAGE_MODEL, quality, 1);
+  const costUsd = imageCallCostUsd({
+    usage: (result as { usage?: OpenAIImageUsage }).usage,
+    model: IMAGE_MODEL,
+    quality,
+  });
   await recordCost({ projectId, vendor: "openai", model: IMAGE_MODEL, costUsd, meta: { kind: "thumbnail", quality } });
   return { bytes: Buffer.from(b64, "base64"), costUsd };
 }
@@ -535,7 +573,11 @@ export async function generateEyecatch(args: {
     Buffer.from(b64, "base64"),
     "image/png"
   );
-  const costUsd = openaiImageCostUsd(IMAGE_MODEL, quality, 1);
+  const costUsd = imageCallCostUsd({
+    usage: (result as { usage?: OpenAIImageUsage }).usage,
+    model: IMAGE_MODEL,
+    quality,
+  });
   await recordCost({
     projectId,
     vendor: "openai",

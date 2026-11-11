@@ -14,7 +14,7 @@ import { toFile } from "openai";
 import { getOpenAI, IMAGE_MODEL } from "./openai";
 import { uploadAsset } from "./blob";
 import { getStyleProfile } from "./styleProfiles";
-import { openaiImageCostUsd, recordCost } from "./cost";
+import { imageCallCostUsd, recordCost, type OpenAIImageUsage } from "./cost";
 
 export const FACE_EXPRESSIONS = [
   { id: "neutral", label: "기본", phrase: "무표정, 담담한 중립 표정" },
@@ -39,8 +39,13 @@ const FACE_SIZE = "896x896";
 const SHEET =
   "front-facing bust portrait (head and shoulders), single character only, plain neutral background, even soft lighting, no text.";
 
-function faceCost(): number {
-  return openaiImageCostUsd(IMAGE_MODEL, "low", 1);
+// 토큰 정보가 오면 그걸로, 없으면 장당 추정치로(2.6 은 장당 고정가가 없다).
+function faceCost(r?: unknown): number {
+  return imageCallCostUsd({
+    usage: (r as { usage?: OpenAIImageUsage } | undefined)?.usage,
+    model: IMAGE_MODEL,
+    quality: "low",
+  });
 }
 
 // ── 조각 1: 중립 얼굴 1장 생성 → 업로드. bytes 도 돌려줘 표정 edit이 재사용하게 한다.
@@ -67,7 +72,7 @@ export async function generateNeutralFace(args: {
   if (!b64) throw new Error("표정 얼굴 생성 실패 — 중립 이미지가 비었어요");
   const bytes = Buffer.from(b64, "base64");
   const up = await uploadAsset(`${blobPrefix}/face-neutral-${Date.now()}.png`, bytes, "image/png");
-  const costUsd = faceCost();
+  const costUsd = faceCost(gen);
   await recordCost({
     projectId,
     vendor: "openai",
@@ -119,7 +124,7 @@ export async function generateExpressionFace(args: {
     Buffer.from(b64, "base64"),
     "image/png"
   );
-  const costUsd = faceCost();
+  const costUsd = faceCost(edit);
   await recordCost({
     projectId,
     vendor: "openai",
