@@ -47,6 +47,12 @@ export const ANTHROPIC_PRICING: Record<string, AnthropicPricing> = {
 // USD per image (gpt-image-2). low 기본.
 export const OPENAI_IMAGE_PRICING: Record<string, Record<string, number>> = {
   "gpt-image-2": { low: 0.011, medium: 0.04, high: 0.167 },
+  // ★ 임시값 — GPT-Image-2.6 Sunburst 의 장당 단가를 아직 확인하지 못했다.
+  // 공개된 것은 토큰 과금($8/M 입력, $30/M 출력)뿐이라 이 표(장당)로 옮길 수가 없다.
+  // 표에 없으면 openaiImageCostUsd 가 0 을 돌려줘 돈이 나가는데 누적 비용이 0 으로
+  // 보인다 — 그게 더 위험해서, 확인될 때까지 gpt-image-2 수치를 그대로 쓴다.
+  // 실제 청구액을 보고 반드시 고칠 것.
+  "gpt-image-2.6-sunburst": { low: 0.011, medium: 0.04, high: 0.167 },
 };
 
 export function anthropicCostUsd(usage: AnthropicUsage): number {

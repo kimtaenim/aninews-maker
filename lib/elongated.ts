@@ -19,6 +19,7 @@ import {
   KRW_PER_USD,
   OPENAI_IMAGE_PRICING,
 } from "./cost";
+import { IMAGE_MODEL } from "./openai";
 import { estimateCost, type CostRates, type ElongatedCostEstimate } from "./elongatedFormat";
 import { emptySteps } from "./projectStore";
 import { hasSubscribeOutro } from "./outro";
@@ -151,7 +152,9 @@ const SCRIPT_STAGE_USD = 1.8;
 export function costRates(videoUsdPerScene: number = FAL_VIDEO_DEFAULT_USD): CostRates {
   return {
     videoUsdPerScene,
-    imageUsd: OPENAI_IMAGE_PRICING["gpt-image-2"]?.medium ?? 0.04,
+    // 모델명을 박지 않는다 — 지금 쓰는 이미지 모델(IMAGE_MODEL)의 단가를 따라간다.
+    // 박아 두면 모델을 갈아끼운 뒤에도 옛 모델 단가로 견적이 나온다.
+    imageUsd: OPENAI_IMAGE_PRICING[IMAGE_MODEL]?.medium ?? 0.04,
     voiceUsdPerChar: ELEVENLABS_USD_PER_CHAR,
     scriptUsd: SCRIPT_STAGE_USD,
     krwPerUsd: KRW_PER_USD,
